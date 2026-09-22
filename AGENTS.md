@@ -8,9 +8,10 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
 
 # AGENTS (DSM-Harness Runtime Index)
 
-> Welcome to **DSM-Harness**. This file governs AI agents and assistants supporting participants in the Digital Soil Mapping and Soil Spectroscopy training course (FAO / SoilFER / SICA).
+> Welcome to **DSM-Harness**. This file governs AI agents and assistants supporting participants in in-person Digital Soil Mapping and Soil Spectroscopy training courses (FAO / SoilFER).
 
 ---
+
 
 ## 1. Master Instructions for AI Assistants
 
