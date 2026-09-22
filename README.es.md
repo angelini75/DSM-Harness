@@ -93,7 +93,11 @@ Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Cod
    - *"Actúa como r-engineer y genera el script para extraer covariables a mis puntos"*.
    - *"Actúa como geostat-modeler y revisa si este scatterplot 1:1 muestra sobreajuste"*.
    - *"Actúa como soil-scientist y dime si estas relaciones entre carbono y densidad aparente son físicamente plausibles"*.
-4. **Ejecución en RStudio**: Copia el código R generado por Antigravity y córrelo en tu sesión de RStudio para generar los gráficos y modelos.
+4. **Generación directa de scripts y ejecución en RStudio**:
+   - En Antigravity, la IA **creará o actualizará directamente los archivos de código en la carpeta `02_scripts/`** (por ejemplo, `02_scripts/01_byod_audit.R`). No necesitas copiar y pegar bloques largos desde el chat.
+   - **Regla estricta sin ejecución en terminal**: La IA nunca intentará ejecutar scripts de R ni comandos de terminal en tu equipo, protegiendo tu cuota de tokens y dejándote el control pedagógico total.
+   - **Sin sobreajuste a datos privados**: La IA no analiza archivos locales de prueba privados; utiliza criterios edafológicos generales, diccionarios de sinónimos y estándares ISO 28258 / OpenNSIS para que el código funcione de forma universal.
+   - **Tu rol como científico**: Abre el archivo generado en tu RStudio (que ya tiene abierto `DSM-Harness.Rproj`), ejecútalo línea por línea, observa los mapas y gráficos interactivos, y responde las preguntas de interpretación que la IA te formula en el chat.
 
 ---
 

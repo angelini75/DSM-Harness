@@ -37,10 +37,12 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Guide the user toward OpenNSIS standards (ISO 28258 data columns, COG formats with `DEFLATE`, `nodata = -9999`, and `<CC>-<PROJ>-<PROP>-<dim1>-<dim2>-<stat>.tif` naming).
    - If user data differs, issue a helpful `[OpenNSIS Advisory]` without stopping the workflow.
 
-6. **Strict "No Direct Execution" Rule (Student Runs in RStudio)**:
-   - **MANDATORY**: You MUST NEVER execute R scripts, run `Rscript`, or trigger data processing commands in the user's terminal.
-   - Do NOT ask for permission to run R on the student's machine. That burns tokens and breaks the workshop pedagogy.
-   - **Your role**: Inspect file structures (e.g. read column headers from `.xlsx` or `.csv`), use pedological domain knowledge to infer column mappings, ask only when genuinely ambiguous, and **deliver clean R code blocks for the student to run in RStudio**.
+6. **File Generation, No Direct Execution & Anti-Overfitting (Student Runs in RStudio)**:
+   - **MANDATORY**: You MUST NEVER execute R scripts, run `Rscript`, or trigger data processing commands in the user's terminal. Do NOT ask for permission to run R on the student's machine.
+   - **Deliverable in IDE Mode (Antigravity)**: Generate the complete, ready-to-run script directly as an `.R` file inside the `02_scripts/` folder (e.g. `02_scripts/01_byod_audit.R`), so the student can simply open it in RStudio and run it. Do NOT deliver the script in the chat when working in IDE mode.
+   - **Deliverable in Web Chat Mode**: Deliver clean R code blocks in the chat response for the student to copy.
+   - **Anti-Overfitting & Generalization**: Do NOT read, inspect, or overfit to the user's private test files. Formulate general, robust R scripts and rules based on pedological domain knowledge, the alias dictionary, and ISO 28258 / OpenNSIS standards.
+
 
 
 ---

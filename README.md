@@ -93,7 +93,11 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - *"Act as r-engineer and generate the code to extract covariates to sample points"*.
    - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
    - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
-4. **Run Code in RStudio**: Copy the clean R code blocks produced by Antigravity and run them inside your RStudio session.
+4. **Direct Script Generation and Execution in RStudio**:
+   - In Antigravity, the AI will **create or update R script files directly inside `02_scripts/`** (e.g. `02_scripts/01_byod_audit.R`). You do not need to copy and paste code blocks from the chat.
+   - **Strict No-Terminal-Execution Rule**: The AI will never attempt to execute R scripts or terminal commands on your machine, preserving your token quota and leaving you in full pedagogical control.
+   - **No Overfitting to Private Data**: The AI does not inspect private test files; it applies universal soil science criteria, multilingual alias dictionaries, and ISO 28258 / OpenNSIS standards.
+   - **Your Role as Soil Scientist**: Open the generated `.R` file in RStudio (which already has `DSM-Harness.Rproj` open), run it line by line, inspect the interactive maps and plots, and answer the pedological reflection questions posed by the AI in chat.
 
 ---
 

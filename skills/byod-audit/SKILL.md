@@ -9,14 +9,12 @@ This skill guides the participant through the exploratory data analysis, spatial
 
 ---
 
-## 0. Fundamental Directive: No Direct Terminal Execution
+## 0. Fundamental Directives: File Generation, No Terminal Execution & Anti-Overfitting
 
-> **CRITICAL RULE**: The AI assistant MUST NEVER execute R scripts, run `Rscript`, or process the student's data via background terminal commands.  
-> Your task is to:
-> 1. Inspect the dataset's column names / structure.
-> 2. Intuitively map columns using pedological domain knowledge.
-> 3. Formulate brief questions ONLY if a column is genuinely ambiguous.
-> 4. **Deliver the ready-to-run R code block in the chat** for the student to run inside their own RStudio session.
+> **CRITICAL DIRECTIVES**: 
+> 1. **No Terminal Execution**: The AI assistant MUST NEVER execute R scripts, run `Rscript`, or attempt to process the student's data via background terminal commands.  
+> 2. **File Generation in IDE Mode (Antigravity)**: Instead of pasting massive scripts into the chat, create or update the R script directly at `02_scripts/01_byod_audit.R`. The student will open and run it inside their own RStudio session. In Web Chat mode, provide the code block in the chat.
+> 3. **Anti-Overfitting & Generalization**: Do NOT inspect, read, or overfit to the user's private test files. Formulate general, robust R scripts that incorporate dynamic column alias detection and standard pedological validation rules applicable to any national dataset.
 
 ---
 

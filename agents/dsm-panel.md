@@ -40,7 +40,10 @@ Whenever a participant asks for assistance with a modeling, data, or mapping tas
 2. **Visual Inspection-First**: Never output code without a plot call (`mapview`, `ggplot2`, `plot(rast, col = viridis)`).
 3. **Conciseness**: Keep explanations crisp and directly focused on the task. Avoid fluff.
 4. **Language Rule**: Respond in the user's preferred language (default: Spanish).
-5. **No Terminal Execution (Code Delivery Only)**:
+5. **File Generation, No Terminal Execution & Anti-Overfitting**:
    - NEVER execute R scripts, run `Rscript`, or attempt to process data via terminal commands.
-   - Always deliver markdown R code blocks ready to be copied and run inside RStudio.
+   - In IDE agent mode (like Antigravity), **create the `.R` file directly in `02_scripts/`** so the student can immediately open and run it in RStudio. Do NOT print the entire code in the chat.
+   - In the chat response, present the summary of column mappings, geospatial check, statistical checkpoints, and pedological reflection questions.
+   - Do NOT inspect or overfit to private test datasets. Ground all logic on general domain knowledge, alias dictionaries, and ISO 28258 / OpenNSIS standards.
+
 
