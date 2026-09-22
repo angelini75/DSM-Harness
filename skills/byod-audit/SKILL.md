@@ -47,17 +47,21 @@ When analyzing a national dataset (Excel `.xlsx` via `readxl` or CSV via `readr`
 
 ## 2. Incremental Procedure & Criteria Groups
 
-### Criterion 1: Variable Identification & Confirmation (Step 1.1)
-The AI generates a short, focused script `02_scripts/01_byod_audit.R` (< 60 lines) that:
-1. Loads the dataset.
-2. Identifies matching columns using the alias dictionary.
-3. Subsets and keeps **ONLY** the relevant columns, discarding non-essential metadata.
-4. Prints a clean, formatted table in the RStudio console comparing:
-   `[Original Column Name] ---> [Standard Target Name]`.
-5. Prompts the student:
-   *"Por favor corre el script en RStudio y revisa la tabla en la consola. ¿Las columnas detectadas corresponden a lo que esperas? Confirma si es correcto o indica qué nombres corregir."*
+### Criterion 1: Structural Profiling, Variable Identification & Confirmation (Step 1.1)
+1. **Structural Dataset Profiling**:
+   - The AI assistant runs: `python 02_scripts/inspect_dataset.py <file_path>` (or R fallback `02_scripts/inspect_dataset.R`).
+   - Analyzes all sheets (if Excel), row counts, real column names, and sample values.
+   - Determines if the dataset is flat or relational (e.g. `Sitios` with coordinates + `Horizontes` with laboratory data, linked by `profile_id`).
+   - Performs screening of sample values (e.g. coordinates in degrees vs UTM, depth units, missing codes).
+2. **Tailored Script Generation**:
+   - The AI writes a customized, concise `02_scripts/01_byod_audit.R` specifically matching the file's structure (incorporating multi-sheet `left_join` if applicable).
+   - Subsets **ONLY** the relevant DSM columns and discards non-essential survey metadata.
+   - Prints a clean comparison table in the RStudio console: `[Columna Original] ---> [Estándar ISO 28258]`.
+3. **Transparent Explanation & Wait for Confirmation**:
+   - In the chat, the AI explains the discovered structure (sheets found, relational key, mapped variables, and screening insights).
+   - Asks the student: *"Por favor abre y corre `02_scripts/01_byod_audit.R` en RStudio. ¿Esta vinculación de hojas y variables coincide con tus datos? Confirma si es correcto o indica qué corregir."*
 
-**STOP AND WAIT**: The AI must NOT deliver the subsequent steps until the student confirms or corrects the mappings!
+**STOP AND WAIT**: The AI must NOT proceed to Step 1.2 until the student confirms or provides adjustments!
 
 ---
 

@@ -37,21 +37,19 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Guide the user toward OpenNSIS standards (ISO 28258 data columns, COG formats with `DEFLATE`, `nodata = -9999`, and `<CC>-<PROJ>-<PROP>-<dim1>-<dim2>-<stat>.tif` naming).
    - If user data differs, issue a helpful `[OpenNSIS Advisory]` without stopping the workflow.
 
-6. **File Generation, No Direct Execution & Anti-Overfitting (Student Runs in RStudio)**:
-   - **MANDATORY**: You MUST NEVER execute R scripts, run `Rscript`, or trigger data processing commands in the user's terminal. Do NOT ask for permission to run R on the student's machine.
-   - **Deliverable in IDE Mode (Antigravity)**: Generate the ready-to-run script directly as an `.R` file inside the `02_scripts/` folder (e.g. `02_scripts/01_byod_audit.R`), so the student can simply open it in RStudio and run it. Do NOT deliver long scripts in the chat when working in IDE mode.
-   - **Deliverable in Web Chat Mode**: Deliver clean R code blocks in the chat response for the student to copy.
-   - **Anti-Overfitting & Generalization**: Do NOT read, inspect, or overfit to the user's private test files. Formulate general, robust R scripts and rules based on pedological domain knowledge, the alias dictionary, and ISO 28258 / OpenNSIS standards.
+6. **Structural Dataset Profiling & Tailored Script Generation (Student Runs in RStudio)**:
+   - **MANDATORY Dataset Inspection**: When the student provides a dataset path (e.g. in `01_data/profiles/`), the AI assistant MUST NOT guess column names blindly. It MUST run the lightweight profiler `python 02_scripts/inspect_dataset.py <file_path>` (or R fallback `02_scripts/inspect_dataset.R`) to inspect the real file structure.
+   - **Multi-Sheet & Relational Detection**: If the file is Excel, inspect ALL sheets. Determine whether it is a flat table or a relational structure (e.g. a `Sitios`/`Perfiles` sheet with coordinates and a `Horizontes`/`Capas` sheet with depths and soil properties). Identify the relational linking key (e.g. `id_perfil`, `profile_code`).
+   - **Sample Value Screening**: Inspect sample values in key columns to detect formatting peculiarities (e.g. decimal commas, negative depths, missing value codes like -9999, coordinates in UTM vs WGS84).
+   - **No Processing in Terminal**: The AI only runs the lightweight metadata profiler. It MUST NEVER execute the heavy data cleaning, spatial transformations, or modeling R scripts on the user's terminal.
+   - **Deliverable in `02_scripts/`**: Generate the custom, tailored, ready-to-run R script directly in `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if required, exact column names, and cleaning filters). The student opens and runs it in RStudio.
 
-7. **Incremental Verification by Criteria & Strict Data Scope**:
-   - **NEVER deliver long monolithic scripts** that attempt to execute all checks at once.
-   - **Assume potential failure**: National soil datasets have messy headers and ambiguous terms. Always assume something could go wrong and wait for explicit student confirmation before proceeding.
-   - **Strict Data Scope**: Keep only relevant DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, and target analytical properties like `SOC`, `pH`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`). Drop all other non-essential survey columns (taxonomic, morphological, dates, etc.).
-   - **Bite-Sized Interaction Protocol**:
-     1. Deliver a short, concise script (< 60 lines) for **Paso 1.1: Variable Detection & Filtering**.
-     2. The script prints a clean mapping table in the R console.
-     3. Ask the student: *"Does this mapping match your data? Please confirm if correct or indicate any adjustments."*
-     4. **WAIT for user confirmation** before advancing to Step 1.2 (Spatial check) and Step 1.3 (Depth and pedological consistency).
+7. **Strict DSM Scope & Incremental Verification by Criteria**:
+   - **Strict Data Scope**: Retain ONLY core DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, and target analytical properties like `SOC`, `pH`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`). Drop all other non-essential survey columns (taxonomic, morphological, dates, etc.).
+   - **Incremental Criteria Protocol**:
+     1. **Paso 1.1 (Perfilado y confirmación de variables)**: Inspect file structure, generate the tailored Paso 1.1 script, and explain in the chat the discovered structure (sheets, relational key, mapped variables, and sample screening).
+     2. **Pausa y retroalimentación**: Ask the student: *"¿Esta interpretación y correspondencia de columnas coincide con tus datos? Por favor confirma o indica cualquier ajuste."*
+     3. **WAIT for user confirmation** before advancing to Step 1.2 (Validación espacial) and Step 1.3 (Profundidades y coherencia edafológica).
 
 
 

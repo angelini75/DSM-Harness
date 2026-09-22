@@ -120,11 +120,11 @@ Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Cod
    - *"Actúa como r-engineer y genera el script para extraer covariables a mis puntos"*.
    - *"Actúa como geostat-modeler y revisa si este scatterplot 1:1 muestra sobreajuste"*.
    - *"Actúa como soil-scientist y dime si estas relaciones entre carbono y densidad aparente son físicamente plausibles"*.
-4. **Generación directa de scripts y ejecución en RStudio**:
-   - En Antigravity, la IA **creará o actualizará directamente los archivos de código en la carpeta `02_scripts/`** (por ejemplo, `02_scripts/01_byod_audit.R`). No necesitas copiar y pegar bloques largos desde el chat.
-   - **Regla estricta sin ejecución en terminal**: La IA nunca intentará ejecutar scripts de R ni comandos de terminal en tu equipo, protegiendo tu cuota de tokens y dejándote el control pedagógico total.
-   - **Sin sobreajuste a datos privados**: La IA no analiza archivos locales de prueba privados; utiliza criterios edafológicos generales, diccionarios de sinónimos y estándares ISO 28258 / OpenNSIS para que el código funcione de forma universal.
-   - **Tu rol como científico**: Abre el archivo generado en tu RStudio (que ya tiene abierto `DSM-Harness.Rproj`), ejecútalo línea por línea, observa los mapas y gráficos interactivos, y responde las preguntas de interpretación que la IA te formula en el chat.
+4. **Perfilado estructural, generación de script a medida y ejecución en RStudio**:
+   - **Inspección sin adivinanzas**: Cuando indiques la ruta a tu archivo (ej: `01_data/profiles/Profiles_data.xlsx`), Antigravity ejecutará un perfilador liviano (`02_scripts/inspect_dataset.py`) que lee todas las hojas del Excel, extrae los nombres reales de las columnas, identifica claves relacionales (ej. `id_perfil` uniendo sitios con horizontes) y examina valores de muestra.
+   - **Script hecho a medida**: Con la estructura real descubierta, la IA escribe directamente un script de R adaptado a tus datos en `02_scripts/01_byod_audit.R` (incorporando la unión de hojas con `left_join` si es un Excel relacional).
+   - **Regla estricta sin procesamiento pesado en terminal**: La IA solo realiza la inspección rápida de metadatos; nunca ejecuta la limpieza pesada ni cálculos espaciales en tu terminal, protegiendo tus tokens y tu entorno.
+   - **Tu rol como científico**: Abre el archivo `.R` generado en tu RStudio (que ya tiene abierto `DSM-Harness.Rproj`), ejecútalo línea por línea, verifica la tabla en la consola y confirma o ajusta en el chat para avanzar al siguiente criterio.
 
 ---
 

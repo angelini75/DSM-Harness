@@ -120,11 +120,11 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - *"Act as r-engineer and generate the code to extract covariates to sample points"*.
    - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
    - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
-4. **Direct Script Generation and Execution in RStudio**:
-   - In Antigravity, the AI will **create or update R script files directly inside `02_scripts/`** (e.g. `02_scripts/01_byod_audit.R`). You do not need to copy and paste code blocks from the chat.
-   - **Strict No-Terminal-Execution Rule**: The AI will never attempt to execute R scripts or terminal commands on your machine, preserving your token quota and leaving you in full pedagogical control.
-   - **No Overfitting to Private Data**: The AI does not inspect private test files; it applies universal soil science criteria, multilingual alias dictionaries, and ISO 28258 / OpenNSIS standards.
-   - **Your Role as Soil Scientist**: Open the generated `.R` file in RStudio (which already has `DSM-Harness.Rproj` open), run it line by line, inspect the interactive maps and plots, and answer the pedological reflection questions posed by the AI in chat.
+4. **Structural Dataset Profiling, Tailored Script Generation, and Execution in RStudio**:
+   - **No Guesswork Inspection**: When you point the assistant to your dataset (e.g., `01_data/profiles/Profiles_data.xlsx`), Antigravity executes a lightweight profiler (`02_scripts/inspect_dataset.py`) to read all Excel sheets, extract real column names, detect relational keys (e.g., `profile_id` linking sites and horizons), and examine sample values.
+   - **Tailored Script Delivery**: Based on the discovered data structure, the AI writes a customized R script directly to `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if relational).
+   - **Strict No-Heavy-Terminal-Processing Rule**: The AI only runs the quick structural metadata inspection; it never executes heavy data processing, spatial modeling, or plotting scripts on your terminal.
+   - **Your Role as Soil Scientist**: Open the generated `.R` file in RStudio (which already has `DSM-Harness.Rproj` open), run it line by line, verify the mapping table in the console, and confirm or adjust in the chat before moving to subsequent criteria.
 
 ---
 
