@@ -16,6 +16,33 @@ The workflow is modular and easily adaptable to courses of varying duration (3, 
 
 ---
 
+## 🎯 Data Scope: What variables does the harness need?
+
+This harness is tailored **specifically for the Digital Soil Mapping (DSM) and Soil Spectroscopy (DRS) spatial modeling workflows**. **It is not intended to serve as an exhaustive database for all national soil survey attributes**.
+
+National soil survey files frequently contain dozens of accessory survey columns (taxonomic classifications, survey dates, field morphology notes, land use, geology, drainage, etc.). **For the spatial predictive modeling in this training, those extraneous variables are not relevant and are filtered out** during data preparation.
+
+The harness strictly targets the minimum core variables required for digital mapping:
+1. **Profile Identifier** (`profile_code` / `id_perfil`).
+2. *(Optional)* **Horizon / Layer Designation** (`Horizon` / `horizonte`).
+3. **Depth Limits** (`upper` / top boundary, and `lower` / bottom boundary).
+4. **Geographical Coordinates** in WGS84 (`longitude` and `latitude`).
+5. **Key Analytical Soil Properties** to model (e.g., `SOC` / Soil Organic Carbon, `pH_H2O`, `Clay`, `Sand`, `Silt`, `BD` / Bulk Density, `CEC`).
+
+---
+
+## 🔄 Methodological Workflow: Incremental Validation by Criteria (Step-by-Step)
+
+To prevent cognitive overload, unmanageable scripts, and token quota exhaustion, **the harness DOES NOT generate monolithic scripts that attempt to do everything at once**:
+
+1. **The AI assumes that things can go wrong**: Column naming in national databases varies widely, often containing local abbreviations or distinct definitions.
+2. **Interactive criteria-based cycle**:
+   - **Step 1.1 (Variable Confirmation)**: The AI generates a very short, focused script whose sole purpose is to load the file, select relevant columns, print a clear comparison table in the RStudio console, and ask the student for confirmation.
+   - **Awaiting Feedback**: The student runs this concise block in RStudio and replies in the chat: *"Yes, it's correct"* or *"No, column X is actually Y"*.
+   - **Subsequent Criteria**: Only after variables are confirmed does the workflow proceed to spatial coordinate validation (Step 1.2), followed by depth and pedological consistency checks (Step 1.3).
+
+---
+
 ## 📖 How to Use This Repository (Step-by-Step Beginner's Guide)
 
 If you are new to GitHub or terminal environments, follow these steps in order:

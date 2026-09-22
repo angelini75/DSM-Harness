@@ -1,20 +1,22 @@
 ---
 name: byod-audit
-description: Rapid diagnostic audit and cleaning procedure for national soil profile datasets (BYOD) in Excel or CSV.
+description: Rapid diagnostic audit, column confirmation, and cleaning procedure for national soil profile datasets (BYOD) in Excel or CSV.
 ---
 
 # Skill: BYOD National Soil Data Audit & Harmonization
 
-This skill guides the participant through the exploratory data analysis, spatial validation, depth interval verification, and pedological sanity checks of their country dataset (in `.xlsx` or `.csv`).
+This skill guides the participant through the exploratory data analysis, column identification, spatial validation, depth interval verification, and pedological sanity checks of their national dataset (in `.xlsx`, `.xls` or `.csv`).
 
 ---
 
-## 0. Fundamental Directives: File Generation, No Terminal Execution & Anti-Overfitting
+## 0. Fundamental Directives: Scope & Incremental Interaction
 
 > **CRITICAL DIRECTIVES**: 
 > 1. **No Terminal Execution**: The AI assistant MUST NEVER execute R scripts, run `Rscript`, or attempt to process the student's data via background terminal commands.  
-> 2. **File Generation in IDE Mode (Antigravity)**: Instead of pasting massive scripts into the chat, create or update the R script directly at `02_scripts/01_byod_audit.R`. The student will open and run it inside their own RStudio session. In Web Chat mode, provide the code block in the chat.
-> 3. **Anti-Overfitting & Generalization**: Do NOT inspect, read, or overfit to the user's private test files. Formulate general, robust R scripts that incorporate dynamic column alias detection and standard pedological validation rules applicable to any national dataset.
+> 2. **File Generation in IDE Mode (Antigravity)**: Create or update the R script directly at `02_scripts/01_byod_audit.R`. The student will open and run it inside their own RStudio session. In Web Chat mode, provide the code block in the chat.
+> 3. **Strict Data Scope**: The harness is designed ONLY for the digital soil mapping (DSM) and soil spectroscopy (DRS) workflow. It is NOT an exhaustive database for all soil survey attributes. Retain ONLY core DSM columns (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, and target properties `SOC`/`OM`, `pH_H2O`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`). **Discard all extraneous survey columns** (taxonomic classification, field morphology, survey date, land use, geology, etc.).
+> 4. **Incremental Validation by Criteria (Never Monolithic)**: Do NOT generate a long monolithic script that attempts to do everything at once. Divide Stage 1 into bite-sized, testable criteria and **WAIT for student confirmation** after each step.
+> 5. **Anti-Overfitting & Generalization**: Do NOT inspect, read, or overfit to private test files. Use general domain logic, alias dictionaries, and ISO 28258 / OpenNSIS standards.
 
 ---
 
@@ -31,6 +33,7 @@ When analyzing a national dataset (Excel `.xlsx` via `readxl` or CSV via `readr`
 | **`upper`** | `prof_sup`, `desde`, `limite_sup`, `prof_inicial`, `top_depth` | `upper`, `top`, `from`, `upper_depth`, `depth_top` |
 | **`lower`** | `prof_inf`, `hasta`, `limite_inf`, `prof_final`, `bottom_depth`| `lower`, `bottom`, `to`, `lower_depth`, `depth_bottom` |
 | **`SOC`** | `cos`, `cot`, `co`, `c_org`, `carbono_organico`, `carbono` | `soc`, `oc`, `c_org`, `org_c`, `organic_carbon` |
+| **`OM`** | `om`, `mo`, `materia_organica`, `mat_org`, `som` | `om`, `organic_matter`, `som` |
 | **`pH_H2O`** | `ph`, `ph_h2o`, `ph_agua`, `ph_suelo` | `ph`, `ph_water`, `ph_h2o` |
 | **`Clay`** | `arcilla`, `arcillas`, `%arcilla` | `clay`, `clay_pct`, `clay_%` |
 | **`Sand`** | `arena`, `arenas`, `%arena` | `sand`, `sand_pct`, `sand_%` |
@@ -38,74 +41,38 @@ When analyzing a national dataset (Excel `.xlsx` via `readxl` or CSV via `readr`
 | **`BD`** | `da`, `densidad_aparente`, `dens_apar` | `bd`, `bulk_density`, `dry_bulk_density` |
 | **`CEC`** | `cic`, `cec`, `capacidad_intercambio_cationico` | `cec`, `ecec`, `cat_exch_cap` |
 
-> **Organic Matter Note**: If the dataset contains Organic Matter (`MO`, `OM`, `materia_organica`) instead of SOC, calculate SOC using the standard Van Bemmelen conversion: $SOC = OM / 1.724$.
+> **Organic Matter Note**: If the dataset contains Organic Matter (`MO`, `OM`) instead of SOC, calculate SOC using the standard Van Bemmelen conversion: $SOC = OM / 1.724$.
 
 ---
 
-## 2. Procedure & Script Delivery
+## 2. Incremental Procedure & Criteria Groups
 
-When the student provides a file (e.g. `01_data/profiles/my_data.xlsx`), deliver an R script structured as follows:
+### Criterion 1: Variable Identification & Confirmation (Step 1.1)
+The AI generates a short, focused script `02_scripts/01_byod_audit.R` (< 60 lines) that:
+1. Loads the dataset.
+2. Identifies matching columns using the alias dictionary.
+3. Subsets and keeps **ONLY** the relevant columns, discarding non-essential metadata.
+4. Prints a clean, formatted table in the RStudio console comparing:
+   `[Original Column Name] ---> [Standard Target Name]`.
+5. Prompts the student:
+   *"Por favor corre el script en RStudio y revisa la tabla en la consola. ¿Las columnas detectadas corresponden a lo que esperas? Confirma si es correcto o indica qué nombres corregir."*
 
-```r
-# ==============================================================================
-# Step 1: BYOD Soil Profile Audit & Cleaning
-# Run this script in RStudio
-# ==============================================================================
-
-library(tidyverse)
-library(readxl)  # or library(readr) for CSV
-library(sf)
-library(mapview)
-
-# 1. Load the dataset
-# Adjust sheet or file path if necessary
-dat_raw <- read_excel("01_data/profiles/my_data.xlsx")
-
-# 2. Harmonize column names to OpenNSIS / ISO 28258
-dat <- dat_raw %>%
-  rename(
-    profile_code = {{INFERRED_ID_COL}},
-    longitude    = {{INFERRED_LON_COL}},
-    latitude     = {{INFERRED_LAT_COL}},
-    upper        = {{INFERRED_UPPER_COL}},
-    lower        = {{INFERRED_LOWER_COL}},
-    SOC          = {{INFERRED_SOC_COL}}
-  )
-
-# 3. Spatial & Depth Quality Checks
-# - Filter invalid coordinates
-dat_clean <- dat %>%
-  filter(!is.na(longitude) & !is.na(latitude)) %>%
-  filter(latitude >= -90 & latitude <= 90 & longitude >= -180 & longitude <= 180) %>%
-  # - Check depth validity
-  filter(upper >= 0 & lower > upper)
-
-# 4. Saxton PTF for Bulk Density (if BD is missing)
-if (!"BD" %in% names(dat_clean) && all(c("Sand", "Clay", "SOC") %in% names(dat_clean))) {
-  dat_clean <- dat_clean %>%
-    mutate(BD = 1.35 + 0.0045 * Sand + 0.0035 * Clay - 0.06 * 1.72 * SOC)
-}
-
-# 5. DIAGNOSTIC PLOT 1: Interactive point distribution map
-dat_sf <- st_as_sf(dat_clean, coords = c("longitude", "latitude"), crs = 4326)
-mapview(dat_sf, zcol = "SOC", cex = 3)
-
-# 6. DIAGNOSTIC PLOT 2: Pedological bivariate check
-if ("BD" %in% names(dat_clean)) {
-  ggplot(dat_clean, aes(x = SOC, y = BD)) +
-    geom_point(alpha = 0.5, color = "forestgreen") +
-    geom_smooth(method = "lm", se = FALSE, color = "black") +
-    labs(title = "Pedological Check: SOC vs Bulk Density",
-         x = "Soil Organic Carbon (%)", y = "Bulk Density (g/cm³)") +
-    theme_minimal()
-}
-```
+**STOP AND WAIT**: The AI must NOT deliver the subsequent steps until the student confirms or corrects the mappings!
 
 ---
 
-## 3. Post-Delivery Guidance
+### Criterion 2: Spatial Validation & Geographic Plausibility (Step 1.2)
+Once variables are confirmed by the student:
+1. Validate coordinates: numeric check, remove NAs, bounds [-180, 180] and [-90, 90], swap detection.
+2. Generate interactive `mapview` showing the spatial distribution of profiles.
+3. Prompt the student to confirm whether the points fall within the country's borders or if any land in the ocean.
 
-After providing the code, present:
-1. **Mapping summary**: A clear list showing how each national column was mapped to the OpenNSIS standard.
-2. **Ambiguity check**: If 1 or 2 columns could not be identified with certainty, ask the student what they represent.
-3. **Pedological questions**: 2 sharp questions asking the student to examine point clusters (e.g. points falling into the ocean) and unexpected negative or extreme values in the scatterplot.
+---
+
+### Criterion 3: Depths, Pedological Sanity & Export (Step 1.3)
+Once spatial validation is confirmed:
+1. Validate depths (`upper >= 0`, `lower > upper`), detect overlapping layers.
+2. Check physical ranges (pH 3–10.5, SOC 0–50%, texture sum ~ 100%).
+3. Calculate missing Bulk Density (BD) via Saxton pedotransfer function if applicable.
+4. Export clean dataset to `01_data/profiles/cleaned_profiles.csv`.
+5. Produce bivariate sanity plot (`ggplot2` SOC vs BD).

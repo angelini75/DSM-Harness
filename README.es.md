@@ -16,6 +16,33 @@ El flujo de trabajo es modular y adaptable a cursos de distinta duración (3, 4 
 
 ---
 
+## 🎯 Alcance de los Datos: ¿Qué variables necesita el arnés?
+
+Este arnés está diseñado **exclusivamente para el flujo de modelado espacial (DSM) y espectroscopía de suelos (DRS)**. **No pretende ser una base de datos exhaustiva para almacenar todos los atributos de un sistema nacional de suelos**.
+
+Los archivos de perfiles nacionales frecuentemente contienen decenas de columnas accesorias (clasificación taxonómica, fechas de muestreo, descripción morfológica de campo, geomorfología, uso actual, etc.). **Para el propósito del modelado predictivo en este curso, esas variables no tienen relevancia y son descartadas automáticamente** en la etapa de preparación.
+
+El arnés se enfoca únicamente en el núcleo mínimo de variables necesarias para el mapeo digital:
+1. **Identificador del perfil** (`profile_code` / `id_perfil`).
+2. *(Opcional)* **Designación de horizonte o capa** (`Horizon` / `horizonte`).
+3. **Límites de profundidad** (`upper` / `desde` / límite superior, y `lower` / `hasta` / límite inferior).
+4. **Coordenadas geográficas** en WGS84 (`longitude` y `latitude`).
+5. **Propiedades edafológicas analíticas clave a modelar** (ej: `SOC` / Carbono Orgánico, `pH_H2O`, `Clay`, `Sand`, `Silt`, `BD` / Densidad Aparente, `CEC`).
+
+---
+
+## 🔄 Flujo Metodológico: Validación Incremental por Criterios (Paso a Paso)
+
+Para evitar la saturación, scripts inmanejables y consumo desmedido de tokens, **el arnés NO genera scripts monolíticos largos que pretendan resolver todo a la vez**:
+
+1. **La IA asume que las cosas pueden salir mal**: Los nombres de columnas en bases de datos nacionales son muy diversos, pueden contener abreviaturas locales o significar cosas distintas según la institución.
+2. **Ciclo interactivo criterio por criterio**:
+   - **Paso 1.1 (Confirmación de variables)**: La IA entrega un script muy corto y conciso cuyo único fin es leer el archivo, seleccionar las columnas relevantes, mostrar una tabla comparativa clara en la consola de RStudio y pedir confirmación al alumno.
+   - **Espera de retroalimentación**: El alumno ejecuta ese bloque breve en RStudio y responde en el chat si el mapeo fue acertado o qué corrección debe aplicarse.
+   - **Siguientes criterios**: Solo una vez confirmadas las variables, se avanza a la validación espacial de coordenadas (Paso 1.2) y luego a la validación de profundidades y consistencia edafológica (Paso 1.3).
+
+---
+
 ## 📖 Cómo usar este repositorio (Guía Paso a Paso para Principiantes)
 
 Si nunca has usado GitHub o la terminal, sigue estos pasos en orden:

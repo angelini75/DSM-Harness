@@ -1,7 +1,7 @@
 # Task Card 01: BYOD Soil Data Audit & Diagnostic (`01-byod-audit-card.md`)
 
-> **USE THIS CARD FOR DAY 1 PM / DAY 2 AM: DATA AUDIT & PREPARATION.**  
-> Copy and paste this prompt into your web chat (ChatGPT / Gemini / Claude).
+> **USAR ESTA TARJETA PARA: AUDITORÍA Y PREPARACIÓN DE DATOS (ETAPA 1).**  
+> Copia y pega este prompt en tu chat web (ChatGPT / Gemini / Claude).
 
 ---
 
@@ -17,17 +17,11 @@ Context:
 - Target Property: {{PROPIEDAD_OBJETIVO, ej: SOC o pH}}
 - My file is located at: `01_data/profiles/{{NOMBRE_DE_MI_ARCHIVO (ej: datos.xlsx o datos.csv)}}`
 
-Please provide:
-1. An R script that:
-   - Reads the file using `readxl::read_excel()` (for .xlsx) or `readr::read_csv()` (for .csv).
-   - Intuitively maps my national column names to OpenNSIS / ISO 28258 standards (`longitude`, `latitude`, `profile_code`, `upper`, `lower`, `SOC`, etc.).
-   - Checks coordinates (EPSG:4326), validates depths (`upper >= 0`, `lower > upper`).
-
-   - Estimates Bulk Density via the Saxton pedotransfer function if missing.
-   - MANDATORY PLOT 1: An interactive map of sample points using `mapview`.
-   - MANDATORY PLOT 2: A scatterplot checking pedological bivariate coherence (e.g. SOC vs Bulk Density or pH vs Texture).
-2. An OpenNSIS standards check (advising if column names match ISO 28258).
-3. Two pedological questions challenging me to inspect the distribution of points and outlier values in the plots.
+IMPORTANT METHODOLOGICAL DIRECTIVES:
+1. Data Scope: We only need the core variables for DSM (profile ID, coords, upper/lower depth, and target soil properties). Please discard extraneous survey columns (taxonomic classification, survey dates, morphological descriptions, etc.).
+2. Incremental Flow: Do NOT provide a long monolithic script. First, provide ONLY a short script for "Paso 1.1: Identificación y Confirmación de Variables".
+3. The script should read the file, select relevant columns, and print a clear comparison table in the R console showing `[Original Column] ---> [Standard ISO 28258 Column]`.
+4. Then, wait for my confirmation in the chat to tell you if the detected variables are correct or need adjustment, before providing the subsequent validation checks (spatial coordinates and depths).
 
 Please respond in: {{MI_IDIOMA, ej: Español}}.
 ```

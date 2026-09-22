@@ -1,6 +1,6 @@
 # Task Card 01: BYOD Soil Data Audit & Diagnostic (`01-byod-audit-card.md`)
 
-> **USE THIS CARD FOR DAY 1 PM / DAY 2 AM: DATA AUDIT & PREPARATION.**  
+> **USE THIS CARD FOR: DATA AUDIT & PREPARATION (STAGE 1).**  
 > Copy and paste this prompt into your web chat (ChatGPT / Gemini / Claude).
 
 ---
@@ -13,21 +13,15 @@ I need to audit and prepare my national soil profile dataset (BYOD) in RStudio.
 
 Context:
 - Working directory: Root of DSM-Harness.Rproj
-- Country: {{COUNTRY_OR_ISO_CODE, e.g. Belize / BLZ}}
+- Country: {{COUNTRY_OR_ISO_CODE, e.g. Guatemala / GTM}}
 - Target Property: {{TARGET_PROPERTY, e.g. SOC or pH}}
 - My file is located at: `01_data/profiles/{{MY_FILENAME (e.g. data.xlsx or data.csv)}}`
 
-Please provide:
-1. An R script that:
-   - Reads the file using `readxl::read_excel()` (for .xlsx) or `readr::read_csv()` (for .csv).
-   - Intuitively maps my national column names to OpenNSIS / ISO 28258 standards (`longitude`, `latitude`, `profile_code`, `upper`, `lower`, `SOC`, etc.).
-   - Checks coordinates (EPSG:4326), validates depths (`upper >= 0`, `lower > upper`).
+IMPORTANT METHODOLOGICAL DIRECTIVES:
+1. Data Scope: We only need core variables for DSM (profile ID, coords, upper/lower depth, and target soil properties). Please discard extraneous survey columns (taxonomic classification, survey dates, morphological descriptions, etc.).
+2. Incremental Flow: Do NOT provide a long monolithic script. First, provide ONLY a short script for "Step 1.1: Variable Identification & Confirmation".
+3. The script should read the file, select relevant columns, and print a clear comparison table in the R console showing `[Original Column] ---> [Standard ISO 28258 Column]`.
+4. Then, wait for my confirmation in the chat to tell you if the detected variables are correct or need adjustment, before providing the subsequent validation checks (spatial coordinates and depths).
 
-   - Estimates Bulk Density via the Saxton pedotransfer function if missing.
-   - MANDATORY PLOT 1: An interactive map of sample points using `mapview`.
-   - MANDATORY PLOT 2: A scatterplot checking pedological bivariate coherence (e.g. SOC vs Bulk Density or pH vs Texture).
-2. An OpenNSIS standards check (advising if column names match ISO 28258).
-3. Two pedological questions challenging me to inspect the spatial distribution of points and outlier values in the plots.
-
-Please respond in: English.
+Please respond in: {{MY_LANGUAGE, e.g. English}}.
 ```

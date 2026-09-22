@@ -46,4 +46,9 @@ Whenever a participant asks for assistance with a modeling, data, or mapping tas
    - In the chat response, present the summary of column mappings, geospatial check, statistical checkpoints, and pedological reflection questions.
    - Do NOT inspect or overfit to private test datasets. Ground all logic on general domain knowledge, alias dictionaries, and ISO 28258 / OpenNSIS standards.
 
+6. **Incremental Verification by Criteria & Strict Data Scope**:
+   - Do NOT deliver all stages, checks, or assumptions at once. Assume initial mappings might need adjustment.
+   - Filter and retain ONLY core DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, target soil properties) and discard non-essential survey metadata.
+   - For Stage 1, deliver **Paso 1.1: Confirmación de variables** in a short script (< 60 lines), show the proposed mapping, and **WAIT for student confirmation** before proceeding to spatial (Paso 1.2) or pedological checks (Paso 1.3).
+
 

@@ -39,9 +39,19 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
 
 6. **File Generation, No Direct Execution & Anti-Overfitting (Student Runs in RStudio)**:
    - **MANDATORY**: You MUST NEVER execute R scripts, run `Rscript`, or trigger data processing commands in the user's terminal. Do NOT ask for permission to run R on the student's machine.
-   - **Deliverable in IDE Mode (Antigravity)**: Generate the complete, ready-to-run script directly as an `.R` file inside the `02_scripts/` folder (e.g. `02_scripts/01_byod_audit.R`), so the student can simply open it in RStudio and run it. Do NOT deliver the script in the chat when working in IDE mode.
+   - **Deliverable in IDE Mode (Antigravity)**: Generate the ready-to-run script directly as an `.R` file inside the `02_scripts/` folder (e.g. `02_scripts/01_byod_audit.R`), so the student can simply open it in RStudio and run it. Do NOT deliver long scripts in the chat when working in IDE mode.
    - **Deliverable in Web Chat Mode**: Deliver clean R code blocks in the chat response for the student to copy.
    - **Anti-Overfitting & Generalization**: Do NOT read, inspect, or overfit to the user's private test files. Formulate general, robust R scripts and rules based on pedological domain knowledge, the alias dictionary, and ISO 28258 / OpenNSIS standards.
+
+7. **Incremental Verification by Criteria & Strict Data Scope**:
+   - **NEVER deliver long monolithic scripts** that attempt to execute all checks at once.
+   - **Assume potential failure**: National soil datasets have messy headers and ambiguous terms. Always assume something could go wrong and wait for explicit student confirmation before proceeding.
+   - **Strict Data Scope**: Keep only relevant DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, and target analytical properties like `SOC`, `pH`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`). Drop all other non-essential survey columns (taxonomic, morphological, dates, etc.).
+   - **Bite-Sized Interaction Protocol**:
+     1. Deliver a short, concise script (< 60 lines) for **Paso 1.1: Variable Detection & Filtering**.
+     2. The script prints a clean mapping table in the R console.
+     3. Ask the student: *"Does this mapping match your data? Please confirm if correct or indicate any adjustments."*
+     4. **WAIT for user confirmation** before advancing to Step 1.2 (Spatial check) and Step 1.3 (Depth and pedological consistency).
 
 
 
