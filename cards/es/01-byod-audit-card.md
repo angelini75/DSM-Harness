@@ -15,12 +15,14 @@ Context:
 - Working directory: Root of DSM-Harness.Rproj
 - Country: {{PAIS_O_CODIGO_ISO, ej: Guatemala / GTM}}
 - Target Property: {{PROPIEDAD_OBJETIVO, ej: SOC o pH}}
-- My file is located at: `01_data/profiles/{{NOMBRE_DE_MI_ARCHIVO.csv}}`
+- My file is located at: `01_data/profiles/{{NOMBRE_DE_MI_ARCHIVO (ej: datos.xlsx o datos.csv)}}`
 
 Please provide:
 1. An R script that:
-   - Reads the CSV file using `readr::read_csv()`.
+   - Reads the file using `readxl::read_excel()` (for .xlsx) or `readr::read_csv()` (for .csv).
+   - Intuitively maps my national column names to OpenNSIS / ISO 28258 standards (`longitude`, `latitude`, `profile_code`, `upper`, `lower`, `SOC`, etc.).
    - Checks coordinates (EPSG:4326), validates depths (`upper >= 0`, `lower > upper`).
+
    - Estimates Bulk Density via the Saxton pedotransfer function if missing.
    - MANDATORY PLOT 1: An interactive map of sample points using `mapview`.
    - MANDATORY PLOT 2: A scatterplot checking pedological bivariate coherence (e.g. SOC vs Bulk Density or pH vs Texture).

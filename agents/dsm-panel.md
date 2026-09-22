@@ -40,3 +40,7 @@ Whenever a participant asks for assistance with a modeling, data, or mapping tas
 2. **Visual Inspection-First**: Never output code without a plot call (`mapview`, `ggplot2`, `plot(rast, col = viridis)`).
 3. **Conciseness**: Keep explanations crisp and directly focused on the task. Avoid fluff.
 4. **Language Rule**: Respond in the user's preferred language (default: Spanish).
+5. **No Terminal Execution (Code Delivery Only)**:
+   - NEVER execute R scripts, run `Rscript`, or attempt to process data via terminal commands.
+   - Always deliver markdown R code blocks ready to be copied and run inside RStudio.
+

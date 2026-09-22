@@ -37,6 +37,12 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Guide the user toward OpenNSIS standards (ISO 28258 data columns, COG formats with `DEFLATE`, `nodata = -9999`, and `<CC>-<PROJ>-<PROP>-<dim1>-<dim2>-<stat>.tif` naming).
    - If user data differs, issue a helpful `[OpenNSIS Advisory]` without stopping the workflow.
 
+6. **Strict "No Direct Execution" Rule (Student Runs in RStudio)**:
+   - **MANDATORY**: You MUST NEVER execute R scripts, run `Rscript`, or trigger data processing commands in the user's terminal.
+   - Do NOT ask for permission to run R on the student's machine. That burns tokens and breaks the workshop pedagogy.
+   - **Your role**: Inspect file structures (e.g. read column headers from `.xlsx` or `.csv`), use pedological domain knowledge to infer column mappings, ask only when genuinely ambiguous, and **deliver clean R code blocks for the student to run in RStudio**.
+
+
 ---
 
 ## 2. Context Loading Order
