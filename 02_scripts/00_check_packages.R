@@ -67,8 +67,9 @@ tryCatch({
   suppressPackageStartupMessages(library(sf))
   cat("[OK] terra version:", as.character(packageVersion("terra")), "\n")
   cat("[OK] sf version:", as.character(packageVersion("sf")), "\n")
-  cat("[OK] GDAL linked to terra:", terra::gdal(), "\n")
-  cat("[OK] PROJ linked to terra:", terra::proj(), "\n")
+  cat("[OK] GDAL linked to terra:", terra::gdal(lib = "gdal"), "\n")
+  cat("[OK] PROJ linked to terra:", terra::gdal(lib = "proj"), "\n")
+  cat("[OK] GEOS linked to terra:", terra::gdal(lib = "geos"), "\n")
 }, error = function(e) {
   cat("[ERROR] Spatial driver initialization failed:", conditionMessage(e), "\n")
   quit(status = 1)
