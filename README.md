@@ -1,121 +1,126 @@
 # DSM-Harness: Digital Soil Mapping & Soil Spectroscopy AI Training Harness
 
-> **Orquestador y Arnés Asistido por IA para Talleres Intensivos de Mapeo Digital de Suelos y Espectroscopía (FAO / SoilFER / Países del SICA).**
+🌐 **Language / Idioma**: **[English]** | [Español](README.es.md)
 
-Este repositorio permite a los participantes de cursos intensivos de 3,5 días generar código R reproducible, robusto y estandarizado mediante Inteligencia Artificial, actuando como **científicos de suelos y evaluadores críticos** sin perder tiempo en la sintaxis básica de programación.
+> **AI-Orchestrated Training Harness for Intensive Digital Soil Mapping & Soil Spectroscopy Workshops (FAO / SoilFER / SICA Countries).**
+
+This repository enables participants in 3.5-day intensive workshops to generate reproducible, robust, and standardized R code using Artificial Intelligence, acting as **soil scientists and critical evaluators** without getting bogged down by manual programming syntax.
 
 ---
 
-## 🚀 Inicio Rápido en 3 Pasos
+## 🚀 Quick Start in 3 Steps
 
-### Paso 1: Verificar el Entorno Local de R y RStudio
-Abre tu terminal en la carpeta del repositorio y ejecuta el script de diagnóstico correspondiente a tu sistema operativo:
+### Step 1: Verify Local R & RStudio Environment
+Open your terminal in the repository root directory and run the diagnostic script for your operating system:
 
-- **En Windows (PowerShell):**
+- **On Windows (PowerShell):**
   ```powershell
   .\check_environment.ps1
   ```
-- **En macOS o Linux (Terminal):**
+- **On macOS or Linux (Terminal):**
   ```bash
   chmod +x check_environment.sh
   ./check_environment.sh
   ```
-El script verificará que R y RStudio estén instalados y validará/instalará las librerías necesarias (`terra`, `sf`, `ranger`, `caret`, `Boruta`, `prospectr`, `mapview`, `tidyverse`, `aqp`).
+The script will check that R and RStudio are installed, and verify or install all required libraries (`terra`, `sf`, `ranger`, `caret`, `Boruta`, `prospectr`, `mapview`, `tidyverse`, `aqp`).
 
-### Paso 2: Abrir el Proyecto en RStudio
-Haz doble clic en el archivo **`DSM-Harness.Rproj`**.  
-Esto fija automáticamente la raíz del proyecto y asegura que todas las rutas relativas (`01_data/`, `02_scripts/`, `03_outputs/`) funcionen sin errores de ruta.
+### Step 2: Open Project in RStudio
+Double-click the **`DSM-Harness.Rproj`** file.  
+This automatically sets the workspace root so that all relative paths (`01_data/`, `02_scripts/`, `03_outputs/`) resolve seamlessly without working directory errors.
 
-### Paso 3: Elegir tu Modalidad de Asistencia con IA
+### Step 3: Choose Your AI Assistance Mode
 
-Tienes dos formas de trabajar según las herramientas que utilices:
+Choose one of two interaction modes depending on your setup:
 
-#### Modalidad A: En tu IDE con IA (Antigravity, Cursor o VS Code)
-Si usas un IDE asistido por IA, el asistente leerá automáticamente [`AGENTS.md`](AGENTS.md) y los roles especializados en `agents/`. Solo pídele lo que necesitas en tu idioma (ej. *"Actúa como dsm-panel y audita mis datos en 01_data/profiles/suelos_guatemala.csv"*).
+#### Mode A: Inside Your AI IDE (Antigravity, Cursor, or VS Code Copilot)
+If you use an AI-assisted IDE, the agent will automatically read [`AGENTS.md`](AGENTS.md) and the disciplinary roles in `agents/`. Simply ask for what you need in your language (e.g. *"Act as dsm-panel and audit my dataset in 01_data/profiles/my_country_soil.csv"*).
 
-#### Modalidad B: En Chats Web Gratuitos (ChatGPT, Gemini o Claude)
-Si no tienes un IDE de IA o usas cuentas gratuitas web:
-1. Abre la carpeta [`cards/`](cards/).
-2. Abre la tarjeta correspondiente a la etapa del taller en la que estés.
-3. Copia el bloque de texto, completa tus variables (ej. nombre de tu país o archivo) y pégalo en tu chat de IA web.
-4. La IA te devolverá el script en R con salidas gráficas y preguntas de interpretación pedológica.
+#### Mode B: In Free Web Chats (ChatGPT, Gemini, or Claude)
+If you do not have an AI IDE or are using free web chat accounts:
+1. Open the [`cards/en/`](cards/en/) folder (or [`cards/es/`](cards/es/) for Spanish).
+2. Open the task card corresponding to your current workshop stage.
+3. Copy the prompt block, fill in your placeholders (e.g. country code, property, or filename), and paste it into your web chat.
+4. The AI will return the exact R script with diagnostic plots and guided pedological reflection questions.
 
 ---
 
-## 🗺️ Mapa de Trabajo de los 3,5 Días (Las 5 Etapas)
+## 🗺️ 3.5-Day Workshop Workflow (The 5 Stages)
 
-| Etapa | Sesión de la Agenda | Tarjeta de Prompt | Objetivo Central |
+| Stage | Agenda Session | Task Card | Core Objective |
 | :--- | :--- | :--- | :--- |
-| **00** | Cualquier momento | [`cards/00-error-rescue.md`](cards/00-error-rescue.md) | **Rescate de Errores**: Diagnóstico rápido de 1 línea y snippet mínimo de corrección (ahorra tokens). |
-| **01** | Día 1 PM / Día 2 AM | [`cards/01-byod-audit-card.md`](cards/01-byod-audit-card.md) | **Auditoría BYOD**: Validación de coordenadas en país, chequeo de horizontes/profundidades y matriz pedológica. |
-| **02** | Día 2 PM | [`cards/02-covariates-card.md`](cards/02-covariates-card.md) | **Covariables Ambientales**: Inspección de rásteres SCORPAN, armonización de CRS y extracción de puntos (`dat_cov`). |
-| **03** | Día 3 AM | [`cards/03-spectra-card.md`](cards/03-spectra-card.md) | **Espectroscopía DRS**: Preprocesamiento (`prospectr`: SNV, Savitzky-Golay), calibración y dataset aumentado. |
-| **04** | Día 3 PM | [`cards/04-qrf-modeling-card.md`](cards/04-qrf-modeling-card.md) | **Modelado QRF**: Selección con `Boruta`, entrenamiento con `ranger`/`caret`, métricas `eval.RData` y gráfico 1:1. |
-| **05** | Día 4 AM / PM | [`cards/05-prediction-opennsis-card.md`](cards/05-prediction-opennsis-card.md) | **Mapeo Espacial & OpenNSIS**: Predicción por mosaicos (media e incertidumbre), exportación a COG y metadatos ISO 19139. |
+| **00** | Any time | [`cards/en/00-error-rescue.md`](cards/en/00-error-rescue.md) | **Error Rescue**: 1-line diagnosis and minimal patch snippet (saves token quotas). |
+| **01** | Day 1 PM / Day 2 AM | [`cards/en/01-byod-audit-card.md`](cards/en/01-byod-audit-card.md) | **BYOD Audit**: Coordinate check in country bbox, ISO 28258 horizon validation, and pedological scatterplots. |
+| **02** | Day 2 PM | [`cards/en/02-covariates-card.md`](cards/en/02-covariates-card.md) | **Environmental Covariates**: SCORPAN raster stack inspection, CRS reprojection, and point extraction (`dat_cov`). |
+| **03** | Day 3 AM | [`cards/en/03-spectra-card.md`](cards/en/03-spectra-card.md) | **Soil Spectroscopy (DRS)**: Spectral preprocessing (`prospectr`: SNV, Savitzky-Golay), calibration, and augmented dataset. |
+| **04** | Day 3 PM | [`cards/en/04-qrf-modeling-card.md`](cards/en/04-qrf-modeling-card.md) | **QRF Modeling**: Boruta feature selection, Quantile Regression Forest (`ranger`/`caret`), metrics, and 1:1 plot. |
+| **05** | Day 4 AM / PM | [`cards/en/05-prediction-opennsis-card.md`](cards/en/05-prediction-opennsis-card.md) | **Spatial Prediction & OpenNSIS**: Tiled quantile interpolation (mean & uncertainty), COG export, and ISO 19139 metadata. |
 
 ---
 
-## 🏛️ Roles Disciplinares Definidos
+## 🏛️ Disciplinary Roles
 
-El arnés separa las responsabilidades en 4 roles profesionales que pueden actuar por separado o integrados en el panel:
+The harness separates concerns across 4 specialized professional roles that can be consulted individually or via the unified panel:
 
-- 💻 **`r-engineer` ([R Specialist](agents/r-engineer.md))**: Diseña código R limpio y seguro, siguiendo estrictamente el script de referencia oficial `02_scripts/reference_modelling_v2.R`.
-- 🌍 **`geo-standards` ([Geospatial & OpenNSIS Architect](agents/geo-standards.md))**: Vela por proyecciones CRS, resoluciones, formato Cloud-Optimized GeoTIFF (COG con compresión DEFLATE y NoData `-9999`) y nombres de capa estandarizados.
-- 📊 **`geostat-modeler` ([Geostatistician & Pedometrician](agents/geostat-modeler.md))**: Supervisa la selección de variables con Boruta, validación cruzada repetida, métricas ($R^2$, RMSE, CCC) e intervalos de incertidumbre.
-- 🔬 **`soil-scientist` ([Pedologist & Soil Interpreter](agents/soil-scientist.md))**: Evalúa la coherencia agronómica y edafológica (relaciones carbono-densidad, pH-bases, plausibilidad geomorfológica del mapa) formulando preguntas guiadas al alumno.
-- 👥 **`dsm-panel` ([Unified Panel](agents/dsm-panel.md))**: Modo unificado en un solo turno que entrega [1] Código R, [2] Chequeo espacial, [3] Puntos estadísticos a verificar y [4] Preguntas de reflexión pedológica.
-
----
-
-## 🌐 Integración con OpenNSIS (UN-FAO)
-
-Todos los productos generados por el arnés siguen las directrices de la Infraestructura de Datos Espaciales **OpenNSIS / GloSIS** de la FAO:
-- **Modelo de Perfiles**: Compatible con ISO 28258 (ver plantilla en `01_data/templates/opennsis_profile_template.csv`).
-- **Nomenclatura Oficial**: `<PAIS>-<PROYECTO>-<PROPIEDAD>-<PROF_SUP>-<PROF_INF>-<ESTADISTICA>.tif`  
-  *Ejemplo:* `GTM-SOILFER-SOC-0-30-mean.tif` y `GTM-SOILFER-SOC-0-30-sd.tif`.
-- **Formato Ráster**: Cloud-Optimized GeoTIFF (COG), compresión `DEFLATE`, `predictor 2`, tiles de 512px y NoData `-9999`.
-- **Metadatos**: Generación de archivo XML lateral según ISO 19139 para registro en catálogos pyCSW.
-- **Doctrina No Bloqueante**: La falta de cumplimiento emite avisos pedagógicos (*advisories*), pero nunca detiene el modelado si un país trae variables particulares.
+- 💻 **`r-engineer` ([R Specialist](agents/r-engineer.md))**: Generates robust, clean R code strictly adhering to the official SoilFER reference script `02_scripts/reference_modelling_v2.R`.
+- 🌍 **`geo-standards` ([Geospatial & OpenNSIS Architect](agents/geo-standards.md))**: Audits CRS projections, raster resolutions, Cloud-Optimized GeoTIFF compliance (`DEFLATE`, `predictor 2`, `nodata = -9999`), and OpenNSIS layer naming.
+- 📊 **`geostat-modeler` ([Geostatistician & Pedometrician](agents/geostat-modeler.md))**: Oversees Boruta variable selection, repeated cross-validation, accuracy metrics ($R^2$, RMSE, CCC), and uncertainty intervals.
+- 🔬 **`soil-scientist` ([Pedologist & Soil Interpreter](agents/soil-scientist.md))**: Evaluates pedological plausibility (carbon vs bulk density, pH vs cations, landscape features) and formulates guided reflection questions.
+- 👥 **`dsm-panel` ([Unified Panel](agents/dsm-panel.md))**: Single-turn collaborative mode delivering [1] R Code, [2] Geospatial check, [3] Statistical checkpoints, and [4] Pedological questions in a single response.
 
 ---
 
-## 📁 Estructura del Repositorio
+## 🌐 OpenNSIS Integration (UN-FAO)
+
+All continuous map products generated by the harness follow the **UN-FAO OpenNSIS / GloSIS** spatial data infrastructure standards:
+- **Profile Data Model**: Conforms to ISO 28258 (see template in `01_data/templates/opennsis_profile_template.csv`).
+- **Official Naming Convention**: `<COUNTRY_CODE>-<PROJECT>-<PROPERTY>-<DEPTH_UPPER>-<DEPTH_LOWER>-<STATISTIC>.tif`  
+  *Examples:* `GTM-SOILFER-SOC-0-30-mean.tif` and `GTM-SOILFER-SOC-0-30-sd.tif`.
+- **Raster Format**: Cloud-Optimized GeoTIFF (COG), `COMPRESS=DEFLATE`, `PREDICTOR=2`, 512px internal tiles, `nodata = -9999`.
+- **Metadata**: Companion ISO 19139 XML metadata sidecars for registration in pyCSW catalogues.
+- **Non-Blocking Rule**: Non-standard properties or naming conventions trigger educational advisories rather than halting execution.
+
+---
+
+## 📁 Repository Structure
 
 ```text
 DSM-Harness/
 ├── .gitignore
-├── DSM-Harness.Rproj                       # Proyecto RStudio
-├── README.md                               # Este instructivo
-├── AGENTS.md                               # Índice maestro para agentes de IA
-├── check_environment.ps1                   # Diagnóstico Windows (PowerShell)
-├── check_environment.sh                    # Diagnóstico macOS / Linux (Bash)
+├── DSM-Harness.Rproj                       # RStudio project file
+├── README.md                               # English guide (this file)
+├── README.es.md                            # Guía en Español
+├── AGENTS.md                               # Master runtime index for AI agents
+├── check_environment.ps1                   # Windows environment check (PowerShell)
+├── check_environment.sh                    # macOS / Linux environment check (Bash)
 │
-├── 01_data/                                # Datos de entrada (Kansas y plantillas BYOD)
-│   └── templates/                          # Plantilla CSV OpenNSIS ISO 28258
+├── 01_data/                                # Input datasets & templates
+│   └── templates/                          # OpenNSIS ISO 28258 CSV template
 │
-├── 02_scripts/                             # Scripts oficiales
-│   ├── 00_check_packages.R                 # Validador de paquetes
-│   ├── reference_modelling_v2.R            # Script oficial SoilFER Module 3
-│   └── eval.RData                          # Función de cálculo de métricas
+├── 02_scripts/                             # Official R scripts
+│   ├── 00_check_packages.R                 # Package checker & installer
+│   ├── reference_modelling_v2.R            # Official SoilFER Module 3 reference script
+│   └── eval.RData                          # Validation accuracy function
 │
-├── 03_outputs/                             # Carpetas de resultados
-│   ├── module3/models/                     # Modelos guardados (.rds)
-│   ├── module3/validation/                 # Métricas de validación (.csv)
-│   ├── module3/tiles/                      # Mosaicos temporales
-│   ├── module3/maps/                       # Mapas finales y metadatos XML
-│   └── module3/figures/                    # Gráficos diagnósticos (Boruta, varImp, 1:1)
+├── 03_outputs/                             # Output artifacts
+│   ├── module3/models/                     # Trained models (.rds)
+│   ├── module3/validation/                 # Accuracy tables (.csv)
+│   ├── module3/tiles/                      # Intermediate tiles
+│   ├── module3/maps/                       # Final continuous maps & XML metadata
+│   └── module3/figures/                    # Diagnostic figures (Boruta, varImp, 1:1)
 │
-├── agents/                                 # Definiciones de los 4 roles + panel
-├── skills/                                 # Habilidades procedimentales de DSM y DRS
-├── cards/                                  # Tarjetas de prompts para copiar y pegar en web
-└── docs/                                   # Documentación técnica (PRD, contratos, OpenNSIS)
+├── agents/                                 # 4 Disciplinary agent roles + unified panel
+├── skills/                                 # Procedural DSM & spectroscopy contracts
+├── cards/                                  # Web chat prompt cards
+│   ├── es/                                 # Tarjetas de prompt en Español
+│   └── en/                                 # Prompt cards in English
+└── docs/                                   # Documentation (PRD, data contracts, OpenNSIS)
 ```
 
 ---
 
-## 👥 Créditos y Referencias
+## 👥 Credits & References
 
-- **FAO SoilFER (Soil Fertility and Mapping Project)**: Manuales de entrenamiento y scripts de referencia (`SoilFER-Training-Manual`, `SoilFER-Training-Resources`).
-- **Instructores**: Marcos Angelini & Leonardo Ramirez-Lopez (FAO).
-- **Plataforma OpenNSIS**: ISRIC World Soil Information & UN-FAO GloSIS Federation.
-- **Licencia**: MIT.
+- **FAO SoilFER (Soil Fertility and Mapping Project)**: Training manuals and official reference scripts (`SoilFER-Training-Manual`, `SoilFER-Training-Resources`).
+- **Lead Instructors**: Marcos Angelini & Leonardo Ramirez-Lopez (FAO).
+- **OpenNSIS Platform**: ISRIC World Soil Information & UN-FAO GloSIS Federation.
+- **License**: MIT.

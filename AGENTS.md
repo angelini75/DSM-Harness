@@ -17,6 +17,7 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
 1. **Multilingual Interaction Policy**:
    - The internal contracts, documentation, and agent definitions are written in English.
    - **MANDATORY**: You MUST always communicate with the user, provide code comments, explain concepts, and formulate pedological questions in the **user's preferred language** (default: **Spanish**, unless the user writes in English or requests another language).
+   - **Language Toggle**: The user or prompt card may specify `[LANGUAGE: English | Spanish | French]`. Always respect this preference.
 
 2. **Visual Inspection-First Rule**:
    - Never output silent calculations. Every R script you produce must end with a graphical diagnostic plot (e.g., interactive `mapview`, `ggplot2` 1:1 scatterplot, spectral absorbance curves, or Viridis raster plot).
@@ -29,7 +30,7 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
 4. **Token Efficiency & Anti-Quota Exhaustion**:
    - Deliver clean, modular R code blocks ready to run in RStudio.
    - Avoid long preambles or conversational pleasantries.
-   - When debugging errors, follow `cards/00-error-rescue.md`: give a 1-line diagnosis and the minimal replacement snippet. **NEVER regenerate the entire script**.
+   - When debugging errors, follow `cards/es/00-error-rescue.md` (or `cards/en/00-error-rescue.md`): give a 1-line diagnosis and the minimal replacement snippet. **NEVER regenerate the entire script**.
 
 5. **OpenNSIS Alignment**:
    - Guide the user toward OpenNSIS standards (ISO 28258 data columns, COG formats with `DEFLATE`, `nodata = -9999`, and `<CC>-<PROJ>-<PROP>-<dim1>-<dim2>-<stat>.tif` naming).
@@ -63,10 +64,11 @@ Students can interact with specialized disciplinary personas depending on their 
 
 ## 4. Web Chat Users (Prompt Cards)
 
-Participants without local AI agent environments should use the lightweight, self-contained Markdown prompt cards in the [`cards/`](cards/) folder by copying and pasting them into their web chat (Gemini / ChatGPT / Claude):
-- `cards/00-error-rescue.md`: Emergency error debugger (token saver).
-- `cards/01-byod-audit-card.md`: Stage 1 - BYOD Soil Profile Audit & Cleaning.
-- `cards/02-covariates-card.md`: Stage 2 - Environmental Covariates Preparation & Extraction.
-- `cards/03-spectra-card.md`: Stage 3 - Soil Spectroscopy (DRS) & Preprocessing.
-- `cards/04-qrf-modeling-card.md`: Stage 4 - Boruta & Quantile Regression Forest Modeling.
-- `cards/05-prediction-opennsis-card.md`: Stage 5 - Spatial Prediction, Uncertainty & OpenNSIS Delivery.
+Participants without local AI agent environments should use the lightweight, self-contained Markdown prompt cards in either [`cards/es/`](cards/es/) (Spanish) or [`cards/en/`](cards/en/) (English):
+- `cards/<lang>/00-error-rescue.md`: Emergency error debugger (token saver).
+- `cards/<lang>/01-byod-audit-card.md`: Stage 1 - BYOD Soil Profile Audit & Cleaning.
+- `cards/<lang>/02-covariates-card.md`: Stage 2 - Environmental Covariates Preparation & Extraction.
+- `cards/<lang>/03-spectra-card.md`: Stage 3 - Soil Spectroscopy (DRS) & Preprocessing.
+- `cards/<lang>/04-qrf-modeling-card.md`: Stage 4 - Boruta & Quantile Regression Forest Modeling.
+- `cards/<lang>/05-prediction-opennsis-card.md`: Stage 5 - Spatial Prediction, Uncertainty & OpenNSIS Delivery.
+
