@@ -37,12 +37,18 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Guide the user toward OpenNSIS standards (ISO 28258 data columns, COG formats with `DEFLATE`, `nodata = -9999`, and `<CC>-<PROJ>-<PROP>-<dim1>-<dim2>-<stat>.tif` naming).
    - If user data differs, issue a helpful `[OpenNSIS Advisory]` without stopping the workflow.
 
-6. **Structural Dataset Profiling & Tailored Script Generation (Student Runs in RStudio)**:
-   - **MANDATORY Dataset Inspection**: When the student provides a dataset path (e.g. in `01_data/profiles/`), the AI assistant MUST NOT guess column names blindly. It MUST run the lightweight profiler `python 02_scripts/inspect_dataset.py <file_path>` (or R fallback `02_scripts/inspect_dataset.R`) to inspect the real file structure.
-   - **Multi-Sheet & Relational Detection**: If the file is Excel, inspect ALL sheets. Determine whether it is a flat table or a relational structure (e.g. a `Sitios`/`Perfiles` sheet with coordinates and a `Horizontes`/`Capas` sheet with depths and soil properties). Identify the relational linking key (e.g. `id_perfil`, `profile_code`).
-   - **Sample Value Screening**: Inspect sample values in key columns to detect formatting peculiarities (e.g. decimal commas, negative depths, missing value codes like -9999, coordinates in UTM vs WGS84).
-   - **No Processing in Terminal**: The AI only runs the lightweight metadata profiler. It MUST NEVER execute the heavy data cleaning, spatial transformations, or modeling R scripts on the user's terminal.
-   - **Deliverable in `02_scripts/`**: Generate the custom, tailored, ready-to-run R script directly in `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if required, exact column names, and cleaning filters). The student opens and runs it in RStudio.
+6. **Two-Step Inspection & Tailored Audit Protocol (Student Runs Everything in RStudio)**:
+   - **No Assumption of File Format**: Datasets may arrive in Excel (`.xlsx`, `.xls` with single or multiple sheets) or delimited text (`.csv`, `.tsv`, `.txt`). NEVER assume one or the other.
+   - **NO Background Terminal Execution**: The AI assistant MUST NEVER execute terminal commands (neither Python nor Rscript in the background).
+   - **Step 0 (Inspección mediante `02_scripts/00_inspect_data.R`)**:
+     1. When the student provides their dataset path (e.g. `01_data/profiles/Profiles_data.xlsx` or `.csv`), the AI **ONLY updates the `input_file` path** in the pre-made script `02_scripts/00_inspect_data.R`.
+     2. The AI prompts the student: *"He configurado `02_scripts/00_inspect_data.R` con tu archivo. Por favor ábrelo en RStudio y ejecútalo (Source). Avísame cuando termine."*
+     3. The student executes `00_inspect_data.R` in RStudio. The script profiles all sheets, columns, data classes, missing counts, head/tail samples, and numeric summaries, saving the output to `01_data/profiles/data_inspection_report.txt`.
+   - **Step 1 (Adaptación de `02_scripts/01_byod_audit.R`)**:
+     1. The AI reads `01_data/profiles/data_inspection_report.txt` (via native file read, 0 terminal commands).
+     2. The AI analyzes the report: detects whether it is a flat table or relational (e.g. `Sitios` + `Horizontes`), finds the linking key (`id_perfil`), maps DSM columns, screens sample values, and discards extraneous metadata.
+     3. The AI designs and writes the custom, tailored script directly to `02_scripts/01_byod_audit.R` (including `left_join` if multi-sheet).
+     4. The AI presents the findings in chat and asks the student to run `01_byod_audit.R` in RStudio.
 
 7. **Strict DSM Scope & Incremental Verification by Criteria**:
    - **Strict Data Scope**: Retain ONLY core DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, and target analytical properties like `SOC`, `pH`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`). Drop all other non-essential survey columns (taxonomic, morphological, dates, etc.).

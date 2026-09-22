@@ -39,12 +39,12 @@ Whenever a participant asks for assistance with a modeling, data, or mapping tas
 1. **Strict Reference Grounding**: Code must match `02_scripts/reference_modelling_v2.R` and SoilFER conventions.
 2. **Visual Inspection-First**: Never output code without a plot call (`mapview`, `ggplot2`, `plot(rast, col = viridis)`).
 3. **Conciseness**: Keep explanations crisp and directly focused on the task. Avoid fluff.
-4. **Language Rule**: Respond in the user's preferred language (default: Spanish).
-5. **Structural Dataset Profiling & Tailored Script Delivery**:
-   - NEVER guess column names blindly. First run the lightweight profiler `python 02_scripts/inspect_dataset.py <file_path>` (or R fallback `02_scripts/inspect_dataset.R`).
-   - Analyze all sheets, relational keys, exact column names, and sample values.
-   - Never execute heavy R data processing or spatial scripts on the terminal.
-   - In IDE agent mode (like Antigravity), **create the tailored `.R` file directly in `02_scripts/`** so the student can immediately open and run it in RStudio.
+5. **Two-Step Inspection & Tailored Audit Protocol (Student Runs in RStudio)**:
+   - NEVER assume file format (.xlsx with multiple sheets or .csv). NEVER execute terminal commands in background.
+   - When the student provides their dataset path, **ONLY update line 24 of `02_scripts/00_inspect_data.R`** with the filename and ask the student to run it in RStudio.
+   - Read the resulting `01_data/profiles/data_inspection_report.txt` using file read tools (zero terminal commands).
+   - Use the report to understand all sheets, relational keys, columns, head/tail samples, and value distributions.
+   - Design and write the custom tailored script directly to `02_scripts/01_byod_audit.R`.
    - In the chat response, present the summary of sheet structures, column mappings, and pedological observations.
 
 6. **Incremental Verification by Criteria & Strict Data Scope**:

@@ -120,11 +120,11 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - *"Act as r-engineer and generate the code to extract covariates to sample points"*.
    - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
    - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
-4. **Structural Dataset Profiling, Tailored Script Generation, and Execution in RStudio**:
-   - **No Guesswork Inspection**: When you point the assistant to your dataset (e.g., `01_data/profiles/Profiles_data.xlsx`), Antigravity executes a lightweight profiler (`02_scripts/inspect_dataset.py`) to read all Excel sheets, extract real column names, detect relational keys (e.g., `profile_id` linking sites and horizons), and examine sample values.
-   - **Tailored Script Delivery**: Based on the discovered data structure, the AI writes a customized R script directly to `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if relational).
-   - **Strict No-Heavy-Terminal-Processing Rule**: The AI only runs the quick structural metadata inspection; it never executes heavy data processing, spatial modeling, or plotting scripts on your terminal.
-   - **Your Role as Soil Scientist**: Open the generated `.R` file in RStudio (which already has `DSM-Harness.Rproj` open), run it line by line, verify the mapping table in the console, and confirm or adjust in the chat before moving to subsequent criteria.
+4. **Pre-Inspection Workflow and Tailored Script Delivery**:
+   - **Step 0 (Profiling Input Data with `00_inspect_data.R`)**: When you provide your dataset path (whether Excel with multiple sheets or CSV, never assume either), the AI sets the pre-made script [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) with your filename and asks you to open and run it in RStudio (*Source*).
+   - **Descriptive Report Generation**: Running `00_inspect_data.R` in RStudio examines all sheets, column names, data classes (`class`), missing value counts, head/tail samples, and numeric summaries, saving the report to `01_data/profiles/data_inspection_report.txt`.
+   - **Tailored Adaptation of `01_byod_audit.R`**: You let the AI know in the chat once you've run the script. The AI reads `data_inspection_report.txt` (without running any terminal commands), understands the relational structure (linking keys, relevant DSM variables), and designs your custom script `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if needed).
+   - **Execution in RStudio**: You open and run `02_scripts/01_byod_audit.R` in RStudio, verify the mapping table in the console, and confirm in chat before proceeding to spatial validation.
 
 ---
 

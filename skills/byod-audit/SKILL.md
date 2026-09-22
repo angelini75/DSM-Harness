@@ -48,18 +48,19 @@ When analyzing a national dataset (Excel `.xlsx` via `readxl` or CSV via `readr`
 ## 2. Incremental Procedure & Criteria Groups
 
 ### Criterion 1: Structural Profiling, Variable Identification & Confirmation (Step 1.1)
-1. **Structural Dataset Profiling**:
-   - The AI assistant runs: `python 02_scripts/inspect_dataset.py <file_path>` (or R fallback `02_scripts/inspect_dataset.R`).
-   - Analyzes all sheets (if Excel), row counts, real column names, and sample values.
-   - Determines if the dataset is flat or relational (e.g. `Sitios` with coordinates + `Horizontes` with laboratory data, linked by `profile_id`).
-   - Performs screening of sample values (e.g. coordinates in degrees vs UTM, depth units, missing codes).
-2. **Tailored Script Generation**:
-   - The AI writes a customized, concise `02_scripts/01_byod_audit.R` specifically matching the file's structure (incorporating multi-sheet `left_join` if applicable).
-   - Subsets **ONLY** the relevant DSM columns and discards non-essential survey metadata.
-   - Prints a clean comparison table in the RStudio console: `[Columna Original] ---> [Estándar ISO 28258]`.
-3. **Transparent Explanation & Wait for Confirmation**:
-   - In the chat, the AI explains the discovered structure (sheets found, relational key, mapped variables, and screening insights).
-   - Asks the student: *"Por favor abre y corre `02_scripts/01_byod_audit.R` en RStudio. ¿Esta vinculación de hojas y variables coincide con tus datos? Confirma si es correcto o indica qué corregir."*
+1. **Pre-made Inspection via `02_scripts/00_inspect_data.R`**:
+   - The dataset may be in Excel (`.xlsx`, `.xls` with 1 or multiple sheets) or delimited text (`.csv`, `.tsv`, `.txt`). Never assume one or the other.
+   - The AI assistant **ONLY modifies line 24 of `02_scripts/00_inspect_data.R`** with the user's file path.
+   - The AI tells the student to run `02_scripts/00_inspect_data.R` in RStudio.
+   - The script inspects all sheets, dimensions, column names, data types (`class`), missing counts, `head(3)`, `tail(3)` and numeric summaries, writing the report to `01_data/profiles/data_inspection_report.txt`.
+2. **AI Report Analysis & Tailored Script Generation**:
+   - The student notifies the AI in the chat.
+   - The AI reads `01_data/profiles/data_inspection_report.txt` (via native file read, without terminal execution).
+   - Identifies whether the file is single-table or relational (e.g. `Sitios` + `Horizontes` linked by `id_perfil`), maps standard DSM columns, screens sample values, and discards non-essential survey metadata.
+   - Writes the custom, tailored script directly to `02_scripts/01_byod_audit.R` (including `left_join` if multi-sheet).
+3. **Student Execution of Step 1.1 & Wait for Confirmation**:
+   - The AI explains the discovered structure and mappings in chat.
+   - Asks the student to open `02_scripts/01_byod_audit.R` in RStudio, run it, and confirm whether the mapping table matches their expectations.
 
 **STOP AND WAIT**: The AI must NOT proceed to Step 1.2 until the student confirms or provides adjustments!
 

@@ -120,11 +120,11 @@ Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Cod
    - *"Actúa como r-engineer y genera el script para extraer covariables a mis puntos"*.
    - *"Actúa como geostat-modeler y revisa si este scatterplot 1:1 muestra sobreajuste"*.
    - *"Actúa como soil-scientist y dime si estas relaciones entre carbono y densidad aparente son físicamente plausibles"*.
-4. **Perfilado estructural, generación de script a medida y ejecución en RStudio**:
-   - **Inspección sin adivinanzas**: Cuando indiques la ruta a tu archivo (ej: `01_data/profiles/Profiles_data.xlsx`), Antigravity ejecutará un perfilador liviano (`02_scripts/inspect_dataset.py`) que lee todas las hojas del Excel, extrae los nombres reales de las columnas, identifica claves relacionales (ej. `id_perfil` uniendo sitios con horizontes) y examina valores de muestra.
-   - **Script hecho a medida**: Con la estructura real descubierta, la IA escribe directamente un script de R adaptado a tus datos en `02_scripts/01_byod_audit.R` (incorporando la unión de hojas con `left_join` si es un Excel relacional).
-   - **Regla estricta sin procesamiento pesado en terminal**: La IA solo realiza la inspección rápida de metadatos; nunca ejecuta la limpieza pesada ni cálculos espaciales en tu terminal, protegiendo tus tokens y tu entorno.
-   - **Tu rol como científico**: Abre el archivo `.R` generado en tu RStudio (que ya tiene abierto `DSM-Harness.Rproj`), ejecútalo línea por línea, verifica la tabla en la consola y confirma o ajusta en el chat para avanzar al siguiente criterio.
+4. **Flujo de Inspección Previa y Generación de Script a Medida**:
+   - **Paso 0 (Escudriñar el archivo de entrada con `00_inspect_data.R`)**: Cuando indiques la ruta a tu archivo (sea Excel con múltiples hojas o CSV, nunca se asume uno u otro), la IA configurará el script prehecho [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) con tu nombre de archivo y te pedirá que lo abras y ejecutes en RStudio (*Source*).
+   - **Generación del reporte descriptivo**: Al correr `00_inspect_data.R` en RStudio, este analiza todas las hojas, nombres de columnas, tipos de datos (`class`), valores nulos, muestras (`head`/`tail`) y resúmenes numéricos, guardando el reporte en `01_data/profiles/data_inspection_report.txt`.
+   - **Adaptación a medida de `01_byod_audit.R`**: Le avisas a la IA en el chat que ya corriste el script. La IA lee ese archivo de reporte descriptivo (sin ejecutar ningún comando en tu terminal), comprende la estructura relacional (claves de unión, variables relevantes DSM) y adapta tu script `02_scripts/01_byod_audit.R` específicamente para tus datos (incluyendo `left_join` de hojas si es necesario).
+   - **Ejecución en RStudio**: Abres y corres `02_scripts/01_byod_audit.R` en RStudio, compruebas la tabla en la consola y confirmas en el chat para avanzar a la validación espacial.
 
 ---
 
