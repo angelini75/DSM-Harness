@@ -1,0 +1,26 @@
+# DSM-Harness .gitignore
+
+# R & RStudio artifacts
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata/
+
+# Temporary and heavy cache files
+terra_tmp/
+*.tmp
+*.temp
+
+# Heavy raster outputs and model binaries (avoid committing huge files to Git)
+03_outputs/module3/tiles/*.tif
+03_outputs/module3/maps/*.tif
+03_outputs/module3/models/*.rds
+!03_outputs/**/.gitkeep
+
+# Cloned scratch repositories (internal references)
+scratch/
+
+# OS specific files
+Thumbs.db
+.DS_Store
+desktop.ini
