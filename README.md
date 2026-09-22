@@ -115,16 +115,18 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - Procedural skills under `skills/`.
    - The reference script at `02_scripts/reference_modelling_v2.R`.
 3. **Prompting the Assistant**:
-   Simply ask what you need in natural language (in English or Spanish). For example:
-   - *"Act as dsm-panel and help me audit my soil profile data in 01_data/profiles/my_data.csv"*.
+   When opening the folder in Antigravity or your AI-enabled IDE, simply send a greeting or ask to inspect the workspace (e.g. *"Hello, read the folder and tell me how to get started"*). The assistant will deliver a structured onboarding greeting, outline expectations (running code in RStudio, zero terminal commands from AI), and guide you to Step 0.
+   You can also prompt specific disciplinary roles directly:
+   - *"Act as dsm-panel and help me audit my soil profile data in 01_data/profiles/my_data.xlsx"*.
    - *"Act as r-engineer and generate the code to extract covariates to sample points"*.
    - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
    - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
-4. **Pre-Inspection Workflow and Tailored Script Delivery**:
-   - **Step 0 (Profiling Input Data with `00_inspect_data.R`)**: When you provide your dataset path (whether Excel with multiple sheets or CSV, never assume either), the AI sets the pre-made script [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) with your filename and asks you to open and run it in RStudio (*Source*).
-   - **Descriptive Report Generation**: Running `00_inspect_data.R` in RStudio examines all sheets, column names, data classes (`class`), missing value counts, head/tail samples, and numeric summaries, saving the report to `01_data/profiles/data_inspection_report.txt`.
-   - **Tailored Adaptation of `01_byod_audit.R`**: You let the AI know in the chat once you've run the script. The AI reads `data_inspection_report.txt` (without running any terminal commands), understands the relational structure (linking keys, relevant DSM variables), and designs your custom script `02_scripts/01_byod_audit.R` (including multi-sheet `left_join` if needed).
-   - **Execution in RStudio**: You open and run `02_scripts/01_byod_audit.R` in RStudio, verify the mapping table in the console, and confirm in chat before proceeding to spatial validation.
+
+4. **Pre-Inspection Workflow and Modular 3-Substep BYOD Audit**:
+   - **Step 0 (Exhaustive Input Data Profiling with `00_inspect_data.R`)**: When you provide your dataset path (whether Excel with multiple sheets or CSV, never assume either), the AI sets the pre-made script [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) with your filename and asks you to run it in RStudio (*Source*). This script thoroughly scans all sheets, full column names without truncation, data classes (`class`), missing value percentages, non-null sample values, and numeric ranges, writing the report to `01_data/profiles/data_inspection_report.txt`.
+   - **Step 1.1 (Variable Mapping and Selection in `01_1_byod_audit.R`)**: The AI reads the inspection report (without running any terminal commands), deduces table relationships (`left_join` if multi-sheet), and adapts `02_scripts/01_1_byod_audit.R`. When run in RStudio, it exports `01_data/profiles/step1_1_variables.csv` and `step1_1_variables_report.txt`. Confirm in chat before advancing.
+   - **Step 1.2 (Spatial Coordinate and CRS Audit in `01_2_byod_audit.R`)**: Audits coordinates, transforms projected systems to WGS84, launches an interactive map (`mapview`/`ggplot2`) in RStudio, and exports `01_data/profiles/step1_2_spatial.csv` alongside `step1_2_spatial_report.txt`. The AI reads the spatial report to formulate reflective questions on spatial distribution.
+   - **Step 1.3 (Depths and Pedological Coherence in `01_3_byod_audit.R`)**: Audits horizon depth logic (`upper < lower`), texture balance, pH, SOC, estimates missing Bulk Density using the Saxton et al. PTF, plots depth decay curves in RStudio, and exports the final cleaned dataset `01_data/profiles/cleaned_profiles.csv` plus `step1_3_pedological_report.txt`.
 
 ---
 
@@ -207,8 +209,12 @@ DSM-Harness/
 ├── 01_data/                                # Input datasets & templates
 │   └── templates/                          # OpenNSIS ISO 28258 CSV template
 │
-├── 02_scripts/                             # Official R scripts
+├── 02_scripts/                             # Official R scripts & guided workflow
 │   ├── 00_check_packages.R                 # Package checker & installer
+│   ├── 00_inspect_data.R                   # Step 0: Exhaustive dataset structural profiler
+│   ├── 01_1_byod_audit.R                   # Step 1.1: DSM variable mapping & selection
+│   ├── 01_2_byod_audit.R                   # Step 1.2: Spatial coordinate, CRS & map viewer
+│   ├── 01_3_byod_audit.R                   # Step 1.3: Depths, pedological checks & Saxton PTF
 │   ├── reference_modelling_v2.R            # Official reference modeling script
 │   └── eval.RData                          # Validation accuracy function
 │

@@ -36,20 +36,23 @@ Whenever a participant asks for assistance with a modeling, data, or mapping tas
 
 ## 3. Operational Directives
 
+0. **Initial Workspace Greeting & Onboarding**:
+   - When the student first opens the project and asks to read the folder or get started ("lee la carpeta", "hola", "cómo empiezo", etc.):
+   - Deliver a warm, structured greeting in the user's language (Spanish by default).
+   - Explain the purpose of DSM-Harness (FAO / SoilFER / OpenNSIS).
+   - Set expectations: student runs scripts in RStudio (`DSM-Harness.Rproj`), AI configures scripts in `02_scripts/`, scripts output plots in RStudio and text reports (`.txt`) in `01_data/profiles/` for the AI to read.
+   - Clarify how to resolve errors: share only the red error message and 2-4 preceding lines (Error Rescue protocol). No background terminal execution by AI.
+   - Point to Paso 0: verify dataset file in `01_data/profiles/` and run `02_scripts/00_inspect_data.R`.
+
 1. **Strict Reference Grounding**: Code must match `02_scripts/reference_modelling_v2.R` and SoilFER conventions.
-2. **Visual Inspection-First**: Never output code without a plot call (`mapview`, `ggplot2`, `plot(rast, col = viridis)`).
-3. **Conciseness**: Keep explanations crisp and directly focused on the task. Avoid fluff.
-5. **Two-Step Inspection & Tailored Audit Protocol (Student Runs in RStudio)**:
-   - NEVER assume file format (.xlsx with multiple sheets or .csv). NEVER execute terminal commands in background.
-   - When the student provides their dataset path, **ONLY update line 24 of `02_scripts/00_inspect_data.R`** with the filename and ask the student to run it in RStudio.
-   - Read the resulting `01_data/profiles/data_inspection_report.txt` using file read tools (zero terminal commands).
-   - Use the report to understand all sheets, relational keys, columns, head/tail samples, and value distributions.
-   - Design and write the custom tailored script directly to `02_scripts/01_byod_audit.R`.
-   - In the chat response, present the summary of sheet structures, column mappings, and pedological observations.
-
-6. **Incremental Verification by Criteria & Strict Data Scope**:
-   - Do NOT deliver all stages, checks, or assumptions at once. Assume initial mappings might need adjustment.
-   - Filter and retain ONLY core DSM variables (`profile_code`, `Horizon`, `upper`, `lower`, `longitude`, `latitude`, target soil properties) and discard non-essential survey metadata.
-   - For Stage 1, deliver **Paso 1.1: Confirmación de variables** in a short script (< 60 lines), show the proposed mapping, and **WAIT for student confirmation** before proceeding to spatial (Paso 1.2) or pedological checks (Paso 1.3).
-
-
+2. **Visual Inspection-First & Companion Text Reports**:
+   - Every diagnostic script must output a plot (`mapview`, `ggplot2`) in RStudio and write a companion `.txt` report in `01_data/profiles/`.
+   - The AI reads this text report natively (`view_file`) to formulate the 2-3 pedological reflection questions.
+3. **Conciseness & Token Efficiency**: Keep explanations crisp and directly focused on the task. Avoid conversational fluff.
+4. **Zero Background Terminal Execution**: The AI must NEVER run `Rscript`, `python`, or background terminal commands. The student executes all R code directly in RStudio.
+5. **Modular 3-Substep BYOD Audit Protocol**:
+   - Step 0: `02_scripts/00_inspect_data.R` (Structural profiling, all sheets, full names, real non-NA samples -> `data_inspection_report.txt`).
+   - Step 1.1: `02_scripts/01_1_byod_audit.R` (Variable mapping & relational joins -> `step1_1_variables.csv` + `step1_1_variables_report.txt`). WAIT for student confirmation in chat!
+   - Step 1.2: `02_scripts/01_2_byod_audit.R` (Spatial auditing, CRS transformation to WGS84, map plot -> `step1_2_spatial.csv` + `step1_2_spatial_report.txt`). AI reads report and asks spatial reflection questions.
+   - Step 1.3: `02_scripts/01_3_byod_audit.R` (Depths, pedological coherence, Saxton PTF BD, depth decay plots -> `cleaned_profiles.csv` + `step1_3_pedological_report.txt`). AI reads report and asks pedological reflection questions.
+6. **Strict Privacy & Anti-Overfitting**: Never hardcode participant dataset specifics into shared scripts.

@@ -1,16 +1,21 @@
 # ==============================================================================
-# DSM-Harness | 00_inspect_data.R: Escudriñador de Dataset de Entrada (BYOD)
+# DSM-Harness | 00_inspect_data.R: Escudriñador Exhaustivo de Datasets (BYOD)
 # ==============================================================================
 # OBJETIVO:
 # Este script escudriña el archivo de datos provisto (sea Excel con múltiples
-# hojas o CSV), analizando estructura, número de hojas, nombres de columnas,
-# tipos de datos (class), muestras iniciales (head) y finales (tail), valores
-# nulos y resúmenes estadísticos.
+# hojas o delimitado .csv/.tsv/.txt), analizando exhaustivamente todas las hojas,
+# columnas, tipos de datos (class), porcentaje de valores nulos, muestras de
+# valores reales NO NULOS y rangos numéricos.
+#
+# IMPORTANTE:
+# - No omite columnas con valores vacíos en las primeras filas.
+# - No trunca los nombres de las columnas.
+# - Examina el vector completo de cada columna para deducir su tipo real.
 #
 # El resultado se imprime en la consola de RStudio y se guarda automáticamente
 # en '01_data/profiles/data_inspection_report.txt'.
 # La IA utilizará ese reporte descriptivo para diseñar a medida tu script
-# de auditoría y preparación '02_scripts/01_byod_audit.R'.
+# de auditoría '02_scripts/01_1_byod_audit.R'.
 #
 # INSTRUCCIONES PARA EL ALUMNO:
 # 1. Abre este script en RStudio (con el proyecto DSM-Harness.Rproj abierto).
@@ -34,16 +39,16 @@ if (!exists("output_report")) {
 # 2. Verificación de existencia del archivo
 # ------------------------------------------------------------------------------
 if (!file.exists(input_file)) {
-  # Si la ruta exacta no existe, buscar alternativas en 01_data/profiles/
-  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt)$", full.names = TRUE)
-  # Excluir el reporte si ya existiera
+  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE)
   avail <- avail[!grepl("data_inspection_report\\.txt$", avail)]
+  avail <- avail[!grepl("step1_.*\\.csv$", avail)]
+  avail <- avail[!grepl("cleaned_profiles\\.csv$", avail)]
   
   if (length(avail) > 0) {
     cat(sprintf("[AVISO] No se encontro '%s'. Usando archivo detectado: '%s'\n", input_file, avail[1]))
     input_file <- avail[1]
   } else {
-    stop(sprintf("\n[ERROR] No se encontro el archivo '%s' ni ningun archivo en '01_data/profiles/'.\nPor favor verifica la ruta de tu archivo.", input_file))
+    stop(sprintf("\n[ERROR] No se encontro el archivo '%s' ni ningun archivo de datos en '01_data/profiles/'.\nPor favor coloca tu archivo en esa carpeta y verifica la ruta.", input_file))
   }
 }
 
@@ -63,7 +68,7 @@ log_line <- function(...) {
 }
 
 log_line("================================================================================")
-log_line("  DSM-HARNESS: REPORTE DESCRIPTIVO ESTRUCTURAL DEL DATASET")
+log_line("  DSM-HARNESS: REPORTE DESCRIPTIVO ESTRUCTURAL DEL DATASET (BYOD)")
 log_line("================================================================================")
 log_line("Fecha y hora: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
 log_line("Archivo inspeccionado: ", input_file)
@@ -72,16 +77,29 @@ log_line("Tamano del archivo: ", round(file.size(input_file) / 1024, 2), " KB")
 log_line("================================================================================\n")
 
 # ------------------------------------------------------------------------------
-# 3. Procesamiento según formato: Excel (.xlsx, .xls) o CSV (.csv, .txt)
+# 3. Función de Inspección Exhaustiva de DataFrames
 # ------------------------------------------------------------------------------
 
 inspect_dataframe <- function(df, label = "Tabla") {
   log_line(sprintf(">>> RESUMEN DE %s <<<", toupper(label)))
+  
+  if (is.null(df) || nrow(df) == 0 || ncol(df) == 0) {
+    log_line("[AVISO]: La tabla está vacía (0 filas o 0 columnas).")
+    log_line("--------------------------------------------------------------------------------\n")
+    return(invisible(NULL))
+  }
+  
   log_line(sprintf("Dimensiones: %d filas x %d columnas", nrow(df), ncol(df)))
   log_line("--------------------------------------------------------------------------------")
   
+  col_names <- names(df)
+  max_w <- max(c(nchar(col_names), 16), na.rm = TRUE)
+  # Limitar ancho de columna a un máximo razonable para legibilidad pero sin truncar arbitrariamente
+  col_w <- min(max(max_w, 20), 45)
+  
   col_info <- data.frame(
-    Columna = names(df),
+    No = seq_along(col_names),
+    Columna = col_names,
     Clase = sapply(df, function(x) paste(class(x), collapse = "/")),
     Nulos = sapply(df, function(x) sum(is.na(x))),
     Nulos_Pct = round(sapply(df, function(x) mean(is.na(x)) * 100), 1),
@@ -89,54 +107,85 @@ inspect_dataframe <- function(df, label = "Tabla") {
     stringsAsFactors = FALSE
   )
   
-  log_line(sprintf("%-4s | %-25s | %-12s | %-8s | %-7s | %-12s", 
-                   "No.", "Nombre Columna", "Clase", "NAs", "% NAs", "Unicos"))
-  log_line(paste(rep("-", 78), collapse = ""))
+  fmt_head <- sprintf("%%-4s | %%-%ds | %%-12s | %%-8s | %%-7s | %%-10s", col_w)
+  fmt_row  <- sprintf("%%-4d | %%-%ds | %%-12s | %%-8d | %%-6.1f%%%% | %%-10d", col_w)
+  sep_line <- paste(rep("-", col_w + 50), collapse = "")
+  
+  log_line(sprintf(fmt_head, "No.", "Nombre Columna", "Clase", "NAs", "% NAs", "Unicos"))
+  log_line(sep_line)
+  
   for (i in seq_len(nrow(col_info))) {
-    log_line(sprintf("%-4d | %-25s | %-12s | %-8d | %-6.1f%% | %-12d", 
-                     i, 
-                     substr(col_info$Columna[i], 1, 25), 
-                     col_info$Clase[i], 
-                     col_info$Nulos[i], 
-                     col_info$Nulos_Pct[i], 
+    c_name_disp <- if (nchar(col_info$Columna[i]) > col_w) {
+      paste0(substr(col_info$Columna[i], 1, col_w - 3), "...")
+    } else {
+      col_info$Columna[i]
+    }
+    
+    log_line(sprintf(fmt_row,
+                     col_info$No[i],
+                     c_name_disp,
+                     col_info$Clase[i],
+                     col_info$Nulos[i],
+                     col_info$Nulos_Pct[i],
                      col_info$Valores_Unicos[i]))
   }
-  log_line("--------------------------------------------------------------------------------\n")
+  log_line(sep_line)
+  log_line("")
   
-  # Primeras 3 filas (head)
-  log_line("--- MUESTRA INICIAL: HEAD (Primeras 3 filas) ---")
-  head_df <- head(df, 3)
-  for (col in names(head_df)) {
-    vals <- paste(as.character(head_df[[col]]), collapse = " | ")
-    log_line(sprintf("  %-25s : %s", substr(col, 1, 25), vals))
+  # Nombres completos de columnas (para asegurar que ningún nombre largo se pierda)
+  long_cols <- col_names[nchar(col_names) > col_w]
+  if (length(long_cols) > 0) {
+    log_line("--- NOMBRES COMPLETOS DE COLUMNAS LARGAS ---")
+    for (lc in long_cols) {
+      log_line(sprintf("  [%d] %s", which(col_names == lc), lc))
+    }
+    log_line("")
+  }
+  
+  # Muestra de primeros 3 valores NO NULOS por columna
+  log_line("--- MUESTRA DE VALORES REALES (Primeros 3 valores NO NULOS) ---")
+  for (col in col_names) {
+    non_na <- na.omit(df[[col]])
+    if (length(non_na) > 0) {
+      sample_str <- paste(as.character(head(non_na, 3)), collapse = " | ")
+      log_line(sprintf("  %-35s : %s", col, sample_str))
+    } else {
+      log_line(sprintf("  %-35s : [TODOS LOS VALORES SON NA]", col))
+    }
   }
   log_line("")
   
-  # Ultimas 3 filas (tail)
-  log_line("--- MUESTRA FINAL: TAIL (Ultimas 3 filas) ---")
-  tail_df <- tail(df, 3)
-  for (col in names(tail_df)) {
-    vals <- paste(as.character(tail_df[[col]]), collapse = " | ")
-    log_line(sprintf("  %-25s : %s", substr(col, 1, 25), vals))
+  # Muestra de últimos 3 valores NO NULOS por columna (para verificar consistencia final)
+  log_line("--- MUESTRA FINAL DE VALORES REALES (Ultimos 3 valores NO NULOS) ---")
+  for (col in col_names) {
+    non_na <- na.omit(df[[col]])
+    if (length(non_na) > 3) {
+      sample_str <- paste(as.character(tail(non_na, 3)), collapse = " | ")
+      log_line(sprintf("  %-35s : %s", col, sample_str))
+    }
   }
   log_line("")
   
-  # Resumen numerico rapido para columnas numericas
-  num_cols <- names(df)[sapply(df, is.numeric)]
+  # Resumen numérico para columnas numéricas (calculado sobre valores no nulos)
+  num_cols <- col_names[sapply(df, is.numeric)]
   if (length(num_cols) > 0) {
-    log_line("--- RANGOS DE VARIABLES NUMERICAS (Min / Mediana / Max) ---")
+    log_line("--- RANGOS DE VARIABLES NUMERICAS (Min / Mediana / Media / Max) ---")
     for (nc in num_cols) {
-      vals <- df[[nc]][!is.na(df[[nc]])]
+      vals <- na.omit(df[[nc]])
       if (length(vals) > 0) {
-        log_line(sprintf("  %-25s : Min = %g | Mediana = %g | Max = %g", 
-                         substr(nc, 1, 25), min(vals), median(vals), max(vals)))
+        log_line(sprintf("  %-35s : Min = %g | Mediana = %g | Media = %.2f | Max = %g", 
+                         nc, min(vals), median(vals), mean(vals), max(vals)))
       } else {
-        log_line(sprintf("  %-25s : (Todos los valores son NA)", substr(nc, 1, 25)))
+        log_line(sprintf("  %-35s : (100%% valores NA)", nc))
       }
     }
     log_line("")
   }
 }
+
+# ------------------------------------------------------------------------------
+# 4. Procesamiento según formato: Excel (.xlsx, .xls) o CSV (.csv, .txt, .tsv)
+# ------------------------------------------------------------------------------
 
 if (ext %in% c("xlsx", "xls")) {
   if (!requireNamespace("readxl", quietly = TRUE)) {
@@ -152,8 +201,10 @@ if (ext %in% c("xlsx", "xls")) {
     log_line(sprintf("HOJA EXCEL: '%s'", s_name))
     log_line("================================================================================")
     
+    # guess_max = 100000 asegura que escanee todas las filas para no clasificar como 'logical'
+    # columnas con NAs en las primeras filas
     df_sheet <- tryCatch(
-      readxl::read_excel(input_file, sheet = s_name),
+      readxl::read_excel(input_file, sheet = s_name, guess_max = 100000),
       error = function(e) {
         log_line("[ERROR al leer hoja '", s_name, "']: ", e$message)
         NULL
@@ -166,28 +217,29 @@ if (ext %in% c("xlsx", "xls")) {
   }
   
 } else if (ext %in% c("csv", "txt", "tsv")) {
-  # Deteccion de delimitador en texto plano
+  # Detección inteligente de delimitador
   first_lines <- readLines(input_file, n = 5, warn = FALSE)
   delim <- ","
   if (length(first_lines) > 0) {
-    semis <- sum(gregexpr(";", first_lines[[1]])[[1]] > 0)
+    semis  <- sum(gregexpr(";", first_lines[[1]])[[1]] > 0)
     commas <- sum(gregexpr(",", first_lines[[1]])[[1]] > 0)
-    tabs <- sum(gregexpr("\t", first_lines[[1]])[[1]] > 0)
+    tabs   <- sum(gregexpr("\t", first_lines[[1]])[[1]] > 0)
     if (semis > commas && semis > tabs) delim <- ";"
     if (tabs > commas && tabs > semis) delim <- "\t"
   }
-  log_line(sprintf("ESTRUCTURA CSV: Delimitador detectado: '%s'\n", delim))
+  log_line(sprintf("ESTRUCTURA TEXTO: Delimitador detectado: '%s'\n", delim))
   
   df_csv <- tryCatch(
-    read.table(input_file, header = TRUE, sep = delim, stringsAsFactors = FALSE, check.names = FALSE),
+    read.table(input_file, header = TRUE, sep = delim, stringsAsFactors = FALSE, 
+               check.names = FALSE, fill = TRUE, quote = "\""),
     error = function(e) {
-      log_line("[ERROR al leer CSV]: ", e$message)
+      log_line("[ERROR al leer archivo]: ", e$message)
       NULL
     }
   )
   
   if (!is.null(df_csv)) {
-    inspect_dataframe(df_csv, label = paste("Archivo CSV:", basename(input_file)))
+    inspect_dataframe(df_csv, label = paste("Archivo:", basename(input_file)))
   }
   
 } else {
@@ -201,7 +253,8 @@ close(report_con)
 
 cat(sprintf("\n[OK] Reporte generado y guardado con exito en:\n  -> %s\n\n", output_report))
 cat("--------------------------------------------------------------------------------\n")
-cat("INSTRUCCION:\n")
+cat("INSTRUCCION PARA EL ALUMNO:\n")
 cat("Avísale a la IA en el chat que ya ejecutaste '00_inspect_data.R'.\n")
-cat("La IA leera '01_data/profiles/data_inspection_report.txt' y disenara tu script a medida.\n")
+cat("La IA leera '01_data/profiles/data_inspection_report.txt' para diseñar a medida\n")
+cat("tu script de mapeo de variables: '02_scripts/01_1_byod_audit.R'.\n")
 cat("--------------------------------------------------------------------------------\n\n")

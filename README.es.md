@@ -115,16 +115,18 @@ Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Cod
    - Las reglas procedimentales en `skills/`.
    - El script oficial de referencia en `02_scripts/reference_modelling_v2.R`.
 3. **Cómo dialogar con el asistente**:
-   Simplemente escribe en el panel de chat en lenguaje natural (en español o inglés). Por ejemplo:
-   - *"Actúa como dsm-panel y ayúdame a auditar mi archivo de perfiles en 01_data/profiles/mis_datos.csv"*.
+   Al abrir la carpeta en Antigravity o tu IDE con IA, simplemente saluda o pide leer la carpeta (ej. *"Hola, lee la carpeta e indícame cómo empezar"*). El asistente te dará una bienvenida estructurada, te explicará qué espera de ti (ejecución en RStudio, sin comandos de terminal por la IA) y te guiará al Paso 0.
+   También puedes invocar directamente a cualquiera de los roles:
+   - *"Actúa como dsm-panel y ayúdame a auditar mi archivo de perfiles en 01_data/profiles/mis_datos.xlsx"*.
    - *"Actúa como r-engineer y genera el script para extraer covariables a mis puntos"*.
    - *"Actúa como geostat-modeler y revisa si este scatterplot 1:1 muestra sobreajuste"*.
    - *"Actúa como soil-scientist y dime si estas relaciones entre carbono y densidad aparente son físicamente plausibles"*.
-4. **Flujo de Inspección Previa y Generación de Script a Medida**:
-   - **Paso 0 (Escudriñar el archivo de entrada con `00_inspect_data.R`)**: Cuando indiques la ruta a tu archivo (sea Excel con múltiples hojas o CSV, nunca se asume uno u otro), la IA configurará el script prehecho [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) con tu nombre de archivo y te pedirá que lo abras y ejecutes en RStudio (*Source*).
-   - **Generación del reporte descriptivo**: Al correr `00_inspect_data.R` en RStudio, este analiza todas las hojas, nombres de columnas, tipos de datos (`class`), valores nulos, muestras (`head`/`tail`) y resúmenes numéricos, guardando el reporte en `01_data/profiles/data_inspection_report.txt`.
-   - **Adaptación a medida de `01_byod_audit.R`**: Le avisas a la IA en el chat que ya corriste el script. La IA lee ese archivo de reporte descriptivo (sin ejecutar ningún comando en tu terminal), comprende la estructura relacional (claves de unión, variables relevantes DSM) y adapta tu script `02_scripts/01_byod_audit.R` específicamente para tus datos (incluyendo `left_join` de hojas si es necesario).
-   - **Ejecución en RStudio**: Abres y corres `02_scripts/01_byod_audit.R` en RStudio, compruebas la tabla en la consola y confirmas en el chat para avanzar a la validación espacial.
+
+4. **Flujo de Inspección Previa y Auditoría Modular en 3 Sub-Pasos**:
+   - **Paso 0 (Inspección exhaustiva con `00_inspect_data.R`)**: Cuando indiques la ruta a tu archivo (sea Excel con múltiples hojas o CSV, nunca se asume uno u otro), la IA configurará [`02_scripts/00_inspect_data.R`](02_scripts/00_inspect_data.R) con tu nombre de archivo y te pedirá que lo ejecutes en RStudio (*Source*). Este script analiza todas las hojas, nombres completos de columnas, clases de datos, valores nulos, muestras de valores reales no nulos y rangos numéricos, guardando el reporte en `01_data/profiles/data_inspection_report.txt`.
+   - **Paso 1.1 (Mapeo y selección estricta de variables en `01_1_byod_audit.R`)**: La IA lee el reporte de inspección (sin ejecutar comandos de terminal), deduce las relaciones (`left_join` de hojas si corresponde) y adapta `02_scripts/01_1_byod_audit.R`. Al correrlo en RStudio, genera `01_data/profiles/step1_1_variables.csv` y su reporte de texto `step1_1_variables_report.txt`. Confirmas en el chat antes de avanzar.
+   - **Paso 1.2 (Validación espacial y CRS en `01_2_byod_audit.R`)**: Revisa coordenadas, transforma sistemas proyectados a WGS84, abre el visor de mapas interactivo (`mapview`/`ggplot2`) en RStudio y exporta `01_data/profiles/step1_2_spatial.csv` junto con `step1_2_spatial_report.txt`. La IA lee el reporte espacial para formular preguntas reflexivas sobre la distribución territorial.
+   - **Paso 1.3 (Profundidades y coherencia edafológica en `01_3_byod_audit.R`)**: Audita coherencia vertical (`upper < lower`), suma de textura, pH, SOC, estima Densidad Aparente faltante vía PTF Saxton, muestra gráficos diagnósticos de profundidad en RStudio y exporta el dataset final limpio `01_data/profiles/cleaned_profiles.csv` junto con `step1_3_pedological_report.txt`.
 
 ---
 
@@ -207,8 +209,12 @@ DSM-Harness/
 ├── 01_data/                                # Datos de entrada y plantillas
 │   └── templates/                          # Plantilla CSV OpenNSIS ISO 28258
 │
-├── 02_scripts/                             # Scripts de referencia
-│   ├── 00_check_packages.R                 # Validador de paquetes
+├── 02_scripts/                             # Scripts de referencia y flujo guiado
+│   ├── 00_check_packages.R                 # Validador de paquetes y dependencias
+│   ├── 00_inspect_data.R                   # Paso 0: Inspección estructural del dataset
+│   ├── 01_1_byod_audit.R                   # Paso 1.1: Mapeo y selección de variables DSM
+│   ├── 01_2_byod_audit.R                   # Paso 1.2: Validación espacial, CRS y visor mapa
+│   ├── 01_3_byod_audit.R                   # Paso 1.3: Profundidades, coherencia y Saxton PTF
 │   ├── reference_modelling_v2.R            # Script oficial de referencia para modelado
 │   └── eval.RData                          # Función de cálculo de métricas
 │
