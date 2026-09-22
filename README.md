@@ -10,6 +10,12 @@ The workflow is modular and easily adaptable to courses of varying duration (3, 
 
 ---
 
+> 💡 **Optimized for Participants Without Paid AI Subscriptions**  
+> The entire harness, agent directives, and prompt cards have been **specifically engineered for users who DO NOT have paid AI accounts** (such as ChatGPT Plus, Claude Pro, or Gemini Advanced).  
+> All prompts are atomic, direct, and consume minimal tokens. This guarantees that participants can complete the entire training workflow using the **free quotas and free tiers** of Gemini, ChatGPT, Claude, or Antigravity without hitting rate limits or exhausting daily usage quotas.
+
+---
+
 ## 📖 How to Use This Repository (Step-by-Step Beginner's Guide)
 
 If you are new to GitHub or terminal environments, follow these steps in order:
@@ -68,25 +74,51 @@ Before opening RStudio, run the automated verification script. It will detect yo
 
 ---
 
-### Step 4: Choose Your AI Interaction Mode
+## 🤖 How to Interact with Artificial Intelligence
 
-Choose **Mode B** if you are using free web chat accounts in your browser:
+Choose one of two interaction modes depending on your setup:
 
-#### Mode A: Inside Your AI IDE (Antigravity, Cursor, or VS Code Copilot)
-If you have an AI-assisted IDE environment:
-- The agent will automatically read [`AGENTS.md`](AGENTS.md) and the specialized roles in `agents/`.
-- Simply interact in your preferred language requesting workflow tasks (e.g. *"Act as dsm-panel and audit my dataset in 01_data/profiles/national_soils.csv"*).
+### Option A: How to Use this Repository with Google Antigravity (or AI IDEs)
 
-#### Mode B: In Free Web Chats (ChatGPT, Gemini, or Claude)
-If you are using the free web version of any AI in your browser:
-1. Inside the project folder, open the **[`cards/en/`](cards/en/)** directory (or [`cards/es/`](cards/es/) for Spanish).
-2. Open the prompt card corresponding to your current workshop stage (e.g. `01-byod-audit-card.md`).
-3. Copy the text block inside the prompt.
-4. Replace the bracketed placeholders (like `{{MY_FILENAME.csv}}` or `{{TARGET_PROPERTY}}`) with your real dataset names.
-5. Paste it into your AI web chat.
-6. The AI will output the exact R code ready to paste into RStudio, complete with diagnostic plots and guided pedological interpretation questions.
+If you are using **Google Antigravity** (or an editor with agent capabilities such as Cursor or VS Code with AI extensions):
 
-> 💡 **If a script produces an error in RStudio**: Never paste your entire 300-line script to the AI. Open **[`cards/en/00-error-rescue.md`](cards/en/00-error-rescue.md)**, copy the prompt, and paste only the error message and the 4 preceding lines. This saves token quotas and provides an instant fix.
+1. **Open Workspace**: In Antigravity, go to `File -> Open Folder` and select the `DSM-Harness` project root.
+2. **Automatic Indexing**: Antigravity automatically detects [`AGENTS.md`](AGENTS.md) as the project constitution, recognizing:
+   - The 4 specialized roles in `agents/` (`r-engineer`, `geo-standards`, `geostat-modeler`, `soil-scientist`) and the unified `dsm-panel`.
+   - Procedural skills under `skills/`.
+   - The reference script at `02_scripts/reference_modelling_v2.R`.
+3. **Prompting the Assistant**:
+   Simply ask what you need in natural language (in English or Spanish). For example:
+   - *"Act as dsm-panel and help me audit my soil profile data in 01_data/profiles/my_data.csv"*.
+   - *"Act as r-engineer and generate the code to extract covariates to sample points"*.
+   - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
+   - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
+4. **Run Code in RStudio**: Copy the clean R code blocks produced by Antigravity and run them inside your RStudio session.
+
+---
+
+### Option B: How to Use this Repository with Free Online Web Chats (ChatGPT, Gemini, Claude)
+
+If you do **not** have Antigravity or an AI IDE, you can use any free web chat in your browser (Google Gemini, ChatGPT, Claude, Copilot, or Perplexity) without paying for a subscription:
+
+1. **Open Your Web Chat**: Open your browser and go to your preferred free AI chat (e.g. [Gemini](https://gemini.google.com), [ChatGPT](https://chat.openai.com), or [Claude](https://claude.ai)).
+2. **Locate the Prompt Cards**: Inside the project directory, navigate to **[`cards/en/`](cards/en/)** (or [`cards/es/`](cards/es/) for Spanish).
+3. **Select the Current Stage**: Open the task card matching your current activity (e.g. `01-byod-audit-card.md` for data audit, or `04-qrf-modeling-card.md` for modeling).
+4. **Fill In Your Placeholders**:
+   Copy the text block under `[PROMPT TO COPY AND PASTE]` and replace the bracketed placeholders with your actual dataset details:
+   - `{{MY_FILENAME.csv}}` $\rightarrow$ filename in `01_data/profiles/`.
+   - `{{TARGET_PROPERTY}}` $\rightarrow$ target variable (e.g. `SOC` or `pH`).
+   - `{{COUNTRY_OR_ISO_CODE}}` $\rightarrow$ your country name or code.
+5. **Paste into Web Chat**: Submit the prompt. The AI will respond with:
+   - A clean R code block ready to run in RStudio.
+   - A mandatory diagnostic plot (`mapview`, `ggplot2`, or Viridis).
+   - 2 or 3 pedological reflection questions to help you interpret the visual result.
+6. **Execute in RStudio**: Copy the generated code into your RStudio console or script file and run it.
+
+> 🚨 **GOLDEN RULE FOR ERRORS (Free-Tier Token Conservation)**:  
+> If an R script produces an error in your RStudio console, **NEVER paste your entire 200-line script into the web chat** (this quickly burns through your token limit).  
+> Instead, open **[`cards/en/00-error-rescue.md`](cards/en/00-error-rescue.md)**, copy the template, and paste **only the red error message and the 4 lines of code preceding it**.  
+> The AI is strictly instructed to give you a 1-line diagnosis and the minimal 2-5 line replacement snippet, resolving the error instantly while saving your quota.
 
 ---
 

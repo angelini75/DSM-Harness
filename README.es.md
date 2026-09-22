@@ -10,6 +10,12 @@ El flujo de trabajo es modular y adaptable a cursos de distinta duración (3, 4 
 
 ---
 
+> 💡 **Optimizado para usuarios sin suscripciones pagas de IA**  
+> Todo el arnés, las instrucciones de los agentes y las tarjetas de prompts fueron **especialmente diseñados para participantes que NO cuentan con cuentas pagas** (como ChatGPT Plus, Claude Pro o Gemini Advanced).  
+> Los prompts son atómicos, directos y de bajísimo consumo de tokens, garantizando que puedas completar todo el taller usando las **cuotas y versiones gratuitas** de Gemini, ChatGPT, Claude o Antigravity sin que se agoten tus límites por hora o por día.
+
+---
+
 ## 📖 Cómo usar este repositorio (Guía Paso a Paso para Principiantes)
 
 Si nunca has usado GitHub o la terminal, sigue estos pasos en orden:
@@ -68,25 +74,51 @@ Antes de abrir RStudio, ejecutaremos un script que revisará automáticamente si
 
 ---
 
-### Paso 4: Elegir tu forma de trabajar con la IA
+## 🤖 Cómo interactuar con la Inteligencia Artificial
 
-Elige **la Modalidad B** si vas a usar chats gratuitos en el navegador web:
+Tienes dos formas de utilizar el arnés según tu entorno de trabajo:
 
-#### Modalidad A: En un IDE con Asistente de IA (Antigravity, Cursor o VS Code)
-Si cuentas con un entorno que soporte agentes de IA:
-- El asistente leerá automáticamente las instrucciones de [`AGENTS.md`](AGENTS.md) y los roles especializados en la carpeta `agents/`.
-- Puedes dialogar directamente en tu idioma solicitando tareas del flujo de trabajo (ej. *"Actúa como dsm-panel y audita mi archivo en 01_data/profiles/datos_nacionales.csv"*).
+### Opción A: Cómo usar este repositorio en Google Antigravity (o IDEs con IA)
 
-#### Modalidad B: En Chats Web Gratuitos (ChatGPT, Gemini o Claude)
-Si utilizas la versión web gratuita de cualquier IA en tu navegador:
-1. En esta misma carpeta del proyecto, entra a la subcarpeta **[`cards/es/`](cards/es/)** (o [`cards/en/`](cards/en/) para inglés).
-2. Abre la tarjeta de texto correspondiente a la etapa en la que estés trabajando (por ejemplo, `01-byod-audit-card.md`).
-3. Copia el bloque de texto del prompt.
-4. Sustituye los valores entre llaves dobles (como `{{NOMBRE_DE_MI_ARCHIVO.csv}}` o `{{PROPIEDAD_OBJETIVO}}`) por los nombres reales de tus datos.
-5. Pégalo en tu chat de IA web (ChatGPT, Gemini o Claude).
-6. La IA te responderá con el código R listo para copiar y pegar en tu RStudio, acompañado de gráficos diagnósticos y preguntas edafológicas para interpretar.
+Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Code con extensiones de IA):
 
-> 💡 **Si un script te da error en RStudio**: No le pegues todo tu código a la IA. Abre **[`cards/es/00-error-rescue.md`](cards/es/00-error-rescue.md)**, pega solo el mensaje de error y las 4 líneas previas. Esto ahorra cuota de tokens y te da la solución en segundos.
+1. **Abrir el espacio de trabajo**: En Antigravity, ve a `File -> Open Folder` y selecciona la carpeta raíz `DSM-Harness`.
+2. **Detección automática**: Antigravity detectará automáticamente el archivo [`AGENTS.md`](AGENTS.md) como constitución del proyecto, reconociendo de inmediato:
+   - Los 4 roles especializados en la carpeta `agents/` (`r-engineer`, `geo-standards`, `geostat-modeler`, `soil-scientist`) y el modo colegiado `dsm-panel`.
+   - Las reglas procedimentales en `skills/`.
+   - El script oficial de referencia en `02_scripts/reference_modelling_v2.R`.
+3. **Cómo dialogar con el asistente**:
+   Simplemente escribe en el panel de chat en lenguaje natural (en español o inglés). Por ejemplo:
+   - *"Actúa como dsm-panel y ayúdame a auditar mi archivo de perfiles en 01_data/profiles/mis_datos.csv"*.
+   - *"Actúa como r-engineer y genera el script para extraer covariables a mis puntos"*.
+   - *"Actúa como geostat-modeler y revisa si este scatterplot 1:1 muestra sobreajuste"*.
+   - *"Actúa como soil-scientist y dime si estas relaciones entre carbono y densidad aparente son físicamente plausibles"*.
+4. **Ejecución en RStudio**: Copia el código R generado por Antigravity y córrelo en tu sesión de RStudio para generar los gráficos y modelos.
+
+---
+
+### Opción B: Cómo usar este repositorio con Chats Web Gratuitos (ChatGPT, Gemini, Claude)
+
+Si **no** tienes Antigravity ni un IDE de IA, puedes usar cualquier chat gratuito en tu navegador web (Google Gemini, ChatGPT, Claude, Copilot o Perplexity) sin pagar suscripciones:
+
+1. **Abrir tu chat web**: Abre tu navegador e ingresa a tu chat de IA gratuito preferido (ej. [Gemini](https://gemini.google.com), [ChatGPT](https://chat.openai.com) o [Claude](https://claude.ai)).
+2. **Localizar las Tarjetas de Prompt**: En la carpeta del proyecto, entra a **[`cards/es/`](cards/es/)** (o [`cards/en/`](cards/en/) si prefieres trabajar en inglés).
+3. **Seleccionar la etapa**: Abre con cualquier visor de texto o bloc de notas la tarjeta correspondiente a lo que vas a realizar (ej. `01-byod-audit-card.md` para auditar datos, o `04-qrf-modeling-card.md` para entrenar el modelo).
+4. **Completar tus variables**:
+   Copia el bloque bajo el título `[PROMPT TO COPY AND PASTE]` y sustituye los campos entre llaves dobles por tus datos reales:
+   - `{{NOMBRE_DE_MI_ARCHIVO.csv}}` $\rightarrow$ el nombre de tu archivo en `01_data/profiles/`.
+   - `{{PROPIEDAD_OBJETIVO}}` $\rightarrow$ la variable a mapear (ej. `SOC` o `pH`).
+   - `{{PAIS_O_CODIGO_ISO}}` $\rightarrow$ tu país (ej. `Guatemala` o `GTM`).
+5. **Pegar en el chat web**: Envía el prompt. La IA te devolverá una respuesta estructurada con:
+   - El bloque de código R listo para correr en tu RStudio.
+   - La llamada obligatoria a generar un gráfico (`mapview`, `ggplot2` o Viridis).
+   - 2 o 3 preguntas de reflexión pedológica para que interpretes el resultado visual.
+6. **Copiar y ejecutar en RStudio**: Pega el código en tu consola de RStudio o en un script dentro de `02_scripts/` y ejecútalo.
+
+> 🚨 **REGLA DE ORO PARA ERRORES (Ahorro de Cuota Gratuita)**:  
+> Si un script te arroja un error en la consola de RStudio, **JAMÁS pegues todo tu script de 200 líneas en el chat web** (eso agotará tu cuota de tokens en pocos turnos).  
+> En su lugar, abre **[`cards/es/00-error-rescue.md`](cards/es/00-error-rescue.md)**, copia esa plantilla y pega **únicamente el mensaje de error en rojo y las 4 líneas de código anteriores**.  
+> La IA tiene la instrucción estricta de darte un diagnóstico de 1 sola línea y el bloque mínimo corregido de 2 a 5 líneas, resolviendo tu error al instante sin gastar tokens.
 
 ---
 
