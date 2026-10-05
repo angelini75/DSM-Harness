@@ -25,8 +25,21 @@
 # ==============================================================================
 
 # 1. Configuración del archivo de entrada ---------------------------------------
-if (!exists("input_file")) {
-  input_file <- "01_data/profiles/Profiles_data.xlsx"
+if (!exists("input_file") || is.null(input_file) || !nzchar(input_file)) {
+  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE, ignore.case = TRUE)
+  avail <- avail[!grepl("(_report\\.txt|step1_.*\\.csv|cleaned_profiles\\.csv|decisions_log|mapping_confirmed)", avail)]
+  
+  if (length(avail) == 1) {
+    input_file <- avail[1]
+    cat(sprintf("[*] Archivo de datos detectado automáticamente: '%s'\n", input_file))
+  } else if (length(avail) > 1) {
+    cat("[AVISO] Se encontraron múltiples archivos de datos en '01_data/profiles/':\n")
+    for (i in seq_along(avail)) cat(sprintf("  [%d] %s\n", i, avail[i]))
+    cat("\nPor defecto se usará el primero. Para especificar otro, define en la consola:\n  input_file <- '01_data/profiles/tu_archivo.ext'\n\n")
+    input_file <- avail[1]
+  } else {
+    stop("\n[ERROR] No se encontró ningún archivo de perfiles en '01_data/profiles/'.\nPor favor coloca tu archivo de perfiles (.xlsx, .xls, o .csv) en esa carpeta y vuelve a ejecutar.")
+  }
 }
 rm(list = setdiff(ls(), c("input_file", "output_report")))
 
@@ -39,17 +52,7 @@ if (!exists("output_report")) {
 # 2. Verificación de existencia del archivo
 # ------------------------------------------------------------------------------
 if (!file.exists(input_file)) {
-  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE)
-  avail <- avail[!grepl("data_inspection_report\\.txt$", avail)]
-  avail <- avail[!grepl("step1_.*\\.csv$", avail)]
-  avail <- avail[!grepl("cleaned_profiles\\.csv$", avail)]
-  
-  if (length(avail) > 0) {
-    cat(sprintf("[AVISO] No se encontro '%s'. Usando archivo detectado: '%s'\n", input_file, avail[1]))
-    input_file <- avail[1]
-  } else {
-    stop(sprintf("\n[ERROR] No se encontro el archivo '%s' ni ningun archivo de datos en '01_data/profiles/'.\nPor favor coloca tu archivo en esa carpeta y verifica la ruta.", input_file))
-  }
+  stop(sprintf("\n[ERROR] No se encontró el archivo '%s'.\nPor favor verifica la ruta o coloca tu dataset en '01_data/profiles/'.", input_file))
 }
 
 ext <- tolower(tools::file_ext(input_file))
@@ -57,6 +60,7 @@ ext <- tolower(tools::file_ext(input_file))
 # Crear carpeta de salida si no existe
 out_dir <- dirname(output_report)
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
+
 
 # Iniciar captura de texto para consola y archivo simultáneamente
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
@@ -140,6 +144,29 @@ inspect_dataframe <- function(df, label = "Tabla") {
       log_line(sprintf("  [%d] %s", which(col_names == lc), lc))
     }
     log_line("")
+  }
+  
+  # Detección temprana de duplicados en potenciales claves (IDs de perfil o de horizonte)
+  key_candidates <- col_names[grepl("id|code|codigo|perfil|sitio|layer|horizon|hor|capa|muestra|sample", tolower(col_names))]
+  dup_detected <- FALSE
+  for (kc in key_candidates) {
+    vals <- df[[kc]]
+    vals_non_na <- na.omit(vals)
+    n_dup <- sum(duplicated(vals_non_na))
+    if (n_dup > 0) {
+      if (!dup_detected) {
+        log_line("--- AUDITORÍA DE CLAVES POTENCIALES REPETIDAS (RÉPLICAS O DUPLICADOS) ---")
+        dup_detected <- TRUE
+      }
+      pct_dup <- round((n_dup / length(vals_non_na)) * 100, 1)
+      dup_keys <- unique(vals_non_na[duplicated(vals_non_na)])
+      sample_dup <- paste(as.character(head(dup_keys, 5)), collapse = ", ")
+      log_line(sprintf("  [ALERTA CLAVE DUPLICADA] Columna '%s': %d filas con clave repetida (%.1f%%). Ejemplos: [%s]",
+                       kc, n_dup, pct_dup, sample_dup))
+    }
+  }
+  if (dup_detected) {
+    log_line("  -> NOTA: Las claves repetidas suelen corresponder a réplicas analíticas. Requiere decisión del usuario en Paso 1.1.\n")
   }
   
   # Muestra de primeros 3 valores NO NULOS por columna
@@ -255,6 +282,6 @@ cat(sprintf("\n[OK] Reporte generado y guardado con exito en:\n  -> %s\n\n", out
 cat("--------------------------------------------------------------------------------\n")
 cat("INSTRUCCION PARA EL ALUMNO:\n")
 cat("Avísale a la IA en el chat que ya ejecutaste '00_inspect_data.R'.\n")
-cat("La IA leera '01_data/profiles/data_inspection_report.txt' para diseñar a medida\n")
-cat("tu script de mapeo de variables: '02_scripts/01_1_byod_audit.R'.\n")
+cat("La IA leerá '01_data/profiles/data_inspection_report.txt' para analizar la estructura\n")
+cat("y acordar contigo las decisiones de mapeo y relaciones en el chat.\n")
 cat("--------------------------------------------------------------------------------\n\n")

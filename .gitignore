@@ -20,7 +20,13 @@ terra_tmp/
 # Cloned scratch repositories (internal references)
 scratch/
 
+# User datasets, intermediate files, configurations, logs and reports
+01_data/profiles/*
+!01_data/profiles/.gitkeep
+config/user_*
+
 # OS specific files
 Thumbs.db
 .DS_Store
 desktop.ini
+
