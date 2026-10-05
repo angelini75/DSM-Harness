@@ -23,6 +23,7 @@ scratch/
 # User datasets, intermediate files, configurations, logs and reports
 01_data/profiles/*
 !01_data/profiles/.gitkeep
+!01_data/profiles/user_config.template.json
 config/user_*
 
 # OS specific files

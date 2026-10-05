@@ -1,0 +1,151 @@
+# User Configuration Schema Specification (`docs/CONFIG_SCHEMA.md`)
+
+This document defines the canonical JSON schema for `01_data/profiles/user_config.json`.
+Both AI assistants and human participants must adhere to this specification to avoid silent failures or unrecognized configuration parameters during the BYOD audit steps (`01_1_byod_audit.R`, `01_2_byod_audit.R`, `01_3_byod_audit.R`).
+
+---
+
+## 1. File Location & Precedence
+
+* **Path**: `01_data/profiles/user_config.json`
+* **Template**: `01_data/profiles/user_config.template.json`
+* **Git Status**: Ignored by git (personal/dataset-specific).
+* **Precedence**: When present, parameters in `user_config.json` override automatic heuristics and dictionaries in the R scripts.
+
+---
+
+## 2. Top-Level Keys Reference
+
+| Key | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `input_file` | String | `null` (auto-detect) | Path to profile dataset (`.xlsx`, `.xls`, `.csv`). E.g. `"01_data/profiles/my_data.xlsx"`. |
+| `skip_rows` | Integer | `0` | Number of metadata rows to skip before header row. |
+| `has_units_row` | Boolean | `false` | Set to `true` if the row immediately below header contains measurement units (e.g. `cm`, `%`, `g/kg`). |
+| `site_sheet` | String | `null` (auto-detect) | Name of Excel sheet containing site/profile coordinates and headers. |
+| `site_key` | String | `null` (auto-detect) | Primary key column name in `site_sheet` (e.g. `"id_sitio"`, `"profile_id"`). |
+| `horiz_sheet` | String | `null` (auto-detect) | *(Legacy 2-sheet mode)* Name of Excel sheet containing horizons. |
+| `join_key` | String | `null` (auto-detect) | *(Legacy 2-sheet mode)* Common key column name linking `site_sheet` and `horiz_sheet`. |
+| `horizon_sheets` | Array of Objects | `[]` | *(Multi-sheet mode)* Ordered list of horizon sheets to join sequentially. See §3. |
+| `duplicate_action` | String | `"preserve_and_flag"` | How to treat duplicate keys: `"preserve_and_flag"`, `"average"`, or `"keep_first"`. |
+| `column_mapping` | Object | `{}` | Key-value dictionary: `{"Standard_DSM_Var": "Original_Column_Name"}`. See §4. |
+| `om_to_soc_factor` | Numeric | `null` | Factor to derive $SOC = OM / factor$ (e.g. `1.724` or `2.0`). If omitted, OM is not converted. |
+| `source_crs` | Integer | `null` (auto-detect) | EPSG code of input coordinates (e.g. `4326` for WGS84, `32616` for UTM 16N). |
+| `outlier_action` | String | `"flag"` | Spatial outlier policy: `"flag"`, `"exclude"`, or `"keep"`. |
+| `outlier_ids` | Array of Strings | `[]` | List of `profile_code` IDs confirmed as spatial outliers. |
+| `estimate_bd` | Boolean | `false` | If `true`, estimates missing Bulk Density via pedotransfer function into `BD_est`. |
+
+---
+
+## 3. Multi-Sheet Relational Joins (`horizon_sheets`)
+
+When an Excel dataset distributes soil horizon information across multiple sheets (e.g. morphological description, chemical analyses, physical texture), use `horizon_sheets` instead of `horiz_sheet`:
+
+```json
+{
+  "site_sheet": "Sitios",
+  "site_key": "id_sitio",
+  "horizon_sheets": [
+    {
+      "sheet": "Horizontes_General",
+      "join_key": "id_sitio",
+      "horiz_key": "id_horiz"
+    },
+    {
+      "sheet": "Quimica",
+      "join_key": "id_horiz"
+    },
+    {
+      "sheet": "Fisica_Textura",
+      "join_key": "id_horiz"
+    }
+  ]
+}
+```
+
+* **`sheet`** (String, required): Exact name of the Excel sheet.
+* **`join_key`** (String, required): Column name used to join this sheet with the accumulated table. If the foreign key name differs from the left table, specify `"left_key": "colA", "right_key": "colB"`.
+* **`horiz_key`** (String, optional): Identifies the horizon-level primary key introduced by this sheet to be used in subsequent joins.
+
+---
+
+## 4. Standard DSM Target Variables (`column_mapping`)
+
+The `column_mapping` object maps canonical OpenNSIS / ISO 28258 variable names to the user's raw column names:
+
+| Standard DSM Variable | Allowed Types | Description |
+| :--- | :--- | :--- |
+| `profile_code` | Character / Numeric | Unique profile or pedon identifier (**Mandatory**) |
+| `Horizon` | Character | Horizon designation (e.g. `A`, `Bt`, `C`) |
+| `upper` | Numeric | Upper depth in cm (**Mandatory**) |
+| `lower` | Numeric | Lower depth in cm (**Mandatory**) |
+| `longitude` | Numeric | X coordinate (geographic or projected) (**Mandatory**) |
+| `latitude` | Numeric | Y coordinate (geographic or projected) (**Mandatory**) |
+| `SOC` | Numeric | Soil Organic Carbon (%) or g/kg |
+| `OM` | Numeric | Organic Matter (%) |
+| `pH_H2O` | Numeric | Soil pH in water |
+| `Clay` | Numeric | Clay fraction (%) |
+| `Sand` | Numeric | Sand fraction (%) |
+| `Silt` | Numeric | Silt fraction (%) |
+| `BD` | Numeric | Bulk density ($g/cm^3$) |
+| `CEC` | Numeric | Cation Exchange Capacity ($cmol(+)/kg$) |
+| `Total_N` | Numeric | Total Nitrogen (%) |
+| `P_ext` | Numeric | Extractable Phosphorus (mg/kg or ppm) |
+
+---
+
+## 5. Complete Examples
+
+### Example A: Single Sheet or Flat CSV
+```json
+{
+  "input_file": "01_data/profiles/national_soil_data.csv",
+  "column_mapping": {
+    "profile_code": "ID_MUESTRA",
+    "upper": "PROF_INI",
+    "lower": "PROF_FIN",
+    "longitude": "COORD_X",
+    "latitude": "COORD_Y",
+    "SOC": "CARBONO_ORG",
+    "pH_H2O": "PH_AGUA",
+    "Clay": "ARCILLA"
+  },
+  "source_crs": 4326,
+  "duplicate_action": "preserve_and_flag"
+}
+```
+
+### Example B: Relational Excel (Sites + Multiple Horizon Sheets)
+```json
+{
+  "input_file": "01_data/profiles/perfiles_nacionales.xlsx",
+  "site_sheet": "SITIOS",
+  "site_key": "ID_PERFIL",
+  "horizon_sheets": [
+    {
+      "sheet": "HORIZONTES",
+      "join_key": "ID_PERFIL",
+      "horiz_key": "ID_HORIZONTE"
+    },
+    {
+      "sheet": "ANALISIS_QUIMICO",
+      "join_key": "ID_HORIZONTE"
+    }
+  ],
+  "column_mapping": {
+    "profile_code": "ID_PERFIL",
+    "Horizon": "HORIZONTE_DESC",
+    "upper": "PROF_DESDE",
+    "lower": "PROF_HASTA",
+    "longitude": "X_COORD",
+    "latitude": "Y_COORD",
+    "OM": "MATERIA_ORGANICA",
+    "pH_H2O": "PH",
+    "Clay": "ARCILLA_PCT",
+    "Sand": "ARENA_PCT",
+    "Silt": "LIMO_PCT"
+  },
+  "om_to_soc_factor": 1.724,
+  "source_crs": 32616,
+  "duplicate_action": "preserve_and_flag"
+}
+```

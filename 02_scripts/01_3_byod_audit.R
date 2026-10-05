@@ -32,6 +32,7 @@ input_csv     <- "01_data/profiles/step1_2_spatial.csv"
 output_csv    <- "01_data/profiles/cleaned_profiles.csv"
 output_report <- "01_data/profiles/step1_3_pedological_report.txt"
 decisions_log <- "01_data/profiles/decisions_log.csv"
+decision_logged <- FALSE
 
 # Función auxiliar para registrar decisiones en decisions_log.csv
 record_decision <- function(step, criterion, decision, affected_rows = 0, affected_profiles = 0, details = "") {
@@ -50,6 +51,7 @@ record_decision <- function(step, criterion, decision, affected_rows = 0, affect
   } else {
     write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
   }
+  decision_logged <<- TRUE
 }
 
 # Cargar configuración de usuario si existe
@@ -353,7 +355,11 @@ cat(sprintf("  BD imposibles (<=0 o >2.65):   %d | pH anómalos: %d\n", bd_impos
 cat(sprintf("  BD medidos: %d | BD estimados: %d (columna 'BD_est')\n", bd_measured_count, bd_imputed_count))
 cat(sprintf("[OK] Dataset final guardado en:   %s\n", output_csv))
 cat(sprintf("[OK] Reporte guardado en:         %s\n", output_report))
-cat(sprintf("[OK] Registro decisiones:         %s\n", decisions_log))
+if (decision_logged) {
+  cat(sprintf("[OK] Registro decisiones:         %s\n", decisions_log))
+} else {
+  cat(sprintf("[*] Registro decisiones:         Sin cambios en esta corrida (%s)\n", decisions_log))
+}
 cat("==============================================================================\n\n")
 
 cat("------------------------------------------------------------------------------\n")

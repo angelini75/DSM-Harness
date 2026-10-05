@@ -1,0 +1,40 @@
+{
+  "_comment": "DSM-Harness: Plantilla de configuración de usuario (ver docs/CONFIG_SCHEMA.md)",
+  "input_file": "01_data/profiles/ejemplo_perfiles.xlsx",
+  "skip_rows": 0,
+  "has_units_row": false,
+  "site_sheet": "SITIOS",
+  "site_key": "id_sitio",
+  "horizon_sheets": [
+    {
+      "sheet": "HORIZONTES",
+      "join_key": "id_sitio",
+      "horiz_key": "id_horiz"
+    },
+    {
+      "sheet": "QUIMICA",
+      "join_key": "id_horiz"
+    }
+  ],
+  "duplicate_action": "preserve_and_flag",
+  "column_mapping": {
+    "profile_code": "id_sitio",
+    "Horizon": "horizonte",
+    "upper": "prof_desde",
+    "lower": "prof_hasta",
+    "longitude": "x_coord",
+    "latitude": "y_coord",
+    "SOC": "carbono_organico",
+    "OM": "materia_organica",
+    "pH_H2O": "ph_h2o",
+    "Clay": "arcilla_pct",
+    "Sand": "arena_pct",
+    "Silt": "limo_pct",
+    "BD": "densidad_aparente"
+  },
+  "om_to_soc_factor": null,
+  "source_crs": 4326,
+  "outlier_action": "flag",
+  "outlier_ids": [],
+  "estimate_bd": false
+}

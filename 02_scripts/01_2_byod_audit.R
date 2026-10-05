@@ -33,6 +33,7 @@ input_csv     <- "01_data/profiles/step1_1_variables.csv"
 output_csv    <- "01_data/profiles/step1_2_spatial.csv"
 output_report <- "01_data/profiles/step1_2_spatial_report.txt"
 decisions_log <- "01_data/profiles/decisions_log.csv"
+decision_logged <- FALSE
 
 # Función auxiliar para registrar decisiones en decisions_log.csv
 record_decision <- function(step, criterion, decision, affected_rows = 0, affected_profiles = 0, details = "") {
@@ -51,6 +52,7 @@ record_decision <- function(step, criterion, decision, affected_rows = 0, affect
   } else {
     write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
   }
+  decision_logged <<- TRUE
 }
 
 # Cargar configuración de usuario si existe
@@ -184,12 +186,13 @@ dat_valid$flag_spatial_outlier <- outlier_mask
 
 # Aplicar decisión del usuario sobre outliers si está configurada
 outlier_action_applied <- "Ninguna (puntos marcados con flag_spatial_outlier para revisión)"
-if (!is.null(user_cfg$spatial_outlier_action) && outlier_count > 0) {
-  if (user_cfg$spatial_outlier_action == "exclude") {
+target_outlier_act <- if (!is.null(user_cfg$outlier_action)) user_cfg$outlier_action else user_cfg$spatial_outlier_action
+if (!is.null(target_outlier_act) && outlier_count > 0) {
+  if (target_outlier_act == "exclude") {
     dat_valid <- dat_valid %>% filter(!flag_spatial_outlier)
     outlier_action_applied <- sprintf("Excluidos %d registros outliers", outlier_count)
     record_decision(1.2, "Outliers espaciales", "Excluir puntos anómalos", affected_rows = outlier_count, details = "Filtro IQR aplicado tras confirmación")
-  } else if (user_cfg$spatial_outlier_action == "flag") {
+  } else if (target_outlier_act == "flag") {
     outlier_action_applied <- sprintf("Conservados con flag_spatial_outlier = TRUE (%d registros)", outlier_count)
     record_decision(1.2, "Outliers espaciales", "Conservar y marcar bandera", affected_rows = outlier_count, details = "Columna flag_spatial_outlier agregada")
   } else {
@@ -304,7 +307,11 @@ cat(sprintf("  Extensión Y:          [%.4f, %.4f]\n", min_y, max_y))
 cat(sprintf("  Posibles outliers:    %d puntos detectados\n", outlier_count))
 cat(sprintf("[OK] Dataset guardado en:  %s\n", output_csv))
 cat(sprintf("[OK] Reporte guardado en:  %s\n", output_report))
-cat(sprintf("[OK] Registro decisiones:  %s\n", decisions_log))
+if (decision_logged) {
+  cat(sprintf("[OK] Registro decisiones:  %s\n", decisions_log))
+} else {
+  cat(sprintf("[*] Registro decisiones:  Sin cambios en esta corrida (%s)\n", decisions_log))
+}
 cat("==============================================================================\n\n")
 
 cat("------------------------------------------------------------------------------\n")
