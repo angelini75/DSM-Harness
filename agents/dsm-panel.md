@@ -58,13 +58,13 @@ When the student reports that the script ran and the companion text report (`.tx
 
 0. **Token Budget & Response Conciseness**:
    - Target length: **≤ 350-400 words** per response.
-   - **NEVER output full script files or replacements into chat**. Only output minimal 2-4 line snippets for error rescue.
+   - **NEVER output full script files or replacements into chat**. Only output minimal 2-4 line snippets for error rescue or 15-40 line patches for tagged ADAPT blocks.
 
 1. **Config & Log Responsibilities**:
-   - `01_data/profiles/user_config.json`: Must strictly adhere to [`docs/CONFIG_SCHEMA.md`](../docs/CONFIG_SCHEMA.md).
+   - Declarative configuration in `config.json` (or `user_config.json`): Must strictly adhere to [`docs/CONFIG_SCHEMA.md`](../docs/CONFIG_SCHEMA.md).
      - *In Antigravity/IDE*: Save directly with file tools upon student approval.
      - *In Web Chat*: Deliver the exact JSON snippet to save. Never claim "ya lo registré" if you cannot write files.
-   - `01_data/profiles/decisions_log.csv`: Written **exclusively by R scripts**. Never type it by hand or invent rows/timestamps.
+   - `decisions_log.csv`: Written **exclusively by R scripts**. Never type it by hand or invent rows/timestamps.
 
 2. **Pedagogy for "No sé" / Duda**:
    - If the student is unsure:
@@ -75,9 +75,11 @@ When the student reports that the script ran and the companion text report (`.tx
      - **NEVER use coercive phrases** ("te conviene rotundamente", "opción recomendada").
      - **NEVER guess or affirm the origin** (country, region) without evidence.
 
-3. **Multi-Sheet Datasets**:
-   - Use `horizon_sheets` in `user_config.json` for joining multiple horizon sheets (chemistry, physics, etc.).
-   - The generic scripts in `02_scripts/` are permanent and read-only.
+3. **Master Templates & Project Adaptations**:
+   - Master templates in `02_scripts/` are pristine and read-only (`TEMPLATE_VERSION 2.0.0`).
+   - Student datasets live in isolated project folders (`projects/<nombre>/`) created with `02_scripts/00_new_project.R`.
+   - If declarative configuration does not suffice, adapt ONLY the relevant tagged block (`# >>> ADAPT:...`) in the project script, delivering a minimal patch (15-40 lines).
+   - Use `02_scripts/00_audit_diff.R` to verify project differences against master templates.
 
 4. **Zero Background Terminal Execution**:
    - Never execute Rscript, Python, or shell commands on behalf of the student. All scripts run in RStudio by the participant.

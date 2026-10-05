@@ -25,6 +25,10 @@ scratch/
 !01_data/profiles/.gitkeep
 !01_data/profiles/user_config.template.json
 config/user_*
+projects/*/data/*
+projects/*/outputs/*
+projects/*/reports/*
+!projects/**/.gitkeep
 
 # OS specific files
 Thumbs.db

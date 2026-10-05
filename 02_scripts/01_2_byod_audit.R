@@ -20,7 +20,9 @@
 # 3. Dialoga con la IA en el chat para confirmar el CRS y decidir sobre outliers.
 # ==============================================================================
 
-rm(list = ls())
+TEMPLATE_VERSION <- "2.0.0"
+
+rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -122,6 +124,7 @@ is_projected <- (max_x_raw > 180 || min_x_raw < -180 || max_y_raw > 90 || min_y_
 coord_diagnosis <- ""
 crs_used <- "EPSG:4326 (WGS84 nativo)"
 
+# >>> ADAPT:crs_and_outliers
 if (is_projected) {
   cat("\n[ALERTA ESPACIAL]: Las coordenadas exceden los rangos de WGS84 (-180..180, -90..90).\n")
   cat(sprintf("  Rango X: [%.1f, %.1f] | Rango Y: [%.1f, %.1f]\n", min_x_raw, max_x_raw, min_y_raw, max_y_raw))
@@ -200,6 +203,7 @@ if (!is.null(target_outlier_act) && outlier_count > 0) {
     record_decision(1.2, "Outliers espaciales", "Conservar como válidos", affected_rows = outlier_count)
   }
 }
+# <<< ADAPT:crs_and_outliers
 
 # Perfiles colocalizados (mismas coordenadas)
 unique_locs <- dat_valid %>%

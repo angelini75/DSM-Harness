@@ -59,14 +59,21 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      5. **PROHIBITION**: Never use coercive statements ("te conviene rotundamente", "opción recomendada"). All methodological decisions belong to the participant.
      6. **PROHIBITION**: Never infer or state the dataset's country, region, or language of origin without user confirmation.
 
-6. **Permanent Scripts & Multi-Sheet BYOD Audit Flow**:
-   - **NO SCRIPT OVERWRITING**: All scripts in `02_scripts/` are permanent and read-only. Datasets with multi-sheet relations (N horizon sheets), unit rows, or disparate keys are handled entirely through [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md) via `user_config.json`.
+6. **Master Templates, Project Isolation & Minimal ADAPT Patches**:
+   - **Master Templates**: Scripts in `02_scripts/` are pristine, versioned templates (`TEMPLATE_VERSION 2.0.0`). They are NEVER directly modified or overwritten.
+   - **Project Workspaces**: Student datasets and execution happen in isolated project folders (`projects/<nombre>/`) generated via `02_scripts/00_new_project.R`. Each project carries its own `config.json`, `decisions_log.csv`, and local script copies with provenance headers.
+   - **Minimal Patch Protocol (Token Saver)**:
+     - Always attempt declarative configuration first via `config.json` ([`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md)).
+     - If custom logic is strictly necessary, assistants MUST deliver **ONLY the minimal code block** (15-40 lines) targeting the tagged hooks (`# >>> ADAPT:read_and_join`, `# >>> ADAPT:column_mapping`, `# >>> ADAPT:crs_and_outliers`, `# >>> ADAPT:pedological_checks`).
+     - **ABSOLUTE BAN**: Never paste entire scripts or replacements into the chat.
+     - Any adapted code must call `record_decision()` logging row/profile counts before and after.
+   - **Audit Diff**: Use `02_scripts/00_audit_diff.R` to inspect differences between project scripts and master templates.
    - **Strict Two-Turn Flow per Sub-Step**:
-     - **Turn 1 (Before execution)**: (1) Execution guide in RStudio, (2) Neutral observation guide, (3) Numbered decision options.
+     - **Turn 1 (Before execution)**: (1) Execution guide in RStudio (e.g. `run_step("1.1")`), (2) Neutral observation guide, (3) Numbered decision options.
      - **Turn 2 (Post execution)**: (1) Evidence-based diagnosis reading `.txt`, (2) Open pedological questions, (3) Confirmation and next step.
    - **Sub-Steps**:
      - **Step 0 (`00_inspect_data.R`)**: Autodetects dataset; produces compact report (≤ 6-8 KB); strict filtering of true ID candidates.
-     - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config against schema; supports 1 to N horizon sheets (`horizon_sheets`); checks duplicate keys; fails fast if 0 variables mapped; truthful reporting.
+     - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks duplicate keys; fails fast if 0 variables mapped; truthful reporting.
      - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; IQR spatial outlier audit; logs decisions when applied.
      - **Step 1.3 (`01_3_byod_audit.R`)**: Checks vertical continuity, texture balance, physically impossible values; optional non-circular BD estimation in `BD_est` with validation metrics.
 

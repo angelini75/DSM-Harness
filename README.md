@@ -122,14 +122,17 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - *"Act as geostat-modeler and evaluate whether this 1:1 scatterplot indicates model overfitting"*.
    - *"Act as soil-scientist and tell me if this relationship between SOC and bulk density makes pedological sense"*.
 
-4. **Pre-Inspection Workflow and Modular 3-Substep BYOD Audit**:
-   - **Generic, Permanent Scripts in `02_scripts/`**: The AI never modifies or overwrites the base scripts. User decisions, parameters, and mappings confirmed by the student are saved to `01_data/profiles/user_config.json` adhering to the official specification [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md) (template: `01_data/profiles/user_config.template.json`).
-   - **Interactive RStudio Assistant**: You can run `02_scripts/00_setup_config.R` to configure sheets, keys, and mappings interactively from the R console without editing JSON by hand.
-   - **Immutable Audit Trail**: `01_data/profiles/decisions_log.csv` is written **strictly and exclusively by R scripts** during execution (never by the AI, never typed manually).
-   - **Step 0 (Compact Structural Inspection with `00_inspect_data.R`)**: Place your dataset file in `01_data/profiles/` and run the script in RStudio (*Source*), which autodetects your file. It thoroughly scans sheets, data types, missingness, and filters genuine ID candidates and replicates in a compact report (≤ 6-8 KB) at `01_data/profiles/data_inspection_report.txt`.
-   - **Step 1.1 (Mapping, Multi-Sheet Relational Joins & Selection in `01_1_byod_audit.R`)**: Validates configuration, supports 1 to N horizon sheets (`horizon_sheets`), audits duplicates, and maps standard DSM variables. Generates `01_data/profiles/step1_1_variables.csv`, `step1_1_variables_report.txt`, and logs decisions to `decisions_log.csv`.
+4. **Master Template Architecture, Isolated Project Workspaces, and BYOD Flow**:
+   - **Master Templates in `02_scripts/` (v2.0)**: Base scripts are pristine, versioned templates with tagged adaptation hooks (`# >>> ADAPT:...`).
+   - **Isolated Project Creation**: Student or assistant can run `source("02_scripts/00_new_project.R")` to instantiate `projects/<name>/`, complete with dedicated `data/`, `outputs/`, `reports/`, `config.json`, and `decisions_log.csv`.
+   - **Simplified Execution**: Inside each project workspace, simply run `source("projects/<name>/run_step.R")` and call `run_step("0")`, `run_step("1.1")`, etc.
+   - **Minimal Patch Protocol**: If declarative configuration (`config.json` adhering to [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md)) cannot cover an atypical dataset, the AI provides strictly the adapted code block (15–40 lines) for the corresponding `ADAPT` hook in the project script, never a full script dump.
+   - **Provenance Audit & Diff Tool**: `source("02_scripts/00_audit_diff.R")` automatically audits modifications between project scripts and the master templates.
+   - **Immutable Audit Trail**: `decisions_log.csv` is written **strictly and exclusively by R scripts** during execution (never by the AI, never typed manually).
+   - **Step 0 (Compact Structural Inspection with `00_inspect_data.R`)**: Scans sheets, data types, missingness, and filters genuine ID candidates and replicates in a compact report (≤ 6-8 KB) at `reports/data_inspection_report.txt`.
+   - **Step 1.1 (Mapping, Multi-Sheet Relational Joins & Selection in `01_1_byod_audit.R`)**: Validates configuration, supports 1 to N horizon sheets (`horizon_sheets`), audits duplicates, and maps standard DSM variables. Generates `data/step1_1_variables.csv`, `reports/step1_1_variables_report.txt`, and logs decisions to `decisions_log.csv`.
    - **Step 1.2 (Spatial Coordinate and CRS Audit in `01_2_byod_audit.R`)**: Audits coordinates using 100% computed metrics, detects metric projections, and prompts for the source EPSG without guessing. Launches an interactive map (`mapview`/`ggplot2`), detects potential spatial outliers, and presents options before moving to Step 1.3.
-   - **Step 1.3 (Depths and Pedological Coherence in `01_3_byod_audit.R`)**: Audits vertical horizon continuity (overlaps and gaps), texture balance, and impossible physical values. Bulk Density (BD) estimation is optional (never imputed by default to avoid circularity with SOC); when approved, it is stored in the separate column `BD_est` with validation metrics ($R^2$, RMSE). Outputs `01_data/profiles/cleaned_profiles.csv` and `step1_3_pedological_report.txt`.
+   - **Step 1.3 (Depths and Pedological Coherence in `01_3_byod_audit.R`)**: Audits vertical horizon continuity (overlaps and gaps), texture balance, and impossible physical values. Bulk Density (BD) estimation is optional (never imputed by default to avoid circularity with SOC); when approved, it is stored in the separate column `BD_est` with validation metrics ($R^2$, RMSE). Outputs `data/cleaned_profiles.csv` and `reports/step1_3_pedological_report.txt`.
 
 
 ---

@@ -20,7 +20,9 @@
 # 3. Dialoga con la IA en el chat sobre los hallazgos y decisiones de consistencia.
 # ==============================================================================
 
-rm(list = ls())
+TEMPLATE_VERSION <- "2.0.0"
+
+rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -76,6 +78,7 @@ dat <- readr::read_csv(input_csv, show_col_types = FALSE)
 n_initial <- nrow(dat)
 
 # 2. Auditoría de Límites Verticales de Horizontes ------------------------------
+# >>> ADAPT:pedological_checks
 cat("[*] Auditando profundidades de horizontes (upper, lower)...\n")
 
 dat <- dat %>%
@@ -269,6 +272,7 @@ if (estimate_bd_requested) {
     ptf_status <- "No fue posible estimar BD (datos de OM/SOC ausentes)"
   }
 }
+# <<< ADAPT:pedological_checks
 
 # 4. Cálculo de Métricas por Capas Estándar (0-30 cm vs 30-100 cm) --------------
 dat <- dat %>%

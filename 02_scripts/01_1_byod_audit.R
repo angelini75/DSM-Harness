@@ -19,7 +19,9 @@
 # 3. Dialoga con la IA en el chat para confirmar el mapeo y réplicas.
 # ==============================================================================
 
-rm(list = ls())
+TEMPLATE_VERSION <- "2.0.0"
+
+rm(list = setdiff(ls(), c("input_file", "TEMPLATE_VERSION")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -115,6 +117,7 @@ clean_units_row <- function(df) {
 }
 
 # 2. Carga y Estructuración Relacional (1 o N Hojas) ---------------------------
+# >>> ADAPT:read_and_join
 join_info <- "Lectura directa"
 n_sites_raw <- 0
 n_horiz_raw <- 0
@@ -303,6 +306,7 @@ if (ext %in% c("xlsx", "xls")) {
   dat_raw <- clean_units_row(dat_raw)
   join_info <- "Archivo delimitado plano (CSV)"
 }
+# <<< ADAPT:read_and_join
 
 # 3. Diccionario Edafológico de Variables Clave para DSM (ISO 28258) ------------
 dsm_dict <- list(
@@ -337,6 +341,7 @@ dsm_dict <- list(
 cols_raw   <- names(dat_raw)
 cols_clean <- tolower(trimws(gsub("[^[:alnum:]_]", "_", cols_raw)))
 
+# >>> ADAPT:column_mapping
 mapping <- data.frame(Original = character(), Estandar_DSM = character(), stringsAsFactors = FALSE)
 rename_vector <- character()
 
@@ -373,6 +378,7 @@ if (!is.null(user_cfg$column_mapping) && length(user_cfg$column_mapping) > 0) {
     }
   }
 }
+# <<< ADAPT:column_mapping
 
 # 4. Fail-Fast Pedológico: Validación Estricta de Columnas -----------------------
 essential_vars <- c("profile_code", "longitude", "latitude", "upper", "lower")
