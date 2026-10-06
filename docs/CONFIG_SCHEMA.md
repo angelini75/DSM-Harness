@@ -35,8 +35,9 @@ Both AI assistants and human participants must adhere to this specification to a
 | `source_crs` | Integer | `null` (auto-detect) | EPSG code of input coordinates (e.g. `4326` for WGS84, `32616` for UTM 16N). |
 | `outlier_action` | String | `"flag"` | Spatial outlier policy: `"flag"`, `"exclude"`, or `"keep"`. |
 | `outlier_ids` | Array of Strings | `[]` | List of `profile_code` IDs confirmed as spatial outliers. |
-| `estimate_bd` | Boolean | `false` | If `true`, estimates missing Bulk Density via pedotransfer function into `BD_est`. |
-| `selected_ptf` | String | `null` | Optional PTF model: `"rawls_1982"`, `"adams_1973"`, `"alexander_1980"`, or `"saxton_1986"`. If `null` and measured validation data is available ($n \ge 5$), the model with lowest RMSE is selected automatically. If $n < 5$, estimation is omitted unless explicitly specified here. |
+| `estimate_bd` | Boolean | `false` | If `true`, enables Bulk Density estimation into `BD_est` upon user confirmation of the selected model. |
+| `selected_ptf` | String | `null` | Confirmed model for BD estimation: `"local_fit"` (calibrated simple parametric function when $n \ge \text{bd\_fit\_min\_n}$), `"best_published"` (lowest RMSE among published reference PTFs), or specific model: `"saini_1996"`, `"drew_1973"`, `"jeffrey_1979"`, `"grigal_1989"`, `"adams_1973"`, `"honeyset_1989"`. BD is never imputed without user confirmation. |
+| `bd_fit_min_n` | Integer | `30` | Minimum number of measured BD samples required to calibrate a local simple parametric model without machine learning. |
 
 ---
 

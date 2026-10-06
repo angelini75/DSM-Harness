@@ -174,7 +174,7 @@ test_that("Step 1.2 detects spatial outliers via 3x IQR and documents bounding b
   expect_true(any(grepl("caja envolvente", rep_lines, fixed = TRUE)))
 })
 
-test_that("Step 1.3 performs multi-PTF competition selection when n >= 5 and omits when n < 5", {
+test_that("Step 1.3 evaluates reference PTFs, local calibration (n >= 30), and enforces user confirmation", {
   test_csv <- "01_data/profiles/step1_2_spatial.csv"
   cfg_json <- "01_data/profiles/user_config.json"
   
@@ -185,50 +185,91 @@ test_that("Step 1.3 performs multi-PTF competition selection when n >= 5 and omi
     if (file.exists("01_data/profiles/step1_3_pedological_report.txt")) unlink("01_data/profiles/step1_3_pedological_report.txt")
   }, add = TRUE)
   
-  # Caso 1: n >= 5 datos medidos -> competencia y selección automática
+  # Caso 1: 5 <= n < 30 (n = 10 medidos). Contraste de catálogo de referencia
   df_val <- data.frame(
-    profile_code = paste0("P", 1:12),
+    profile_code = paste0("P", 1:15),
     longitude = -60, latitude = -34,
     upper = 0, lower = 20,
-    SOC = c(1.5, 2.0, 0.8, 1.2, 3.0, 2.5, 1.1, 1.8, 0.9, 2.2, 1.4, 2.1),
-    Sand = c(40, 50, 60, 30, 20, 35, 45, 55, 65, 25, 40, 50),
-    Clay = c(20, 15, 10, 30, 40, 25, 18, 12, 8, 35, 22, 16),
-    BD = c(1.35, 1.28, 1.45, 1.25, 1.15, 1.22, 1.38, 1.30, NA, NA, NA, NA) # 8 medidos (n >= 5)
+    SOC = c(1.5, 2.0, 0.8, 1.2, 3.0, 2.5, 1.1, 1.8, 0.9, 2.2, NA, 1.4, 2.1, 1.0, 1.6),
+    BD = c(1.35, 1.28, 1.45, 1.25, 1.15, 1.22, 1.38, 1.30, 1.42, 1.20, NA, NA, NA, NA, NA) # 10 medidos
   )
   write.csv(df_val, test_csv, row.names = FALSE)
   
-  cfg_auto <- list(estimate_bd = TRUE)
-  jsonlite::write_json(cfg_auto, cfg_json, auto_unbox = TRUE)
+  # Sin confirmación (selected_ptf = null): no debe imputar BD_est pero sí generar tabla
+  cfg_diag <- list(estimate_bd = FALSE)
+  jsonlite::write_json(cfg_diag, cfg_json, auto_unbox = TRUE)
   
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
-  res_csv <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  expect_true("BD_est" %in% names(res_csv))
-  # Los faltantes (filas 9 a 12) deben tener BD_est imputado
-  expect_true(all(!is.na(res_csv$BD_est[9:12])))
+  res_diag <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true(all(is.na(res_diag$BD_est)))
   
   rep_lines <- readLines("01_data/profiles/step1_3_pedological_report.txt", encoding = "UTF-8")
   expect_true(any(grepl("TABLA COMPARATIVA DE PTFS EVALUADAS", rep_lines, fixed = TRUE)))
+  expect_true(any(grepl("Saini (1996)", rep_lines, fixed = TRUE)))
+  expect_true(any(grepl("Adams (1973)", rep_lines, fixed = TRUE)))
   
-  # Caso 2: n < 5 datos medidos sin selected_ptf -> omisión por defecto
+  # Confirmando modelo publicado ('best_published' o 'adams_1973') con estimate_bd = true
+  cfg_conf <- list(estimate_bd = TRUE, selected_ptf = "best_published")
+  jsonlite::write_json(cfg_conf, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res_conf <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  # Filas 11 a 15 tenían BD faltante; las que tienen SOC (12 a 15) deben tener BD_est
+  expect_true(all(!is.na(res_conf$BD_est[12:15])))
+  
+  # Caso 2: n >= 30 (n = 35 medidos). Calibración de función paramétrica local simple
+  set.seed(123)
+  soc_sim <- runif(40, 0.5, 4.0)
+  om_sim <- soc_sim * 1.724
+  # BD sintética con relación inversa a OM
+  bd_sim <- round(1.60 - 0.08 * om_sim + rnorm(40, 0, 0.04), 2)
+  bd_sim[36:40] <- NA # 5 faltantes a estimar
+  
+  df_large <- data.frame(
+    profile_code = paste0("P", 1:40),
+    longitude = -60, latitude = -34,
+    upper = 0, lower = 20,
+    SOC = soc_sim,
+    BD = bd_sim
+  )
+  write.csv(df_large, test_csv, row.names = FALSE)
+  
+  # Con n >= 30 y selected_ptf = "local_fit", debe calibrar función local simple e imputar
+  cfg_local <- list(estimate_bd = TRUE, selected_ptf = "local_fit", bd_fit_min_n = 30)
+  jsonlite::write_json(cfg_local, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res_local <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true(all(!is.na(res_local$BD_est[36:40])))
+  
+  rep_large <- readLines("01_data/profiles/step1_3_pedological_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("Ajuste local simple", rep_large, fixed = TRUE)))
+  
+  # Caso 3: n < 5 datos medidos
   df_noval <- df_val
-  df_noval$BD <- c(1.35, 1.28, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA) # solo 2 medidos (n < 5)
+  df_noval$BD <- c(1.35, 1.28, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA) # solo 2 medidos
   write.csv(df_noval, test_csv, row.names = FALSE)
+  
+  cfg_noval <- list(estimate_bd = TRUE)
+  jsonlite::write_json(cfg_noval, cfg_json, auto_unbox = TRUE)
   
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
   res_noval <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  # Al no haber validación suficiente, no debe correr PTF por defecto
+  # Sin validación suficiente ni selected_ptf no debe imputar
   expect_true(all(is.na(res_noval$BD_est)))
   
-  # Caso 3: n < 5 pero con selected_ptf explícito -> aplica la PTF solicitada
-  cfg_explicit <- list(estimate_bd = TRUE, selected_ptf = "rawls_1982")
-  jsonlite::write_json(cfg_explicit, cfg_json, auto_unbox = TRUE)
+  # Pero si el usuario elige forzar 'saini_1996' aún con n < 5:
+  cfg_force <- list(estimate_bd = TRUE, selected_ptf = "saini_1996")
+  jsonlite::write_json(cfg_force, cfg_json, auto_unbox = TRUE)
   
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
-  res_explicit <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  expect_true(all(!is.na(res_explicit$BD_est[3:12])))
+  res_force <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true(all(!is.na(res_force$BD_est[12:15])))
 })
 
 test_that("00_new_project.R instantiates isolated project with updated decisions_log structure", {

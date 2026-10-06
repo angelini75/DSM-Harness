@@ -39,7 +39,7 @@ When a student initiates or prepares a step:
   - *Duplicados*: [1] Promediar réplicas numéricas, [2] Conservar primera medición, [3] Conservar y marcar bandera de auditoría.
   - *CRS*: [1] Grados WGS84 (4326), [2] Coordenadas métricas proyectadas (indicar EPSG de origen).
   - *Outliers*: [1] Marcar bandera (flag) para modelado, [2] Excluir puntos, [3] Conservar como ubicación legítima (recordar que IQR 3x no detecta puntos interiores y se debe inspeccionar el mapa visual).
-  - *BD*: [1] Mantener solo medidos sin imputar, [2] Estimar faltantes en columna `BD_est` (si hay $\ge 5$ datos medidos, se evalúan PTFs publicadas y se selecciona la de menor RMSE; si no hay suficientes medidos, no se corre por defecto salvo elección explícita de `selected_ptf`).
+  - *BD*: [1] Conservar únicamente valores medidos sin imputar en `BD_est`, [2] Si $n \ge 30$: Aplicar función paramétrica simple calibrada localmente (`local_fit`), [3] Si $5 \le n < 30$: Aplicar la mejor PTF de referencia del catálogo contrastado (`best_published` o elegir Saini, Drew, Jeffrey, Grigal, Adams, Honeyset), [4] Si $n < 5$: No estimar por falta de datos o indicar modelo sabiendo que no se puede contrastar.
 ```
 
 ### Turn 2: Evidence-Based Diagnosis & Open Pedological Reflection (After Student Runs Code)
@@ -86,8 +86,9 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 | `source_crs` | Entero | `null` | Código EPSG si las coordenadas son métricas proyectadas (ej: `32616`). |
 | `outlier_action` | String | `"flag"` | Acción ante outliers espaciales: `"flag"`, `"exclude"`, `"keep"`. |
 | `outlier_ids` | Lista Strings| `[]` | Lista de IDs de perfiles marcados como outliers. |
-| `estimate_bd` | Booleano | `false` | `true` para estimar BD en `BD_est` mediante competencia y validación de PTFs. |
-| `selected_ptf` | String | `null` | Nombre de PTF a forzar si no hay validación local suficiente (`"rawls_1982"`, `"adams_1973"`, `"alexander_1980"`, `"saxton_1986"`). Si `null` y $n \ge 5$, el script evalúa y selecciona la de mejor ajuste (menor RMSE). |
+| `estimate_bd` | Booleano | `false` | `true` para habilitar estimación de BD en `BD_est` tras confirmar modelo. |
+| `selected_ptf` | String | `null` | Modelo confirmado por el usuario: `"local_fit"` (función simple ajustada localmente), `"best_published"` (menor RMSE entre PTFs de referencia), o específica (`"saini_1996"`, `"drew_1973"`, `"jeffrey_1979"`, `"grigal_1989"`, `"adams_1973"`, `"honeyset_1989"`). `BD_est` NUNCA se imputa sin confirmación. |
+| `bd_fit_min_n` | Entero | `30` | Mínimo de muestras medidas para calibrar ajuste paramétrico local sin ML (default: 30). |
 
 ---
 

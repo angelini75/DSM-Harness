@@ -40,5 +40,6 @@
   "outlier_action": "flag",
   "outlier_ids": [],
   "estimate_bd": false,
-  "selected_ptf": null
+  "selected_ptf": null,
+  "bd_fit_min_n": 30
 }

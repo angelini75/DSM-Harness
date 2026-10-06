@@ -252,83 +252,170 @@ ptf_eval_table <- data.frame(
 )
 ptf_status <- "No solicitada (conservando BD medida original sin imputar)"
 
-# Catálogo de PTFs documentadas candidatas
+# Catálogo base de PTFs del script de referencia y calibración local (Issue #24)
 om_series <- if ("OM" %in% names(dat)) as.numeric(dat$OM) else if ("SOC" %in% names(dat)) as.numeric(dat$SOC) * 1.724 else NULL
-soc_series <- if ("SOC" %in% names(dat)) as.numeric(dat$SOC) else if ("OM" %in% names(dat)) as.numeric(dat$OM) / 1.724 else NULL
-sand_series <- if ("Sand" %in% names(dat)) as.numeric(dat$Sand) else NULL
-clay_series <- if ("Clay" %in% names(dat)) as.numeric(dat$Clay) else NULL
+has_om_or_soc <- !is.null(om_series) && sum(!is.na(om_series)) > 0
 
-calc_ptf_candidates <- function(df) {
+# Umbral mínimo de muestras para calibrar función local simple (default 30, configurable)
+bd_fit_min_n <- if (!is.null(user_cfg$bd_fit_min_n)) as.integer(user_cfg$bd_fit_min_n) else 30L
+if (is.na(bd_fit_min_n) || bd_fit_min_n < 5L) bd_fit_min_n <- 30L
+
+# 1. Catálogo base de referencia (Saini 1996, Drew 1973, Jeffrey 1979, Grigal 1989, Adams 1973, Honeyset 1989)
+calc_reference_ptfs <- function(om_vec) {
   res <- list()
-  # 1. Rawls et al. (1982)
-  if (!is.null(om_series) && sum(!is.na(om_series)) > 0) {
-    om_c <- pmin(pmax(om_series, 0.01), 60)
-    bd_base <- if (!is.null(sand_series) && !is.null(clay_series)) {
-      1.15 + 0.0038 * sand_series + 0.001 * clay_series
-    } else 1.45
-    res[["rawls_1982"]] <- list(
-      name = "Rawls et al. (1982)",
-      formula = "100 / (OM/0.224 + (100-OM)/BD_min)",
-      pred = round(100 / ((om_c / 0.224) + ((100 - om_c) / bd_base)), 3)
-    )
-  }
-  # 2. Adams (1973) / Curtis & Post (1964)
-  if (!is.null(om_series) && sum(!is.na(om_series)) > 0) {
-    om_c <- pmin(pmax(om_series, 0.01), 60)
-    res[["adams_1973"]] <- list(
-      name = "Adams (1973)",
-      formula = "100 / (OM/0.244 + (100-OM)/1.64)",
-      pred = round(100 / ((om_c / 0.244) + ((100 - om_c) / 1.64)), 3)
-    )
-  }
-  # 3. Alexander (1980) / Manrique & Jones (1991)
-  if (!is.null(soc_series) && sum(!is.na(soc_series)) > 0) {
-    soc_c <- pmax(soc_series, 0.001)
-    res[["alexander_1980"]] <- list(
-      name = "Alexander (1980)",
-      formula = "1.66 - 0.318 * sqrt(SOC)",
-      pred = round(pmax(pmin(1.66 - 0.318 * sqrt(soc_c), 2.2), 0.3), 3)
-    )
-  }
-  # 4. Saxton et al. (1986)
-  if (!is.null(sand_series) && !is.null(clay_series) && sum(!is.na(sand_series)) > 0) {
-    res[["saxton_1986"]] <- list(
-      name = "Saxton et al. (1986)",
-      formula = "1.30 + 0.003 * Sand - 0.002 * Clay",
-      pred = round(pmax(pmin(1.30 + 0.003 * sand_series - 0.002 * clay_series, 2.2), 0.5), 3)
-    )
-  }
+  if (is.null(om_vec) || sum(!is.na(om_vec)) == 0) return(res)
+  
+  om_c <- pmin(pmax(om_vec, 0.01), 70)
+  
+  # Saini (1996)
+  res[["saini_1996"]] <- list(
+    name = "Saini (1996)",
+    formula = "1.62 - 0.06 * OM",
+    pred = round(pmax(pmin(1.62 - 0.06 * om_c, 2.65), 0.2), 3)
+  )
+  # Drew (1973)
+  res[["drew_1973"]] <- list(
+    name = "Drew (1973)",
+    formula = "1 / (0.6268 + 0.0361 * OM)",
+    pred = round(pmax(pmin(1 / (0.6268 + 0.0361 * om_c), 2.65), 0.2), 3)
+  )
+  # Jeffrey (1979)
+  res[["jeffrey_1979"]] <- list(
+    name = "Jeffrey (1979)",
+    formula = "1.482 - 0.6786 * ln(OM)",
+    pred = round(pmax(pmin(1.482 - 0.6786 * log(om_c), 2.65), 0.2), 3)
+  )
+  # Grigal (1989)
+  res[["grigal_1989"]] <- list(
+    name = "Grigal (1989)",
+    formula = "0.669 + 0.941 * exp(-0.06 * OM)",
+    pred = round(pmax(pmin(0.669 + 0.941 * exp(-0.06 * om_c), 2.65), 0.2), 3)
+  )
+  # Adams (1973)
+  res[["adams_1973"]] <- list(
+    name = "Adams (1973)",
+    formula = "100 / (OM/0.244 + (100-OM)/2.65)",
+    pred = round(pmax(pmin(100 / ((om_c / 0.244) + ((100 - om_c) / 2.65)), 2.65), 0.2), 3)
+  )
+  # Honeyset & Ratkowsky (1989)
+  res[["honeyset_1989"]] <- list(
+    name = "Honeyset & Ratkowsky (1989)",
+    formula = "1 / (0.564 + 0.0556 * OM)",
+    pred = round(pmax(pmin(1 / (0.564 + 0.0556 * om_c), 2.65), 0.2), 3)
+  )
   res
 }
 
-if (estimate_bd_req) {
-  cat("[*] Solicitud de estimación de Densidad Aparente detectada (estimate_bd = true) ...\n")
-  ptf_list <- calc_ptf_candidates(dat)
-  val_obs_mask <- (!is.na(dat$BD)) & (!bd_impossible_mask)
-  n_val_total <- sum(val_obs_mask)
+# 2. Ajuste paramétrico simple local con datos locales (sin Machine Learning)
+fit_local_models <- function(df_val, om_full) {
+  om_full_c <- pmin(pmax(om_full, 0.01), 70)
+  val_om_c  <- pmin(pmax(df_val$OM, 0.01), 70)
+  val_bd    <- df_val$BD
   
-  # Decisión del responsable (Issue #23):
-  # 1. Si hay suficientes datos medidos (n >= 5): competir y elegir la que mejor se adapte (menor RMSE)
-  # 2. Si no hay suficientes datos medidos: no correr la PTF o aplicar la elegida expresamente por el usuario
-  if (n_val_total >= 5 && length(ptf_list) > 0) {
-    cat(sprintf("[*] Datos de validación disponibles (n = %d). Evaluando competencia de PTFs candidatas ...\n", n_val_total))
-    
-    for (pkey in names(ptf_list)) {
-      p_obj <- ptf_list[[pkey]]
-      pred_vals <- p_obj$pred
-      eval_mask <- val_obs_mask & (!is.na(pred_vals))
-      
-      if (sum(eval_mask) >= 5) {
-        obs <- dat$BD[eval_mask]
-        prd <- pred_vals[eval_mask]
-        r2_val   <- round(cor(obs, prd)^2, 3)
-        rmse_val <- round(sqrt(mean((obs - prd)^2)), 3)
-        bias_val <- round(mean(prd - obs), 3)
+  candidates <- list()
+  
+  # Lineal: BD ~ OM
+  m1 <- tryCatch(lm(val_bd ~ val_om_c), error = function(e) NULL)
+  if (!is.null(m1)) {
+    cf <- coef(m1)
+    sign_b <- ifelse(cf[2] >= 0, "+", "-")
+    f_str <- sprintf("%.3f %s %.4f*OM", cf[1], sign_b, abs(cf[2]))
+    p_val <- pmax(pmin(predict(m1, newdata = data.frame(val_om_c = val_om_c)), 2.65), 0.2)
+    p_all <- round(pmax(pmin(predict(m1, newdata = data.frame(val_om_c = om_full_c)), 2.65), 0.2), 3)
+    candidates[["Lineal"]] <- list(formula = f_str, pred_val = p_val, pred_all = p_all)
+  }
+  
+  # Logarítmico: BD ~ ln(OM)
+  m2 <- tryCatch(lm(val_bd ~ log(val_om_c)), error = function(e) NULL)
+  if (!is.null(m2)) {
+    cf <- coef(m2)
+    sign_b <- ifelse(cf[2] >= 0, "+", "-")
+    f_str <- sprintf("%.3f %s %.4f*ln(OM)", cf[1], sign_b, abs(cf[2]))
+    p_val <- pmax(pmin(predict(m2, newdata = data.frame(val_om_c = val_om_c)), 2.65), 0.2)
+    p_all <- round(pmax(pmin(predict(m2, newdata = data.frame(val_om_c = om_full_c)), 2.65), 0.2), 3)
+    candidates[["Logarítmico"]] <- list(formula = f_str, pred_val = p_val, pred_all = p_all)
+  }
+  
+  # Recíproco / Inverso: 1/BD ~ OM
+  m3 <- tryCatch(lm(I(1 / val_bd) ~ val_om_c), error = function(e) NULL)
+  if (!is.null(m3)) {
+    cf <- coef(m3)
+    sign_b <- ifelse(cf[2] >= 0, "+", "-")
+    f_str <- sprintf("1 / (%.4f %s %.4f*OM)", cf[1], sign_b, abs(cf[2]))
+    pred_inv_val <- predict(m3, newdata = data.frame(val_om_c = val_om_c))
+    p_val <- pmax(pmin(ifelse(pred_inv_val > 0, 1 / pred_inv_val, 2.65), 2.65), 0.2)
+    pred_inv_all <- predict(m3, newdata = data.frame(val_om_c = om_full_c))
+    p_all <- round(pmax(pmin(ifelse(pred_inv_all > 0, 1 / pred_inv_all, 2.65), 2.65), 0.2), 3)
+    candidates[["Recíproco"]] <- list(formula = f_str, pred_val = p_val, pred_all = p_all)
+  }
+  
+  # Exponencial: ln(BD) ~ OM
+  m4 <- tryCatch(lm(log(val_bd) ~ val_om_c), error = function(e) NULL)
+  if (!is.null(m4)) {
+    cf <- coef(m4)
+    sign_b <- ifelse(cf[2] >= 0, "+", "-")
+    f_str <- sprintf("%.4f * exp(%s%.4f*OM)", exp(cf[1]), ifelse(cf[2] >= 0, "", "-"), abs(cf[2]))
+    pred_log_val <- predict(m4, newdata = data.frame(val_om_c = val_om_c))
+    p_val <- pmax(pmin(exp(pred_log_val), 2.65), 0.2)
+    pred_log_all <- predict(m4, newdata = data.frame(val_om_c = om_full_c))
+    p_all <- round(pmax(pmin(exp(pred_log_all), 2.65), 0.2), 3)
+    candidates[["Exponencial"]] <- list(formula = f_str, pred_val = p_val, pred_all = p_all)
+  }
+  
+  if (length(candidates) == 0) return(NULL)
+  
+  rmse_list <- sapply(candidates, function(cand) sqrt(mean((val_bd - cand$pred_val)^2)))
+  best_name <- names(which.min(rmse_list))
+  best_cand <- candidates[[best_name]]
+  
+  list(
+    type = best_name,
+    formula = best_cand$formula,
+    name = sprintf("Ajuste local simple (%s)", best_name),
+    pred = best_cand$pred_all
+  )
+}
+
+val_obs_mask <- (!is.na(dat$BD)) & (!bd_impossible_mask) & (!is.na(om_series)) & (om_series > 0)
+n_val_total <- sum(val_obs_mask)
+all_models_list <- list()
+
+if (has_om_or_soc) {
+  # Cargar catálogo publicado de referencia
+  ptf_ref <- calc_reference_ptfs(om_series)
+  for (pkey in names(ptf_ref)) {
+    all_models_list[[pkey]] <- ptf_ref[[pkey]]
+  }
+  
+  # Muestras suficientes para calibrar función local simple (n >= bd_fit_min_n)
+  if (n_val_total >= bd_fit_min_n) {
+    cat(sprintf("[*] Muestras medidas suficientes (n = %d >= %d). Calibrando función paramétrica simple local ...\n",
+                n_val_total, bd_fit_min_n))
+    df_val_subset <- data.frame(BD = dat$BD[val_obs_mask], OM = om_series[val_obs_mask])
+    loc_fit <- fit_local_models(df_val_subset, om_series)
+    if (!is.null(loc_fit)) {
+      all_models_list[["local_fit"]] <- loc_fit
+    }
+  }
+  
+  # Contrastar modelos contra datos medidos (n >= 5)
+  if (n_val_total >= 5) {
+    obs_bd <- dat$BD[val_obs_mask]
+    for (mkey in names(all_models_list)) {
+      m_obj <- all_models_list[[mkey]]
+      prd_val <- m_obj$pred[val_obs_mask]
+      valid_pair <- (!is.na(prd_val)) & (!is.na(obs_bd))
+      if (sum(valid_pair) >= 5) {
+        obs_sub <- obs_bd[valid_pair]
+        prd_sub <- prd_val[valid_pair]
+        r2_val   <- round(cor(obs_sub, prd_sub)^2, 3)
+        rmse_val <- round(sqrt(mean((obs_sub - prd_sub)^2)), 3)
+        bias_val <- round(mean(prd_sub - obs_sub), 3)
         
         ptf_eval_table <- rbind(ptf_eval_table, data.frame(
-          PTF = p_obj$name,
-          Formula = p_obj$formula,
-          n_val = as.integer(sum(eval_mask)),
+          PTF = m_obj$name,
+          Formula = m_obj$formula,
+          n_val = as.integer(sum(valid_pair)),
           R2 = r2_val,
           RMSE = rmse_val,
           Bias = bias_val,
@@ -336,61 +423,67 @@ if (estimate_bd_req) {
         ))
       }
     }
-    
-    if (nrow(ptf_eval_table) > 0) {
-      # Seleccionar automáticamente la PTF con menor RMSE
-      best_idx <- which.min(ptf_eval_table$RMSE)
-      best_ptf_name <- ptf_eval_table$PTF[best_idx]
-      best_ptf_rmse <- ptf_eval_table$RMSE[best_idx]
-      best_ptf_r2   <- ptf_eval_table$R2[best_idx]
-      
-      # Buscar vector de predicción de la ganadora
-      winner_key <- names(ptf_list)[sapply(ptf_list, function(x) x$name == best_ptf_name)]
-      winner_pred <- ptf_list[[winner_key]]$pred
-      dat$BD_est <- winner_pred
-      
-      impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
-      bd_imputed_count <- sum(impute_mask)
-      dat$BD_source[impute_mask] <- "estimated"
-      
-      ptf_status <- sprintf("Seleccionada por mejor ajuste: %s (RMSE = %.3f g/cm3, R2 = %.3f sobre n=%d). Horizontes estimados: %d.",
-                            best_ptf_name, best_ptf_rmse, best_ptf_r2, ptf_eval_table$n_val[best_idx], bd_imputed_count)
-      
-      record_decision(1.3, "Estimación BD", sprintf("PTF seleccionada por validación: %s (RMSE=%.3f, R2=%.3f)", best_ptf_name, best_ptf_rmse, best_ptf_r2),
-                      source = "script_default", affected_rows = bd_imputed_count,
-                      details = sprintf("Mejor ajuste competitivo sobre %d muestras medidas de validación", ptf_eval_table$n_val[best_idx]))
-    } else {
-      ptf_status <- "No fue posible evaluar ninguna PTF candidata sobre los datos de validación"
+  }
+}
+
+# Reglas de imputación y confirmación (Issue #24):
+# Siempre pedir confirmación al alumno antes de estimar/imputar BD_est. No se imputa automáticamente.
+has_user_ptf_choice <- !is.null(user_cfg$selected_ptf) && nzchar(as.character(user_cfg$selected_ptf))
+
+if (estimate_bd_req && has_user_ptf_choice) {
+  sel_key <- tolower(trimws(as.character(user_cfg$selected_ptf)))
+  winner_key <- NULL
+  
+  if (sel_key %in% names(all_models_list)) {
+    winner_key <- sel_key
+  } else if (sel_key %in% c("best_published", "best", "mejor")) {
+    pub_rows <- ptf_eval_table[!grepl("Ajuste local", ptf_eval_table$PTF), ]
+    if (nrow(pub_rows) > 0) {
+      best_pub_name <- pub_rows$PTF[which.min(pub_rows$RMSE)]
+      winner_key <- names(all_models_list)[sapply(all_models_list, function(x) x$name == best_pub_name)]
     }
+  }
+  
+  if (!is.null(winner_key) && winner_key %in% names(all_models_list)) {
+    chosen_model <- all_models_list[[winner_key]]
+    dat$BD_est <- chosen_model$pred
+    impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
+    bd_imputed_count <- sum(impute_mask)
+    dat$BD_source[impute_mask] <- "estimated"
     
-  } else if (!is.null(user_cfg$selected_ptf) && nzchar(as.character(user_cfg$selected_ptf))) {
-    sel_key <- tolower(as.character(user_cfg$selected_ptf))
-    if (sel_key %in% names(ptf_list)) {
-      p_obj <- ptf_list[[sel_key]]
-      dat$BD_est <- p_obj$pred
-      impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
-      bd_imputed_count <- sum(impute_mask)
-      dat$BD_source[impute_mask] <- "estimated"
-      
-      ptf_status <- sprintf("PTF aplicada por selección del usuario: %s (sin datos de validación suficientes, n=%d). Horizontes estimados: %d.",
-                            p_obj$name, n_val_total, bd_imputed_count)
-      record_decision(1.3, "Estimación BD", sprintf("PTF seleccionada por usuario: %s", p_obj$name),
-                      source = "user_config", affected_rows = bd_imputed_count,
-                      details = sprintf("Aplicada sin validación cruzada local (n_medidos=%d < 5)", n_val_total))
-    } else {
-      ptf_status <- sprintf("PTF solicitada '%s' no disponible o faltan variables requeridas. Estimación omitida.", sel_key)
-      record_decision(1.3, "Estimación BD", "Omitida por PTF no aplicable", source = "user_config", affected_rows = 0)
-    }
+    ptf_status <- sprintf("PTF imputada tras confirmación del usuario: %s (fórmula: %s). Horizontes estimados: %d.",
+                          chosen_model$name, chosen_model$formula, bd_imputed_count)
+    record_decision(1.3, "Estimación BD", sprintf("PTF confirmada por usuario: %s", chosen_model$name),
+                    source = "user_config", affected_rows = bd_imputed_count,
+                    details = sprintf("Modelo: %s. Fórmula: %s", chosen_model$name, chosen_model$formula))
   } else {
-    ptf_status <- sprintf("No ejecutada por falta de datos de validación suficientes (n=%d < 5). El usuario puede configurar 'selected_ptf' si desea forzar un modelo.", n_val_total)
-    record_decision(1.3, "Estimación BD", "Omitida por falta de datos de validación (n < 5)",
-                    source = "script_default", affected_rows = 0,
-                    details = "Sin datos medidos suficientes para validar y comparar PTFs candidatas")
+    ptf_status <- sprintf("Opción 'selected_ptf: %s' no disponible o no calibrable con los datos actuales. Estimación omitida.", sel_key)
+    record_decision(1.3, "Estimación BD", "Omitida por opción no disponible", source = "user_config", affected_rows = 0)
   }
 } else {
-  record_decision(1.3, "Estimación BD", "Omitida / Conservar medidos sin imputar",
-                  source = if (!is.null(user_cfg$estimate_bd)) "user_config" else "script_default",
-                  affected_rows = 0, details = "No se solicitó estimación PTF")
+  # Sin confirmación del usuario: solo reportar diagnóstico/contraste sin imputar BD_est
+  if (n_val_total >= bd_fit_min_n && nrow(ptf_eval_table) > 0) {
+    ptf_status <- sprintf("Diagnóstico completado sobre n=%d medidos (>= %d). Se calibró función local simple y contrastaron 6 PTFs publicadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
+                          n_val_total, bd_fit_min_n)
+    record_decision(1.3, "Estimación BD", "Diagnóstico completado sin imputar (espera confirmación de usuario)",
+                    source = "script_default", affected_rows = 0,
+                    details = sprintf("Ajuste local y contraste de 6 PTFs disponibles sobre n=%d", n_val_total))
+  } else if (n_val_total >= 5 && nrow(ptf_eval_table) > 0) {
+    ptf_status <- sprintf("Diagnóstico de contraste completado sobre n=%d medidos (< %d requeridos para ajuste local). 6 PTFs publicadas contrastadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
+                          n_val_total, bd_fit_min_n)
+    record_decision(1.3, "Estimación BD", "Contraste completado sin imputar (espera confirmación de usuario)",
+                    source = "script_default", affected_rows = 0,
+                    details = sprintf("Contraste de 6 PTFs publicadas sobre n=%d", n_val_total))
+  } else if (n_val_total < 5) {
+    ptf_status <- sprintf("Datos medidos insuficientes para contrastar o calibrar PTF (n=%d < 5). BD_est NO imputada (el usuario puede indicar 'selected_ptf' en config.json si decide forzar un modelo publicado sin validación local).", n_val_total)
+    record_decision(1.3, "Estimación BD", "Omitida por datos insuficientes (n < 5)",
+                    source = "script_default", affected_rows = 0,
+                    details = "Menos de 5 observaciones con BD y OM/SOC medidos simultáneamente")
+  } else {
+    ptf_status <- "No evaluada (variables OM / SOC ausentes para contrastar PTFs)"
+    record_decision(1.3, "Estimación BD", "Omitida por falta de variables predictoras",
+                    source = "script_default", affected_rows = 0)
+  }
 }
 # <<< ADAPT:pedological_checks
 
@@ -456,18 +549,20 @@ if (has_soc) {
   writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("DENSIDAD APARENTE (BD) Y COMPETENCIA DE PTFS:", report_con)
+writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACIÓN DE PTFS:", report_con)
 writeLines(sprintf("  Estado de estimación BD: %s", ptf_status), report_con)
 if (has_bd) {
   writeLines(sprintf("  BD medida original: Rango [%.2f, %.2f] g/cm3 | Anómalos (<= 0 o > 2.65): %d",
                      min(dat$BD, na.rm = TRUE), max(dat$BD, na.rm = TRUE), bd_impossible_count), report_con)
+  writeLines(sprintf("  Muestras medidas disponibles para contraste: %d (Umbral ajuste local: %d)",
+                     n_val_total, bd_fit_min_n), report_con)
 }
 if (nrow(ptf_eval_table) > 0) {
   writeLines("\nTABLA COMPARATIVA DE PTFS EVALUADAS CONTRA DATOS MEDIDOS:", report_con)
-  writeLines(sprintf("  %-25s | %-6s | %-6s | %-12s | %-12s", "PTF Candidata", "n val", "R2", "RMSE (g/cm3)", "Sesgo (g/cm3)"), report_con)
-  writeLines("  ----------------------------------------------------------------------------", report_con)
+  writeLines(sprintf("  %-32s | %-6s | %-6s | %-12s | %-12s", "PTF / Modelo", "n val", "R2", "RMSE (g/cm3)", "Sesgo (g/cm3)"), report_con)
+  writeLines("  ---------------------------------------------------------------------------------------", report_con)
   for (i in seq_len(nrow(ptf_eval_table))) {
-    writeLines(sprintf("  %-25s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
+    writeLines(sprintf("  %-32s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
                        ptf_eval_table$PTF[i], ptf_eval_table$n_val[i],
                        ptf_eval_table$R2[i], ptf_eval_table$RMSE[i], ptf_eval_table$Bias[i]), report_con)
   }
@@ -491,9 +586,9 @@ if (has_texture) {
 }
 cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
 if (nrow(ptf_eval_table) > 0) {
-  cat("Competencia de PTFs:\n")
+  cat("Contraste y evaluación de PTFs:\n")
   for (i in seq_len(nrow(ptf_eval_table))) {
-    cat(sprintf("  - %-22s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
+    cat(sprintf("  - %-30s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
                 ptf_eval_table$PTF[i], ptf_eval_table$RMSE[i], ptf_eval_table$R2[i], ptf_eval_table$n_val[i]))
   }
 }
