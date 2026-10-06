@@ -39,5 +39,6 @@
   "source_crs": 4326,
   "outlier_action": "flag",
   "outlier_ids": [],
-  "estimate_bd": false
+  "estimate_bd": false,
+  "selected_ptf": null
 }

@@ -36,6 +36,7 @@ Both AI assistants and human participants must adhere to this specification to a
 | `outlier_action` | String | `"flag"` | Spatial outlier policy: `"flag"`, `"exclude"`, or `"keep"`. |
 | `outlier_ids` | Array of Strings | `[]` | List of `profile_code` IDs confirmed as spatial outliers. |
 | `estimate_bd` | Boolean | `false` | If `true`, estimates missing Bulk Density via pedotransfer function into `BD_est`. |
+| `selected_ptf` | String | `null` | Optional PTF model: `"rawls_1982"`, `"adams_1973"`, `"alexander_1980"`, or `"saxton_1986"`. If `null` and measured validation data is available ($n \ge 5$), the model with lowest RMSE is selected automatically. If $n < 5$, estimation is omitted unless explicitly specified here. |
 
 ---
 

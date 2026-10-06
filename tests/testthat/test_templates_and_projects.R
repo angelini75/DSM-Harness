@@ -135,24 +135,24 @@ test_that("Step 1.1 computes sand_sum correctly and carries into mapping", {
   expect_equal(res_csv$Sand, c(35, 40, 45, 50, 55))
 })
 
-test_that("Step 1.2 detects spatial isolation outliers via nearest-neighbor (k-NN)", {
+test_that("Step 1.2 detects spatial outliers via 3x IQR and documents bounding box limitations", {
   test_csv <- "01_data/profiles/step1_1_variables.csv"
   
-  # 15 puntos en un cluster compacto (-60, -34) y 1 punto aislado a 500 km (-55, -30)
+  # 20 puntos en un cluster compacto (-60, -34) y 1 punto extremo en el eje X (-50, -34)
   set.seed(42)
   pts_cluster <- data.frame(
-    profile_code = paste0("P", 1:15),
-    longitude = rnorm(15, mean = -60.0, sd = 0.05),
-    latitude  = rnorm(15, mean = -34.0, sd = 0.05),
+    profile_code = paste0("P", 1:20),
+    longitude = rnorm(20, mean = -60.0, sd = 0.05),
+    latitude  = rnorm(20, mean = -34.0, sd = 0.05),
     upper = 0, lower = 20
   )
-  pt_isolated <- data.frame(
-    profile_code = "P_ISOLATED",
-    longitude = -55.0,
-    latitude  = -30.0,
+  pt_outlier <- data.frame(
+    profile_code = "P_OUTLIER",
+    longitude = -50.0,
+    latitude  = -34.0,
     upper = 0, lower = 20
   )
-  write.csv(rbind(pts_cluster, pt_isolated), test_csv, row.names = FALSE)
+  write.csv(rbind(pts_cluster, pt_outlier), test_csv, row.names = FALSE)
   on.exit({
     unlink(test_csv)
     if (file.exists("01_data/profiles/step1_2_spatial.csv")) unlink("01_data/profiles/step1_2_spatial.csv")
@@ -164,9 +164,71 @@ test_that("Step 1.2 detects spatial isolation outliers via nearest-neighbor (k-N
   out_csv <- read.csv("01_data/profiles/step1_2_spatial.csv")
   expect_true("flag_spatial_outlier" %in% names(out_csv))
   
-  # El punto aislado debe estar marcado
-  isol_row <- out_csv[out_csv$profile_code == "P_ISOLATED", ]
-  expect_true(isol_row$flag_spatial_outlier)
+  # El punto extremo por 3x IQR debe estar marcado
+  out_row <- out_csv[out_csv$profile_code == "P_OUTLIER", ]
+  expect_true(out_row$flag_spatial_outlier)
+  
+  # El reporte debe advertir de la limitación metodológica del filtro IQR univariado
+  rep_lines <- readLines("01_data/profiles/step1_2_spatial_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("IQR 3x", rep_lines, fixed = TRUE)))
+  expect_true(any(grepl("caja envolvente", rep_lines, fixed = TRUE)))
+})
+
+test_that("Step 1.3 performs multi-PTF competition selection when n >= 5 and omits when n < 5", {
+  test_csv <- "01_data/profiles/step1_2_spatial.csv"
+  cfg_json <- "01_data/profiles/user_config.json"
+  
+  on.exit({
+    unlink(test_csv)
+    if (file.exists(cfg_json)) unlink(cfg_json)
+    if (file.exists("01_data/profiles/cleaned_profiles.csv")) unlink("01_data/profiles/cleaned_profiles.csv")
+    if (file.exists("01_data/profiles/step1_3_pedological_report.txt")) unlink("01_data/profiles/step1_3_pedological_report.txt")
+  }, add = TRUE)
+  
+  # Caso 1: n >= 5 datos medidos -> competencia y selección automática
+  df_val <- data.frame(
+    profile_code = paste0("P", 1:12),
+    longitude = -60, latitude = -34,
+    upper = 0, lower = 20,
+    SOC = c(1.5, 2.0, 0.8, 1.2, 3.0, 2.5, 1.1, 1.8, 0.9, 2.2, 1.4, 2.1),
+    Sand = c(40, 50, 60, 30, 20, 35, 45, 55, 65, 25, 40, 50),
+    Clay = c(20, 15, 10, 30, 40, 25, 18, 12, 8, 35, 22, 16),
+    BD = c(1.35, 1.28, 1.45, 1.25, 1.15, 1.22, 1.38, 1.30, NA, NA, NA, NA) # 8 medidos (n >= 5)
+  )
+  write.csv(df_val, test_csv, row.names = FALSE)
+  
+  cfg_auto <- list(estimate_bd = TRUE)
+  jsonlite::write_json(cfg_auto, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res_csv <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true("BD_est" %in% names(res_csv))
+  # Los faltantes (filas 9 a 12) deben tener BD_est imputado
+  expect_true(all(!is.na(res_csv$BD_est[9:12])))
+  
+  rep_lines <- readLines("01_data/profiles/step1_3_pedological_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("TABLA COMPARATIVA DE PTFS EVALUADAS", rep_lines, fixed = TRUE)))
+  
+  # Caso 2: n < 5 datos medidos sin selected_ptf -> omisión por defecto
+  df_noval <- df_val
+  df_noval$BD <- c(1.35, 1.28, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA) # solo 2 medidos (n < 5)
+  write.csv(df_noval, test_csv, row.names = FALSE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res_noval <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  # Al no haber validación suficiente, no debe correr PTF por defecto
+  expect_true(all(is.na(res_noval$BD_est)))
+  
+  # Caso 3: n < 5 pero con selected_ptf explícito -> aplica la PTF solicitada
+  cfg_explicit <- list(estimate_bd = TRUE, selected_ptf = "rawls_1982")
+  jsonlite::write_json(cfg_explicit, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res_explicit <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true(all(!is.na(res_explicit$BD_est[3:12])))
 })
 
 test_that("00_new_project.R instantiates isolated project with updated decisions_log structure", {

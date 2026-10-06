@@ -38,8 +38,8 @@ When a student initiates or prepares a step:
 - Formular de forma explícita las preguntas o alternativas necesarias con **opciones numeradas claras**:
   - *Duplicados*: [1] Promediar réplicas numéricas, [2] Conservar primera medición, [3] Conservar y marcar bandera de auditoría.
   - *CRS*: [1] Grados WGS84 (4326), [2] Coordenadas métricas proyectadas (indicar EPSG de origen).
-  - *Outliers*: [1] Marcar bandera (flag) para modelado, [2] Excluir puntos, [3] Conservar como ubicación legítima.
-  - *BD*: [1] Mantener solo medidos sin imputar, [2] Estimar faltantes en columna `BD_est` mediante PTF.
+  - *Outliers*: [1] Marcar bandera (flag) para modelado, [2] Excluir puntos, [3] Conservar como ubicación legítima (recordar que IQR 3x no detecta puntos interiores y se debe inspeccionar el mapa visual).
+  - *BD*: [1] Mantener solo medidos sin imputar, [2] Estimar faltantes en columna `BD_est` (si hay $\ge 5$ datos medidos, se evalúan PTFs publicadas y se selecciona la de menor RMSE; si no hay suficientes medidos, no se corre por defecto salvo elección explícita de `selected_ptf`).
 ```
 
 ### Turn 2: Evidence-Based Diagnosis & Open Pedological Reflection (After Student Runs Code)
@@ -86,7 +86,8 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 | `source_crs` | Entero | `null` | Código EPSG si las coordenadas son métricas proyectadas (ej: `32616`). |
 | `outlier_action` | String | `"flag"` | Acción ante outliers espaciales: `"flag"`, `"exclude"`, `"keep"`. |
 | `outlier_ids` | Lista Strings| `[]` | Lista de IDs de perfiles marcados como outliers. |
-| `estimate_bd` | Booleano | `false` | `true` para estimar BD en `BD_est` mediante PTF sin circularidad con SOC. |
+| `estimate_bd` | Booleano | `false` | `true` para estimar BD en `BD_est` mediante competencia y validación de PTFs. |
+| `selected_ptf` | String | `null` | Nombre de PTF a forzar si no hay validación local suficiente (`"rawls_1982"`, `"adams_1973"`, `"alexander_1980"`, `"saxton_1986"`). Si `null` y $n \ge 5$, el script evalúa y selecciona la de mejor ajuste (menor RMSE). |
 
 ---
 

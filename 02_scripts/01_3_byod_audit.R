@@ -5,8 +5,9 @@
 # Auditar la coherencia vertical (solapes de profundidad, discontinuidades y
 # espesores), evaluar coherencia analítica (balance de texturas 100%, rangos
 # plausibles de pH y SOC), estimar opcionalmente Densidad Aparente (BD) en columna
-# separada 'BD_est' evitando circularidad con SOC, registrar decisiones en
-# decisions_log.csv y generar el dataset limpio 'cleaned_profiles.csv'.
+# separada 'BD_est' evitando circularidad con SOC mediante competencia de PTFs
+# evaluadas contra mediciones reales, registrar decisiones en decisions_log.csv
+# y generar el dataset limpio 'cleaned_profiles.csv'.
 #
 # SALIDAS GENERADAS:
 # 1. Dataset limpio final: 'data/cleaned_profiles.csv'
@@ -129,7 +130,6 @@ overlaps_clean_count <- 0
 gaps_count <- 0
 
 if ("profile_code" %in% names(dat)) {
-  # Evaluación en datos completos
   dat <- dat %>%
     group_by(profile_code) %>%
     arrange(upper, .by_group = TRUE) %>%
@@ -144,7 +144,6 @@ if ("profile_code" %in% names(dat)) {
   overlaps_raw_count <- sum(dat$flag_depth_overlap, na.rm = TRUE)
   gaps_count         <- sum(dat$flag_depth_gap, na.rm = TRUE)
   
-  # Evaluación en datos sin duplicados exactos (para identificar artefactos de unión)
   dat_dedup <- dat %>% distinct(profile_code, upper, lower, .keep_all = TRUE)
   dat_dedup <- dat_dedup %>%
     group_by(profile_code) %>%
@@ -157,7 +156,6 @@ if ("profile_code" %in% names(dat)) {
   overlaps_clean_count <- sum(dat_dedup$flag_overlap_dedup, na.rm = TRUE)
 }
 
-# No eliminar silenciosamente registros; marcar banderas de calidad
 dat$flag_invalid_depth <- na_depths_mask | zero_thick_mask | neg_depths_mask
 
 # 3. Auditoría de Propiedades Físicas y Edafológicas ----------------------------
@@ -224,12 +222,13 @@ if (has_soc) {
   dat$flag_soc_anomaly <- FALSE
 }
 
-# D. Coherencia y Estimación Opcional de Densidad Aparente (BD)
+# D. Coherencia y Estimación de Densidad Aparente (BD) por Competencia de PTFs -
 has_bd <- "BD" %in% names(dat)
 bd_impossible_count <- 0
 if (has_bd) {
   dat$BD <- as.numeric(dat$BD)
-  bd_impossible_mask <- (!is.na(dat$BD)) & (dat$BD < 0.2 | dat$BD > 2.2)
+  # Umbral físico estándar de densidad mineral de partículas de suelo (cuarzo ~ 2.65 g/cm3)
+  bd_impossible_mask <- (!is.na(dat$BD)) & (dat$BD <= 0 | dat$BD > 2.65)
   bd_impossible_count <- sum(bd_impossible_mask)
   dat$flag_bd_anomaly <- bd_impossible_mask
 } else {
@@ -238,59 +237,160 @@ if (has_bd) {
   bd_impossible_mask <- rep(FALSE, nrow(dat))
 }
 
-# Estimación opcional de BD en columna separada BD_est (PTF Rawls et al., 1982)
 estimate_bd_req <- if (!is.null(user_cfg$estimate_bd)) isTRUE(user_cfg$estimate_bd) else FALSE
 dat$BD_est <- NA_real_
 dat$BD_source <- if (has_bd && sum(!is.na(dat$BD)) > 0) "measured" else "missing"
+
+ptf_eval_table <- data.frame(
+  PTF = character(),
+  Formula = character(),
+  n_val = integer(),
+  R2 = numeric(),
+  RMSE = numeric(),
+  Bias = numeric(),
+  stringsAsFactors = FALSE
+)
 ptf_status <- "No solicitada (conservando BD medida original sin imputar)"
-ptf_val_r2 <- NA_real_; ptf_val_rmse <- NA_real_; ptf_val_bias <- NA_real_
+
+# Catálogo de PTFs documentadas candidatas
+om_series <- if ("OM" %in% names(dat)) as.numeric(dat$OM) else if ("SOC" %in% names(dat)) as.numeric(dat$SOC) * 1.724 else NULL
+soc_series <- if ("SOC" %in% names(dat)) as.numeric(dat$SOC) else if ("OM" %in% names(dat)) as.numeric(dat$OM) / 1.724 else NULL
+sand_series <- if ("Sand" %in% names(dat)) as.numeric(dat$Sand) else NULL
+clay_series <- if ("Clay" %in% names(dat)) as.numeric(dat$Clay) else NULL
+
+calc_ptf_candidates <- function(df) {
+  res <- list()
+  # 1. Rawls et al. (1982)
+  if (!is.null(om_series) && sum(!is.na(om_series)) > 0) {
+    om_c <- pmin(pmax(om_series, 0.01), 60)
+    bd_base <- if (!is.null(sand_series) && !is.null(clay_series)) {
+      1.15 + 0.0038 * sand_series + 0.001 * clay_series
+    } else 1.45
+    res[["rawls_1982"]] <- list(
+      name = "Rawls et al. (1982)",
+      formula = "100 / (OM/0.224 + (100-OM)/BD_min)",
+      pred = round(100 / ((om_c / 0.224) + ((100 - om_c) / bd_base)), 3)
+    )
+  }
+  # 2. Adams (1973) / Curtis & Post (1964)
+  if (!is.null(om_series) && sum(!is.na(om_series)) > 0) {
+    om_c <- pmin(pmax(om_series, 0.01), 60)
+    res[["adams_1973"]] <- list(
+      name = "Adams (1973)",
+      formula = "100 / (OM/0.244 + (100-OM)/1.64)",
+      pred = round(100 / ((om_c / 0.244) + ((100 - om_c) / 1.64)), 3)
+    )
+  }
+  # 3. Alexander (1980) / Manrique & Jones (1991)
+  if (!is.null(soc_series) && sum(!is.na(soc_series)) > 0) {
+    soc_c <- pmax(soc_series, 0.001)
+    res[["alexander_1980"]] <- list(
+      name = "Alexander (1980)",
+      formula = "1.66 - 0.318 * sqrt(SOC)",
+      pred = round(pmax(pmin(1.66 - 0.318 * sqrt(soc_c), 2.2), 0.3), 3)
+    )
+  }
+  # 4. Saxton et al. (1986)
+  if (!is.null(sand_series) && !is.null(clay_series) && sum(!is.na(sand_series)) > 0) {
+    res[["saxton_1986"]] <- list(
+      name = "Saxton et al. (1986)",
+      formula = "1.30 + 0.003 * Sand - 0.002 * Clay",
+      pred = round(pmax(pmin(1.30 + 0.003 * sand_series - 0.002 * clay_series, 2.2), 0.5), 3)
+    )
+  }
+  res
+}
 
 if (estimate_bd_req) {
   cat("[*] Solicitud de estimación de Densidad Aparente detectada (estimate_bd = true) ...\n")
-  om_vals <- if ("OM" %in% names(dat)) {
-    as.numeric(dat$OM)
-  } else if ("SOC" %in% names(dat)) {
-    as.numeric(dat$SOC) * 1.724
-  } else {
-    NULL
-  }
+  ptf_list <- calc_ptf_candidates(dat)
+  val_obs_mask <- (!is.na(dat$BD)) & (!bd_impossible_mask)
+  n_val_total <- sum(val_obs_mask)
   
-  if (!is.null(om_vals) && sum(!is.na(om_vals)) > 0) {
-    om_clean <- pmin(pmax(om_vals, 0.01), 60)
-    bd_min_base <- if (has_texture && sum(!is.na(dat$Sand)) > 0) {
-      1.15 + 0.0038 * dat$Sand + 0.001 * dat$Clay
+  # Decisión del responsable (Issue #23):
+  # 1. Si hay suficientes datos medidos (n >= 5): competir y elegir la que mejor se adapte (menor RMSE)
+  # 2. Si no hay suficientes datos medidos: no correr la PTF o aplicar la elegida expresamente por el usuario
+  if (n_val_total >= 5 && length(ptf_list) > 0) {
+    cat(sprintf("[*] Datos de validación disponibles (n = %d). Evaluando competencia de PTFs candidatas ...\n", n_val_total))
+    
+    for (pkey in names(ptf_list)) {
+      p_obj <- ptf_list[[pkey]]
+      pred_vals <- p_obj$pred
+      eval_mask <- val_obs_mask & (!is.na(pred_vals))
+      
+      if (sum(eval_mask) >= 5) {
+        obs <- dat$BD[eval_mask]
+        prd <- pred_vals[eval_mask]
+        r2_val   <- round(cor(obs, prd)^2, 3)
+        rmse_val <- round(sqrt(mean((obs - prd)^2)), 3)
+        bias_val <- round(mean(prd - obs), 3)
+        
+        ptf_eval_table <- rbind(ptf_eval_table, data.frame(
+          PTF = p_obj$name,
+          Formula = p_obj$formula,
+          n_val = as.integer(sum(eval_mask)),
+          R2 = r2_val,
+          RMSE = rmse_val,
+          Bias = bias_val,
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+    
+    if (nrow(ptf_eval_table) > 0) {
+      # Seleccionar automáticamente la PTF con menor RMSE
+      best_idx <- which.min(ptf_eval_table$RMSE)
+      best_ptf_name <- ptf_eval_table$PTF[best_idx]
+      best_ptf_rmse <- ptf_eval_table$RMSE[best_idx]
+      best_ptf_r2   <- ptf_eval_table$R2[best_idx]
+      
+      # Buscar vector de predicción de la ganadora
+      winner_key <- names(ptf_list)[sapply(ptf_list, function(x) x$name == best_ptf_name)]
+      winner_pred <- ptf_list[[winner_key]]$pred
+      dat$BD_est <- winner_pred
+      
+      impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
+      bd_imputed_count <- sum(impute_mask)
+      dat$BD_source[impute_mask] <- "estimated"
+      
+      ptf_status <- sprintf("Seleccionada por mejor ajuste: %s (RMSE = %.3f g/cm3, R2 = %.3f sobre n=%d). Horizontes estimados: %d.",
+                            best_ptf_name, best_ptf_rmse, best_ptf_r2, ptf_eval_table$n_val[best_idx], bd_imputed_count)
+      
+      record_decision(1.3, "Estimación BD", sprintf("PTF seleccionada por validación: %s (RMSE=%.3f, R2=%.3f)", best_ptf_name, best_ptf_rmse, best_ptf_r2),
+                      source = "script_default", affected_rows = bd_imputed_count,
+                      details = sprintf("Mejor ajuste competitivo sobre %d muestras medidas de validación", ptf_eval_table$n_val[best_idx]))
     } else {
-      1.45
+      ptf_status <- "No fue posible evaluar ninguna PTF candidata sobre los datos de validación"
     }
     
-    rawls_bd <- 100 / ((om_clean / 0.224) + ((100 - om_clean) / bd_min_base))
-    dat$BD_est <- round(rawls_bd, 3)
-    
-    impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
-    bd_imputed_count <- sum(impute_mask)
-    dat$BD_source[impute_mask] <- "estimated"
-    
-    val_mask <- (!is.na(dat$BD)) & (!is.na(dat$BD_est)) & (!bd_impossible_mask)
-    if (sum(val_mask) >= 5) {
-      obs <- dat$BD[val_mask]
-      prd <- dat$BD_est[val_mask]
-      ptf_val_r2   <- round(cor(obs, prd)^2, 3)
-      ptf_val_rmse <- round(sqrt(mean((obs - prd)^2)), 3)
-      ptf_val_bias <- round(mean(prd - obs), 3)
+  } else if (!is.null(user_cfg$selected_ptf) && nzchar(as.character(user_cfg$selected_ptf))) {
+    sel_key <- tolower(as.character(user_cfg$selected_ptf))
+    if (sel_key %in% names(ptf_list)) {
+      p_obj <- ptf_list[[sel_key]]
+      dat$BD_est <- p_obj$pred
+      impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
+      bd_imputed_count <- sum(impute_mask)
+      dat$BD_source[impute_mask] <- "estimated"
+      
+      ptf_status <- sprintf("PTF aplicada por selección del usuario: %s (sin datos de validación suficientes, n=%d). Horizontes estimados: %d.",
+                            p_obj$name, n_val_total, bd_imputed_count)
+      record_decision(1.3, "Estimación BD", sprintf("PTF seleccionada por usuario: %s", p_obj$name),
+                      source = "user_config", affected_rows = bd_imputed_count,
+                      details = sprintf("Aplicada sin validación cruzada local (n_medidos=%d < 5)", n_val_total))
+    } else {
+      ptf_status <- sprintf("PTF solicitada '%s' no disponible o faltan variables requeridas. Estimación omitida.", sel_key)
+      record_decision(1.3, "Estimación BD", "Omitida por PTF no aplicable", source = "user_config", affected_rows = 0)
     }
-    
-    ptf_status <- sprintf("PTF Rawls/Saxton aplicada: %d horizontes estimados. Validación sobre medidos (n=%d): R2=%.3f, RMSE=%.3f, Sesgo=%.3f",
-                          bd_imputed_count, sum(val_mask), ptf_val_r2, ptf_val_rmse, ptf_val_bias)
-    record_decision(1.3, "Estimación BD", "PTF Rawls et al. (1982) en BD_est", source = "user_config",
-                    affected_rows = bd_imputed_count, 
-                    details = sprintf("R2=%.3f, RMSE=%.3f sobre %d medidos", ptf_val_r2, ptf_val_rmse, sum(val_mask)))
   } else {
-    ptf_status <- "No fue posible estimar BD (datos de OM/SOC ausentes)"
+    ptf_status <- sprintf("No ejecutada por falta de datos de validación suficientes (n=%d < 5). El usuario puede configurar 'selected_ptf' si desea forzar un modelo.", n_val_total)
+    record_decision(1.3, "Estimación BD", "Omitida por falta de datos de validación (n < 5)",
+                    source = "script_default", affected_rows = 0,
+                    details = "Sin datos medidos suficientes para validar y comparar PTFs candidatas")
   }
 } else {
   record_decision(1.3, "Estimación BD", "Omitida / Conservar medidos sin imputar",
                   source = if (!is.null(user_cfg$estimate_bd)) "user_config" else "script_default",
-                  affected_rows = 0, details = "No se aplicó imputación PTF")
+                  affected_rows = 0, details = "No se solicitó estimación PTF")
 }
 # <<< ADAPT:pedological_checks
 
@@ -356,15 +456,21 @@ if (has_soc) {
   writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("DENSIDAD APARENTE (BD) Y ESTIMACIÓN PTF:", report_con)
+writeLines("DENSIDAD APARENTE (BD) Y COMPETENCIA DE PTFS:", report_con)
 writeLines(sprintf("  Estado de estimación BD: %s", ptf_status), report_con)
 if (has_bd) {
-  writeLines(sprintf("  BD medida: Rango [%.2f, %.2f] g/cm3 | Anómalos (< 0.2 o > 2.2): %d",
+  writeLines(sprintf("  BD medida original: Rango [%.2f, %.2f] g/cm3 | Anómalos (<= 0 o > 2.65): %d",
                      min(dat$BD, na.rm = TRUE), max(dat$BD, na.rm = TRUE), bd_impossible_count), report_con)
 }
-if (!is.na(ptf_val_r2)) {
-  writeLines(sprintf("  Validación cruzada PTF: R2 = %.3f | RMSE = %.3f g/cm3 | Sesgo = %.3f", 
-                     ptf_val_r2, ptf_val_rmse, ptf_val_bias), report_con)
+if (nrow(ptf_eval_table) > 0) {
+  writeLines("\nTABLA COMPARATIVA DE PTFS EVALUADAS CONTRA DATOS MEDIDOS:", report_con)
+  writeLines(sprintf("  %-25s | %-6s | %-6s | %-12s | %-12s", "PTF Candidata", "n val", "R2", "RMSE (g/cm3)", "Sesgo (g/cm3)"), report_con)
+  writeLines("  ----------------------------------------------------------------------------", report_con)
+  for (i in seq_len(nrow(ptf_eval_table))) {
+    writeLines(sprintf("  %-25s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
+                       ptf_eval_table$PTF[i], ptf_eval_table$n_val[i],
+                       ptf_eval_table$R2[i], ptf_eval_table$RMSE[i], ptf_eval_table$Bias[i]), report_con)
+  }
 }
 writeLines("================================================================================", report_con)
 close(report_con)
@@ -384,6 +490,13 @@ if (has_texture) {
   cat(sprintf("Balance textural (95-105%%):           %d horizontes (Desbalance severo: %d)\n", tex_normal_count, tex_severe_count))
 }
 cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
+if (nrow(ptf_eval_table) > 0) {
+  cat("Competencia de PTFs:\n")
+  for (i in seq_len(nrow(ptf_eval_table))) {
+    cat(sprintf("  - %-22s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
+                ptf_eval_table$PTF[i], ptf_eval_table$RMSE[i], ptf_eval_table$R2[i], ptf_eval_table$n_val[i]))
+  }
+}
 cat(sprintf("[OK] Dataset limpio guardado en:      %s\n", output_csv))
 cat(sprintf("[OK] Reporte edafológico guardado en: %s\n", output_report))
 if (decision_logged) {

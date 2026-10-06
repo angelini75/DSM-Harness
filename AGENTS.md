@@ -76,8 +76,8 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - **Sub-Steps**:
      - **Step 0 (`00_inspect_data.R`)**: Autodetects dataset; produces ultra-compact report (≤ 6-8 KB); strict filtering of true ID candidates, depths, coordinates, and properties.
      - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks non-unique keys on right sheets (`duplicate_key_strategy`); fails fast if essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing; supports declarative sand summation (`sand_sum`).
-     - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; spatial outlier audit combining 1D IQR and nearest-neighbor (k-NN) distance; warns of statistical limitations and requires visual map inspection.
-     - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); optional non-circular BD estimation in `BD_est` with validation metrics; logs all decisions.
+     - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; spatial outlier audit using 1D IQR 3×; warns that univariate IQR cannot detect points inside the bounding box and requires visual map inspection.
+     - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); BD estimation via multi-PTF competition with validation metrics ($R^2$, RMSE) when $n \ge 5$, or omitted/user-selected when validation data is insufficient; logs all decisions.
 
 ---
 

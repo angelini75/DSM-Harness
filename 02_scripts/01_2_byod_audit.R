@@ -5,8 +5,8 @@
 # Auditar rigurosamente las coordenadas espaciales del dataset generado en el
 # Paso 1.1, detectar métricas numéricas y formatos (geográficas WGS84 vs métricas
 # UTM/proyectadas), identificar proyecciones, detectar outliers espaciales por
-# dispersión univariada (IQR) y distancia al vecino más cercano (k-NN), generar
-# mapa diagnóstico interactivo y registrar decisiones en decisions_log.csv.
+# dispersión univariada (3*IQR), advertir sobre limitaciones estadísticas,
+# generar mapa diagnóstico interactivo y registrar decisiones en decisions_log.csv.
 #
 # SALIDAS GENERADAS:
 # 1. Dataset espacial intermedio: 'data/step1_2_spatial.csv'
@@ -88,7 +88,6 @@ dat <- readr::read_csv(input_csv, show_col_types = FALSE)
 n_total <- nrow(dat)
 
 # 2. Detección y Validación Numérica de Coordenadas -----------------------------
-# Identificar columnas de longitud y latitud (o x e y)
 lon_col <- intersect(c("longitude", "x", "lon", "long", "longitud"), names(dat))
 lat_col <- intersect(c("latitude", "y", "lat", "latitud"), names(dat))
 
@@ -99,14 +98,12 @@ if (length(lon_col) == 0 || length(lat_col) == 0) {
 lon_name <- lon_col[1]
 lat_name <- lat_col[1]
 
-# Asegurar nombres canónicos para el análisis
 if (lon_name != "longitude") dat$longitude <- as.numeric(dat[[lon_name]])
 if (lat_name != "latitude")  dat$latitude  <- as.numeric(dat[[lat_name]])
 
 dat$longitude <- suppressWarnings(as.numeric(dat$longitude))
 dat$latitude  <- suppressWarnings(as.numeric(dat$latitude))
 
-# Filtro de coordenadas válidas (no NA y no exactamente 0,0)
 is_na_coord   <- is.na(dat$longitude) | is.na(dat$latitude)
 is_zero_coord <- dat$longitude == 0 & dat$latitude == 0
 missing_coords_count <- sum(is_na_coord)
@@ -123,7 +120,6 @@ orphan_profiles_coords <- if ("profile_code" %in% names(dat)) {
   setdiff(unique(na.omit(dat$profile_code)), unique(na.omit(dat_valid$profile_code)))
 } else character(0)
 
-# Rangos crudos para diagnóstico de proyección
 min_x_raw <- min(dat_valid$longitude, na.rm = TRUE)
 max_x_raw <- max(dat_valid$longitude, na.rm = TRUE)
 min_y_raw <- min(dat_valid$latitude, na.rm = TRUE)
@@ -176,59 +172,22 @@ if (is_projected_coords) {
                   details = "Sin transformación requerida")
 }
 
-# 4. Auditoría Avanzada de Outliers Espaciales (IQR + Vecino más Cercano k-NN) --
-# Métrica 1: Dispersión univariada IQR por eje
+# 4. Auditoría de Outliers Espaciales por Dispersión (IQR 3x) -------------------
+# Cálculo de dispersión basada en IQR respecto a la mediana (umbral estándar 3*IQR)
+med_x <- median(dat_valid$longitude, na.rm = TRUE)
+med_y <- median(dat_valid$latitude, na.rm = TRUE)
 iqr_x <- IQR(dat_valid$longitude, na.rm = TRUE)
 iqr_y <- IQR(dat_valid$latitude, na.rm = TRUE)
-outlier_mask_iqr <- rep(FALSE, nrow(dat_valid))
 
+outlier_mask <- rep(FALSE, nrow(dat_valid))
 if (iqr_x > 0 && iqr_y > 0) {
   q1_x <- quantile(dat_valid$longitude, 0.25, na.rm = TRUE)
   q3_x <- quantile(dat_valid$longitude, 0.75, na.rm = TRUE)
   q1_y <- quantile(dat_valid$latitude, 0.25, na.rm = TRUE)
   q3_y <- quantile(dat_valid$latitude, 0.75, na.rm = TRUE)
   
-  outlier_mask_iqr <- (dat_valid$longitude < (q1_x - 1.5 * iqr_x)) | (dat_valid$longitude > (q3_x + 1.5 * iqr_x)) |
-                      (dat_valid$latitude  < (q1_y - 1.5 * iqr_y)) | (dat_valid$latitude  > (q3_y + 1.5 * iqr_y))
-}
-
-# Métrica 2: Aislamiento espacial por vecino más cercano (k-NN)
-# Se calcula sobre perfiles únicos para evitar que horizontes del mismo perfil anulen la distancia
-pts_unique <- dat_valid %>% distinct(longitude, latitude, .keep_all = TRUE)
-n_pts <- nrow(pts_unique)
-outlier_pts_nn <- character(0)
-
-if (n_pts >= 4) {
-  # Matriz de distancias euclidianas aproximadas en grados (~111 km por grado en el ecuador)
-  coords_mat <- as.matrix(pts_unique[, c("longitude", "latitude")])
-  dist_mat <- as.matrix(dist(coords_mat))
-  diag(dist_mat) <- Inf # ignorar distancia a sí mismo
-  
-  # Distancia mínima al vecino más cercano
-  min_nn_dists <- apply(dist_mat, 1, min)
-  pts_unique$nn_dist_deg <- min_nn_dists
-  # Aproximación en km
-  pts_unique$nn_dist_km <- round(min_nn_dists * 111, 2)
-  
-  q1_nn  <- quantile(min_nn_dists, 0.25, na.rm = TRUE)
-  q3_nn  <- quantile(min_nn_dists, 0.75, na.rm = TRUE)
-  iqr_nn <- IQR(min_nn_dists, na.rm = TRUE)
-  
-  # Outliers por aislamiento relativo extremo: distancia > Q3 + 1.5*IQR
-  thresh_nn <- q3_nn + 1.5 * iqr_nn
-  nn_isol_mask <- min_nn_dists > thresh_nn
-  
-  if (any(nn_isol_mask)) {
-    outlier_pts_nn <- if ("profile_code" %in% names(pts_unique)) {
-      as.character(pts_unique$profile_code[nn_isol_mask])
-    } else paste0("Punto_", which(nn_isol_mask))
-  }
-}
-
-# Combinación de filtros de outliers
-outlier_mask <- outlier_mask_iqr
-if (length(outlier_pts_nn) > 0 && "profile_code" %in% names(dat_valid)) {
-  outlier_mask <- outlier_mask | (as.character(dat_valid$profile_code) %in% outlier_pts_nn)
+  outlier_mask <- (dat_valid$longitude < (q1_x - 3 * iqr_x)) | (dat_valid$longitude > (q3_x + 3 * iqr_x)) |
+                  (dat_valid$latitude  < (q1_y - 3 * iqr_y)) | (dat_valid$latitude  > (q3_y + 3 * iqr_y))
 }
 
 # Chequeo adicional por IDs explícitos configurados
@@ -248,7 +207,7 @@ if (!is.null(target_outlier_act) && outlier_count > 0) {
     dat_valid <- dat_valid %>% filter(!flag_spatial_outlier)
     outlier_action_applied <- sprintf("Excluidos %d registros outliers", outlier_count)
     record_decision(1.2, "Outliers espaciales", "Excluir puntos anómalos", source = outlier_act_source,
-                    affected_rows = outlier_count, details = "Filtro combinado IQR + vecino más cercano")
+                    affected_rows = outlier_count, details = "Filtro IQR 3x aplicado tras confirmación")
   } else if (target_outlier_act == "flag") {
     outlier_action_applied <- sprintf("Conservados con flag_spatial_outlier = TRUE (%d registros)", outlier_count)
     record_decision(1.2, "Outliers espaciales", "Conservar y marcar bandera", source = outlier_act_source,
@@ -262,7 +221,7 @@ if (!is.null(target_outlier_act) && outlier_count > 0) {
   outlier_action_applied <- if (outlier_count > 0) {
     sprintf("Identificados %d posibles candidatos; marcados con flag_spatial_outlier para inspección visual", outlier_count)
   } else {
-    "Ningún outlier detectado por filtros de dispersión / vecino más cercano"
+    "0 outliers detectados por filtro univariado IQR 3x"
   }
   record_decision(1.2, "Outliers espaciales", "Evaluación completada", source = outlier_act_source,
                   affected_rows = outlier_count, details = outlier_action_applied)
@@ -302,18 +261,15 @@ writeLines(sprintf("  Longitud: [%.4f, %.4f] (Amplitud: %.4f grados)",
 writeLines(sprintf("  Latitud:  [%.4f, %.4f] (Amplitud: %.4f grados)", 
                    min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE OUTLIERS ESPACIALES Y AISLAMIENTO:", report_con)
-writeLines(sprintf("  Método aplicado:                  1D IQR por eje + Distancia al vecino más cercano (k-NN)"), report_con)
-writeLines(sprintf("  Candidatos detectados por IQR:    %d", sum(outlier_mask_iqr)), report_con)
-writeLines(sprintf("  Candidatos aislados por k-NN:     %d (ej: %s)", 
-                   length(outlier_pts_nn), if (length(outlier_pts_nn) > 0) paste(head(outlier_pts_nn, 5), collapse = ", ") else "Ninguno"), report_con)
-writeLines(sprintf("  Total candidatos combinados:      %d", outlier_count), report_con)
+writeLines("AUDITORÍA DE OUTLIERS ESPACIALES Y DISPERSIÓN:", report_con)
+writeLines(sprintf("  Método aplicado:                  1D IQR por eje (umbral: Q1 - 3·IQR o Q3 + 3·IQR)"), report_con)
+writeLines(sprintf("  Candidatos detectados por IQR 3x: %d", outlier_count), report_con)
 writeLines(sprintf("  Tratamiento de outliers:          %s", outlier_action_applied), report_con)
 writeLines("  NOTA Y LIMITACIÓN METODOLÓGICA:", report_con)
-writeLines("  Los filtros estadísticos (IQR y vecino más cercano) detectan dispersión y", report_con)
-writeLines("  aislamiento relativo entre muestras, pero NO validan pertenencia a límites", report_con)
-writeLines("  político-administrativos o divisorias de cuencas. Es indispensable inspeccionar", report_con)
-writeLines("  el mapa interactivo generado en RStudio antes de tomar una decisión.", report_con)
+writeLines("  El filtro IQR univariado por eje detecta exclusivamente valores extremos en los", report_con)
+writeLines("  márgenes exteriores del área muestreada. NO detecta errores de coordenadas o puntos", report_con)
+writeLines("  aislados que se encuentren dentro de la caja envolvente (bounding box). Es indispensable", report_con)
+writeLines("  inspeccionar el mapa interactivo generado en RStudio antes de tomar una decisión.", report_con)
 
 if (outlier_count > 0 && "profile_code" %in% names(dat_valid)) {
   out_sample <- dat_valid %>% filter(flag_spatial_outlier) %>% distinct(profile_code, .keep_all = TRUE) %>% head(10)
@@ -353,7 +309,7 @@ if (!is_projected_coords || !is.null(source_crs)) {
                          labels = c("Normal", "Candidato Outlier"), name = "Estado") +
       theme_minimal() +
       labs(title = "Distribución Espacial de Perfiles",
-           subtitle = sprintf("Total perfiles válidos: %d | Candidatos a outlier: %d", nrow(dat_valid), outlier_count),
+           subtitle = sprintf("Total perfiles válidos: %d | Candidatos a outlier (IQR 3x): %d", nrow(dat_valid), outlier_count),
            x = "Longitud (WGS84)", y = "Latitud (WGS84)")
     print(p)
     cat("[OK] Gráfico espacial generado en el panel 'Plots' de RStudio.\n")
@@ -364,14 +320,14 @@ if (!is_projected_coords || !is.null(source_crs)) {
 cat("\n==============================================================================\n")
 cat("  RESUMEN DE AUDITORÍA ESPACIAL (Paso 1.2)\n")
 cat("==============================================================================\n")
-cat(sprintf("Registros válidos analizados: %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
-cat(sprintf("Sistema de referencia:        %s\n", crs_used))
-cat(sprintf("Posibles outliers espaciales: %d puntos detectados (IQR + k-NN)\n", outlier_count))
-cat(sprintf("Acción aplicada:              %s\n", outlier_action_applied))
-cat(sprintf("[OK] Dataset espacial guardado en:   %s\n", output_csv))
-cat(sprintf("[OK] Reporte espacial guardado en:   %s\n", output_report))
+cat(sprintf("Registros válidos analizados:          %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
+cat(sprintf("Sistema de referencia:                 %s\n", crs_used))
+cat(sprintf("Posibles outliers espaciales (IQR 3x): %d puntos detectados\n", outlier_count))
+cat(sprintf("Acción aplicada:                       %s\n", outlier_action_applied))
+cat(sprintf("[OK] Dataset espacial guardado en:     %s\n", output_csv))
+cat(sprintf("[OK] Reporte espacial guardado en:     %s\n", output_report))
 if (decision_logged) {
-  cat(sprintf("[OK] Registro de decisiones en:      %s\n", decisions_log))
+  cat(sprintf("[OK] Registro de decisiones en:        %s\n", decisions_log))
 }
 cat("==============================================================================\n\n")
 
