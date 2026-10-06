@@ -22,22 +22,40 @@
 
 TEMPLATE_VERSION <- "2.0.0"
 
-rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION")))
+rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
 })
 
 # 1. Configuración de rutas y parámetros ---------------------------------------
-is_project_env <- dir.exists("data") && dir.exists("reports")
-base_data_dir  <- if (is_project_env) "data" else "01_data/profiles"
-base_rep_dir   <- if (is_project_env) "reports" else "01_data/profiles"
+proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
+  as.character(PROJECT_DIR)
+} else if (exists("CURRENT_PROJECT_DIR") && !is.null(CURRENT_PROJECT_DIR) && nzchar(as.character(CURRENT_PROJECT_DIR))) {
+  as.character(CURRENT_PROJECT_DIR)
+} else if (dir.exists("data") && dir.exists("reports")) {
+  "."
+} else {
+  NULL
+}
 
-config_file   <- if (file.exists("config.json")) "config.json" else file.path(base_data_dir, "user_config.json")
-input_csv     <- file.path(base_data_dir, "step1_2_spatial.csv")
+if (!is.null(proj_active)) {
+  base_data_dir <- file.path(proj_active, "data")
+  base_rep_dir  <- file.path(proj_active, "reports")
+  config_file   <- file.path(proj_active, "config.json")
+  decisions_log <- file.path(proj_active, "decisions_log.csv")
+} else {
+  base_data_dir <- "01_data/profiles"
+  base_rep_dir  <- "01_data/profiles"
+  config_file   <- file.path(base_data_dir, "user_config.json")
+  decisions_log <- file.path(base_data_dir, "decisions_log.csv")
+}
+
+if (!exists("input_csv") || is.null(input_csv) || !nzchar(input_csv)) {
+  input_csv <- file.path(base_data_dir, "step1_2_spatial.csv")
+}
 output_csv    <- file.path(base_data_dir, "cleaned_profiles.csv")
 output_report <- file.path(base_rep_dir, "step1_3_pedological_report.txt")
-decisions_log <- if (file.exists("decisions_log.csv")) "decisions_log.csv" else file.path(base_data_dir, "decisions_log.csv")
 
 SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
@@ -75,8 +93,13 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
+      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
     }
-  }, error = function(e) NULL)
+  }, error = function(e) {
+    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+  })
+} else {
+  cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
 }
 
 if (!file.exists(input_csv)) {
@@ -239,7 +262,10 @@ if (has_bd) {
 
 estimate_bd_req <- if (!is.null(user_cfg$estimate_bd)) isTRUE(user_cfg$estimate_bd) else FALSE
 dat$BD_est <- NA_real_
-dat$BD_source <- if (has_bd && sum(!is.na(dat$BD)) > 0) "measured" else "missing"
+dat$BD_source <- dplyr::case_when(
+  !is.na(dat$BD) & (!dat$flag_bd_anomaly) ~ "measured",
+  TRUE                                    ~ "missing"
+)
 
 ptf_eval_table <- data.frame(
   PTF = character(),
@@ -446,8 +472,9 @@ if (estimate_bd_req && has_user_ptf_choice) {
   
   if (!is.null(winner_key) && winner_key %in% names(all_models_list)) {
     chosen_model <- all_models_list[[winner_key]]
-    dat$BD_est <- chosen_model$pred
-    impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
+    impute_mask <- is.na(dat$BD) & !is.na(chosen_model$pred)
+    dat$BD_est <- NA_real_
+    dat$BD_est[impute_mask] <- chosen_model$pred[impute_mask]
     bd_imputed_count <- sum(impute_mask)
     dat$BD_source[impute_mask] <- "estimated"
     
@@ -497,6 +524,15 @@ dat <- dat %>%
       TRUE ~ "Profundo (>100 cm)"
     )
   )
+
+# Conteo y coherencia de BD (Issue #27)
+n_bd_measured <- sum(dat$BD_source == "measured")
+n_bd_estimated <- sum(dat$BD_source == "estimated")
+n_bd_missing <- sum(dat$BD_source == "missing")
+
+n_bd_raw_non_na <- if (has_bd) sum(!is.na(dat$BD)) else 0
+n_excluded_anomaly <- bd_impossible_count
+n_excluded_missing_om <- if (has_bd) sum(!is.na(dat$BD) & !dat$flag_bd_anomaly & (is.na(om_series) | om_series <= 0)) else 0
 
 # 5. Generar Reporte de Texto Edafológico UTF-8 ---------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
@@ -551,10 +587,21 @@ if (has_soc) {
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACIÓN DE PTFS:", report_con)
 writeLines(sprintf("  Estado de estimación BD: %s", ptf_status), report_con)
-if (has_bd) {
-  writeLines(sprintf("  BD medida original: Rango [%.2f, %.2f] g/cm3 | Anómalos (<= 0 o > 2.65): %d",
-                     min(dat$BD, na.rm = TRUE), max(dat$BD, na.rm = TRUE), bd_impossible_count), report_con)
-  writeLines(sprintf("  Muestras medidas disponibles para contraste: %d (Umbral ajuste local: %d)",
+if (has_bd || estimate_bd_req) {
+  writeLines("\nBALANCE Y COBERTURA DE DENSIDAD APARENTE (BD):", report_con)
+  writeLines(sprintf("  Filas totales evaluadas:                       %d", nrow(dat)), report_con)
+  writeLines(sprintf("  BD con medición válida (BD_source = 'measured'):  %d (%.1f%%)",
+                     n_bd_measured, (n_bd_measured / nrow(dat)) * 100), report_con)
+  writeLines(sprintf("  BD estimada por PTF   (BD_source = 'estimated'): %d (%.1f%%)",
+                     n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100), report_con)
+  writeLines(sprintf("  Sin dato de BD        (BD_source = 'missing'):   %d (%.1f%%)",
+                     n_bd_missing, (n_bd_missing / nrow(dat)) * 100), report_con)
+  
+  writeLines("\nDETALLE DE CALIBRACIÓN Y EXCLUSIONES:", report_con)
+  writeLines(sprintf("  Mediciones analizadas brutas:                  %d", n_bd_raw_non_na), report_con)
+  writeLines(sprintf("  Excluidas por valor anómalo (<= 0 o > 2.65):   %d", n_excluded_anomaly), report_con)
+  writeLines(sprintf("  Excluidas por falta de OM/SOC predictor:       %d", n_excluded_missing_om), report_con)
+  writeLines(sprintf("  Total observaciones utilizadas en contraste:   %d (Umbral ajuste local: %d)",
                      n_val_total, bd_fit_min_n), report_con)
 }
 if (nrow(ptf_eval_table) > 0) {
@@ -584,6 +631,9 @@ cat(sprintf("Solapes verticales brutos / netos:    %d / %d\n", overlaps_raw_coun
 if (has_texture) {
   cat(sprintf("Balance textural (95-105%%):           %d horizontes (Desbalance severo: %d)\n", tex_normal_count, tex_severe_count))
 }
+cat(sprintf("Densidad Aparente - Medida válida:    %d (%.1f%%)\n", n_bd_measured, (n_bd_measured / nrow(dat)) * 100))
+cat(sprintf("Densidad Aparente - Estimada (PTF):   %d (%.1f%%)\n", n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100))
+cat(sprintf("Densidad Aparente - Faltante:         %d (%.1f%%)\n", n_bd_missing, (n_bd_missing / nrow(dat)) * 100))
 cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
 if (nrow(ptf_eval_table) > 0) {
   cat("Contraste y evaluación de PTFs:\n")

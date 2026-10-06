@@ -21,7 +21,7 @@
 
 TEMPLATE_VERSION <- "2.0.0"
 
-rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION")))
+rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -29,15 +29,33 @@ suppressPackageStartupMessages({
 })
 
 # 1. Configuración de rutas y parámetros ---------------------------------------
-is_project_env <- dir.exists("data") && dir.exists("reports")
-base_data_dir  <- if (is_project_env) "data" else "01_data/profiles"
-base_rep_dir   <- if (is_project_env) "reports" else "01_data/profiles"
+proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
+  as.character(PROJECT_DIR)
+} else if (exists("CURRENT_PROJECT_DIR") && !is.null(CURRENT_PROJECT_DIR) && nzchar(as.character(CURRENT_PROJECT_DIR))) {
+  as.character(CURRENT_PROJECT_DIR)
+} else if (dir.exists("data") && dir.exists("reports")) {
+  "."
+} else {
+  NULL
+}
 
-config_file   <- if (file.exists("config.json")) "config.json" else file.path(base_data_dir, "user_config.json")
-input_csv     <- file.path(base_data_dir, "step1_1_variables.csv")
+if (!is.null(proj_active)) {
+  base_data_dir <- file.path(proj_active, "data")
+  base_rep_dir  <- file.path(proj_active, "reports")
+  config_file   <- file.path(proj_active, "config.json")
+  decisions_log <- file.path(proj_active, "decisions_log.csv")
+} else {
+  base_data_dir <- "01_data/profiles"
+  base_rep_dir  <- "01_data/profiles"
+  config_file   <- file.path(base_data_dir, "user_config.json")
+  decisions_log <- file.path(base_data_dir, "decisions_log.csv")
+}
+
+if (!exists("input_csv") || is.null(input_csv) || !nzchar(input_csv)) {
+  input_csv <- file.path(base_data_dir, "step1_1_variables.csv")
+}
 output_csv    <- file.path(base_data_dir, "step1_2_spatial.csv")
 output_report <- file.path(base_rep_dir, "step1_2_spatial_report.txt")
-decisions_log <- if (file.exists("decisions_log.csv")) "decisions_log.csv" else file.path(base_data_dir, "decisions_log.csv")
 
 SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
@@ -75,8 +93,13 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
+      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
     }
-  }, error = function(e) NULL)
+  }, error = function(e) {
+    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+  })
+} else {
+  cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
 }
 
 if (!file.exists(input_csv)) {
@@ -144,7 +167,7 @@ if (is_projected_coords) {
     cat("Por favor, consulta el EPSG de tu país/zona en 'docs/OPENNSIS_STANDARDS.md' o con la IA,\n")
     cat("y decláralo en 'config.json' (ej: \"source_crs\": 32616).\n")
     cat("==============================================================================\n\n")
-    crs_used <- "MÉTRICAS SIN EPSG (Transformación pendiente; mapa omitido para evitar deformación)"
+    crs_used <- "MÉTRICAS SIN EPSG (Gráfico 2D generado en panel Plots; mapa base omitido hasta declarar source_crs)"
   } else {
     cat(sprintf("[*] Reproyectando coordenadas desde EPSG:%d a EPSG:4326 (WGS84) ...\n", source_crs))
     sf_pts <- sf::st_as_sf(dat_valid, coords = c("longitude", "latitude"), crs = source_crs)
@@ -255,11 +278,20 @@ if ("profile_code" %in% names(dat)) {
   }
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("RANGOS DE COORDENADAS WGS84:", report_con)
-writeLines(sprintf("  Longitud: [%.4f, %.4f] (Amplitud: %.4f grados)", 
-                   min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
-writeLines(sprintf("  Latitud:  [%.4f, %.4f] (Amplitud: %.4f grados)", 
-                   min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
+if (is_projected_coords && is.null(source_crs)) {
+  writeLines("RANGOS DE COORDENADAS MÉTRICAS (PROYECTADAS SIN CRS):", report_con)
+  writeLines(sprintf("  X (Este):  [%.1f, %.1f] (Amplitud: %.1f m)", 
+                     min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
+  writeLines(sprintf("  Y (Norte): [%.1f, %.1f] (Amplitud: %.1f m)", 
+                     min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
+  writeLines("  NOTA: Coordenadas en rango métrico proyectado sin CRS asignado. Gráfico 2D disponible en Plots.", report_con)
+} else {
+  writeLines("RANGOS DE COORDENADAS WGS84:", report_con)
+  writeLines(sprintf("  Longitud: [%.4f, %.4f] (Amplitud: %.4f grados)", 
+                     min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
+  writeLines(sprintf("  Latitud:  [%.4f, %.4f] (Amplitud: %.4f grados)", 
+                     min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
+}
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("AUDITORÍA DE OUTLIERS ESPACIALES Y DISPERSIÓN:", report_con)
 writeLines(sprintf("  Método aplicado:                  1D IQR por eje (umbral: Q1 - 3·IQR o Q3 + 3·IQR)"), report_con)
@@ -314,6 +346,22 @@ if (!is_projected_coords || !is.null(source_crs)) {
     print(p)
     cat("[OK] Gráfico espacial generado en el panel 'Plots' de RStudio.\n")
   }
+} else {
+  # Coordenadas proyectadas sin EPSG especificado: generar dispersión plana en ggplot2 (Issue #28)
+  cat("[*] Coordenadas métricas sin EPSG especificado. Generando gráfico de dispersión bidimensional ...\n")
+  p <- ggplot(dat_valid, aes(x = longitude, y = latitude, color = flag_spatial_outlier)) +
+    geom_point(alpha = 0.7, size = 2) +
+    scale_color_manual(values = c("FALSE" = "#2A788EFF", "TRUE" = "#D84315"),
+                       labels = c("Normal", "Candidato Outlier"), name = "Estado") +
+    theme_minimal() +
+    labs(title = "Distribución de Coordenadas Métricas (Sin CRS Especificado)",
+         subtitle = sprintf("Dispersión plana en sistema de origen no especificado (sin georreferenciar). Total: %d | Outliers IQR 3x: %d",
+                            nrow(dat_valid), outlier_count),
+         x = "Coordenada X (Este)", y = "Coordenada Y (Norte)")
+  print(p)
+  cat("[OK] Gráfico diagnóstico de dispersión generado en el panel 'Plots' de RStudio.\n")
+  cat("     -> NOTA: Este gráfico muestra la dispersión relativa de los puntos en sus coordenadas métricas originales.\n")
+  cat("     -> Para desplegar mapa interactivo sobre capas base (mapview), declara 'source_crs' en 'config.json'.\n")
 }
 
 # 8. Resumen en consola --------------------------------------------------------
@@ -333,7 +381,13 @@ cat("===========================================================================
 
 cat("------------------------------------------------------------------------------\n")
 cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa el mapa en RStudio (pestaña 'Viewer' o 'Plots').\n")
-cat("2. En el chat con la IA, describe si los puntos corresponden a tu área de estudio\n")
-cat("   o si identificas puntos aislados antes de avanzar al Paso 1.3.\n")
+if (is_projected_coords && is.null(source_crs)) {
+  cat("1. Revisa el gráfico de dispersión de coordenadas en el panel 'Plots' de RStudio.\n")
+  cat("2. En el chat con la IA, indica qué sistema proyectado/EPSG corresponde a estas coordenadas,\n")
+  cat("   y si la dispersión de puntos concuerda con tu área de estudio antes de pasar al Paso 1.3.\n")
+} else {
+  cat("1. Revisa el mapa en RStudio (pestaña 'Viewer' o 'Plots').\n")
+  cat("2. En el chat con la IA, describe si los puntos corresponden a tu área de estudio\n")
+  cat("   o si identificas puntos aislados antes de avanzar al Paso 1.3.\n")
+}
 cat("------------------------------------------------------------------------------\n\n")

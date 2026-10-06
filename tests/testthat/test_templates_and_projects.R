@@ -216,8 +216,9 @@ test_that("Step 1.3 evaluates reference PTFs, local calibration (n >= 30), and e
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
   res_conf <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  # Filas 11 a 15 tenían BD faltante; las que tienen SOC (12 a 15) deben tener BD_est
-  expect_true(all(!is.na(res_conf$BD_est[12:15])))
+  # Filas con BD faltante y SOC presente (P12 a P15) deben tener BD_est imputado
+  expect_true(all(!is.na(res_conf$BD_est[res_conf$profile_code %in% c("P12", "P13", "P14", "P15")])))
+  expect_true(all(is.na(res_conf$BD_est[!is.na(res_conf$BD)])))
   
   # Caso 2: n >= 30 (n = 35 medidos). Calibración de función paramétrica local simple
   set.seed(123)
@@ -243,7 +244,8 @@ test_that("Step 1.3 evaluates reference PTFs, local calibration (n >= 30), and e
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
   res_local <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  expect_true(all(!is.na(res_local$BD_est[36:40])))
+  expect_true(all(!is.na(res_local$BD_est[res_local$profile_code %in% paste0("P", 36:40)])))
+  expect_true(all(is.na(res_local$BD_est[!is.na(res_local$BD)])))
   
   rep_large <- readLines("01_data/profiles/step1_3_pedological_report.txt", encoding = "UTF-8")
   expect_true(any(grepl("Ajuste local simple", rep_large, fixed = TRUE)))
@@ -269,7 +271,7 @@ test_that("Step 1.3 evaluates reference PTFs, local calibration (n >= 30), and e
   source("02_scripts/01_3_byod_audit.R", local = new.env())
   
   res_force <- read.csv("01_data/profiles/cleaned_profiles.csv")
-  expect_true(all(!is.na(res_force$BD_est[12:15])))
+  expect_true(all(!is.na(res_force$BD_est[res_force$profile_code %in% c("P12", "P13", "P14", "P15")])))
 })
 
 test_that("00_new_project.R instantiates isolated project with updated decisions_log structure", {
@@ -314,4 +316,126 @@ test_that("00_audit_diff.R identifies intact vs adapted project scripts", {
     source("02_scripts/00_audit_diff.R", local = new.env())
   })
   expect_true(any(grepl("\\[ADAPTADO\\].*01_1_byod_audit.R", res_adapted)))
+})
+
+test_that("Issue #25: 00_new_project.R stamps PROJECT_DIR and paths route reports to reports/", {
+  test_proj <- "test_issue25_proj"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  s_path <- file.path(proj_path, "scripts", "01_1_byod_audit.R")
+  lines <- readLines(s_path, encoding = "UTF-8")
+  expect_true(any(grepl("PROJECT_DIR <- ['\"]projects/test_issue25_proj['\"]", lines)))
+  expect_true(any(grepl('file.path(proj_active, "reports")', lines, fixed = TRUE)))
+})
+
+test_that("Issue #26: Step 1.1 resolves duplicate site keys before left_join and prevents row explosion", {
+  test_xlsx <- "01_data/profiles/test_site_dups.xlsx"
+  cfg_json  <- "01_data/profiles/user_config.json"
+  
+  df_sites <- data.frame(
+    id_sitio = c("S1", "S1", "S2"),
+    x = c(-60.1, -60.1, -60.2),
+    y = c(-34.1, -34.1, -34.2)
+  )
+  df_hors <- data.frame(
+    id_sitio = c("S1", "S1", "S2"),
+    id_hz = c("H1", "H2", "H3"),
+    top = c(0, 20, 0),
+    bottom = c(20, 40, 30),
+    soc = c(2.1, 1.2, 1.8)
+  )
+  writexl::write_xlsx(list(sitios = df_sites, horizontes = df_hors), test_xlsx)
+  
+  on.exit({
+    unlink(test_xlsx)
+    if (file.exists(cfg_json)) unlink(cfg_json)
+    if (file.exists("01_data/profiles/step1_1_variables.csv")) unlink("01_data/profiles/step1_1_variables.csv")
+    if (file.exists("01_data/profiles/step1_1_variables_report.txt")) unlink("01_data/profiles/step1_1_variables_report.txt")
+  }, add = TRUE)
+  
+  cfg <- list(
+    input_file = test_xlsx,
+    site_sheet = "sitios",
+    site_key = "id_sitio",
+    horizon_sheets = list(
+      list(sheet = "horizontes", join_key = "id_sitio", horiz_key = "id_hz")
+    ),
+    duplicate_key_strategy = "keep_first",
+    column_mapping = list(
+      profile_code = "id_sitio",
+      longitude = "x", latitude = "y",
+      upper = "top", lower = "bottom",
+      SOC = "soc"
+    )
+  )
+  jsonlite::write_json(cfg, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_1_byod_audit.R", local = new.env())
+  
+  out_df <- read.csv("01_data/profiles/step1_1_variables.csv")
+  expect_equal(nrow(out_df), 3)
+  
+  rep_lines <- readLines("01_data/profiles/step1_1_variables_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("Claves duplicadas en hoja de sitios", rep_lines, fixed = TRUE)))
+})
+
+test_that("Issue #27: Step 1.3 assigns BD_source per-row ('measured', 'estimated', 'missing')", {
+  test_csv <- "01_data/profiles/step1_2_spatial.csv"
+  cfg_json <- "01_data/profiles/user_config.json"
+  
+  on.exit({
+    unlink(test_csv)
+    if (file.exists(cfg_json)) unlink(cfg_json)
+    if (file.exists("01_data/profiles/cleaned_profiles.csv")) unlink("01_data/profiles/cleaned_profiles.csv")
+    if (file.exists("01_data/profiles/step1_3_pedological_report.txt")) unlink("01_data/profiles/step1_3_pedological_report.txt")
+  }, add = TRUE)
+  
+  df_bd <- data.frame(
+    profile_code = paste0("P", 1:15),
+    longitude = -60, latitude = -34,
+    upper = 0, lower = 20,
+    SOC = c(1.5, 2.0, 0.8, 1.2, 3.0, 2.5, 1.1, 1.8, 0.9, 2.2, 1.4, 2.1, 1.0, NA, NA),
+    BD  = c(1.35, 1.28, 1.45, 1.25, 1.15, 1.22, 1.38, 1.30, 1.42, 1.20, NA, NA, NA, NA, NA)
+  )
+  write.csv(df_bd, test_csv, row.names = FALSE)
+  
+  cfg <- list(estimate_bd = TRUE, selected_ptf = "best_published")
+  jsonlite::write_json(cfg, cfg_json, auto_unbox = TRUE)
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  
+  res <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_equal(sum(res$BD_source == "measured"), 10)
+  expect_equal(sum(res$BD_source == "estimated"), 3)
+  expect_equal(sum(res$BD_source == "missing"), 2)
+  
+  rep_lines <- readLines("01_data/profiles/step1_3_pedological_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("BALANCE Y COBERTURA DE DENSIDAD APARENTE", rep_lines, fixed = TRUE)))
+})
+
+test_that("Issue #28: Step 1.2 generates 2D plot fallback when coordinates are projected and source_crs is null", {
+  test_csv <- "01_data/profiles/step1_1_variables.csv"
+  
+  df_metric <- data.frame(
+    profile_code = paste0("P", 1:10),
+    longitude = 500000 + runif(10, -100, 100),
+    latitude  = 6200000 + runif(10, -100, 100),
+    upper = 0, lower = 20
+  )
+  write.csv(df_metric, test_csv, row.names = FALSE)
+  
+  on.exit({
+    unlink(test_csv)
+    if (file.exists("01_data/profiles/step1_2_spatial.csv")) unlink("01_data/profiles/step1_2_spatial.csv")
+    if (file.exists("01_data/profiles/step1_2_spatial_report.txt")) unlink("01_data/profiles/step1_2_spatial_report.txt")
+  }, add = TRUE)
+  
+  source("02_scripts/01_2_byod_audit.R", local = new.env())
+  
+  rep_lines <- readLines("01_data/profiles/step1_2_spatial_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("Coordenadas en rango métrico proyectado sin CRS asignado", rep_lines, fixed = TRUE)))
 })

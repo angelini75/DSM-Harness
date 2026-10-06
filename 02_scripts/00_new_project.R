@@ -60,29 +60,18 @@ for (s_file in source_scripts) {
   if (file.exists(src_path)) {
     orig_lines <- readLines(src_path, encoding = "UTF-8", warn = FALSE)
     
-    # Crear cabecera de procedencia
+    # Crear cabecera de procedencia estampando PROJECT_DIR de forma nativa
     prov_header <- c(
       paste0("# --- PROVENANCE METADATA: PROJECT '", project_name, "' ---"),
       paste0("# TEMPLATE_VERSION: ", TEMPLATE_VERSION),
       paste0("# COPIED_FROM:      ", src_path),
       paste0("# CREATED_AT:       ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
       "# ADAPTED_BLOCKS:   None (Original template copy)",
+      paste0("PROJECT_DIR <- '", proj_dir, "'"),
       "# ------------------------------------------------------------------------------"
     )
     
-    # Reemplazar rutas predeterminadas para apuntar a la carpeta del proyecto
     script_content <- c(prov_header, orig_lines)
-    script_content <- gsub('"01_data/profiles/user_config.json"', sprintf('"projects/%s/config.json"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/decisions_log.csv"', sprintf('"projects/%s/decisions_log.csv"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/data_inspection_report.txt"', sprintf('"projects/%s/reports/data_inspection_report.txt"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/step1_1_variables_report.txt"', sprintf('"projects/%s/reports/step1_1_variables_report.txt"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/step1_2_spatial_report.txt"', sprintf('"projects/%s/reports/step1_2_spatial_report.txt"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/step1_3_pedological_report.txt"', sprintf('"projects/%s/reports/step1_3_pedological_report.txt"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/step1_1_variables.csv"', sprintf('"projects/%s/data/step1_1_variables.csv"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/step1_2_spatial.csv"', sprintf('"projects/%s/data/step1_2_spatial.csv"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles/cleaned_profiles.csv"', sprintf('"projects/%s/data/cleaned_profiles.csv"', project_name), script_content, fixed = TRUE)
-    script_content <- gsub('"01_data/profiles"', sprintf('"projects/%s/data"', project_name), script_content, fixed = TRUE)
-    
     writeLines(script_content, dst_path, useBytes = FALSE)
     cat(sprintf("  -> Script instanciado: %s\n", dst_path))
   }
@@ -110,6 +99,8 @@ cat(sprintf("[*] Log de auditoría inicializado: '%s'\n", proj_log))
 run_step_code <- c(
   paste0("# DSM-Harness | Ejecutor de pasos para: ", project_name),
   paste0("PROJECT_NAME <- '", project_name, "'"),
+  paste0("CURRENT_PROJECT_DIR <- '", proj_dir, "'"),
+  paste0("PROJECT_DIR <- '", proj_dir, "'"),
   "",
   "run_step <- function(step = '0') {",
   "  s_map <- list(",
@@ -124,6 +115,8 @@ run_step_code <- c(
   "  }",
   "  s_file <- file.path('projects', PROJECT_NAME, 'scripts', s_map[[step_char]])",
   "  cat(sprintf('\\n[>>> EJECUTANDO PASO %s] %s ...\\n', step_char, s_file))",
+  "  CURRENT_PROJECT_DIR <<- file.path('projects', PROJECT_NAME)",
+  "  PROJECT_DIR <<- file.path('projects', PROJECT_NAME)",
   "  source(s_file, local = FALSE)",
   "}",
   "",

@@ -80,7 +80,7 @@ for (sf in script_files) {
   t_ver <- gsub(".*TEMPLATE_VERSION:\\s*", "", p_lines[grepl("TEMPLATE_VERSION:", p_lines)][1])
   
   # Filtrar cabeceras de procedencia y diferencias de rutas relativas
-  p_body <- p_lines[!grepl("^# --- PROVENANCE|^# TEMPLATE_VERSION|^# COPIED_FROM|^# CREATED_AT|^# ADAPTED_BLOCKS|^# ---", p_lines)]
+  p_body <- p_lines[!grepl("^# --- PROVENANCE|^# TEMPLATE_VERSION|^# COPIED_FROM|^# CREATED_AT|^# ADAPTED_BLOCKS|^# ---|^PROJECT_DIR <-", p_lines)]
   
   # Normalizar rutas locales a genéricas para comparar lógica pura
   p_norm <- gsub(sprintf("projects/%s/data", project_name), "01_data/profiles", p_body, fixed = TRUE)

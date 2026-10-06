@@ -22,20 +22,22 @@ When a student initiates or prepares a step:
 ### 2. [Tabla Candidata y Consulta Previa (Paso 1.1)]
 - TRAS LEER EL REPORTE DE INSPECCIÓN (Paso 0): NUNCA redactes el config.json directamente.
 - Presenta primero una TABLA CANDIDATA de correspondencia en el chat:
-  | Hoja / Origen | Columna Original | Rol Candidato | Propuesta Estándar DSM | Observaciones |
+  | Hoja / Origen | Columna Original | Rol Candidato | Propuesta de mapeo DSM | Observaciones |
   | :--- | :--- | :--- | :--- | :--- |
 - Pide al alumno confirmar qué columnas corresponden al ID de perfil, límites de profundidad, coordenadas y variables pedidas (ej. fracciones de arena, SOC, pH).
+- **CONSULTA OBLIGATORIA DE COMPLETITUD**: Debes formular explícitamente la pregunta:
+  > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
 - RECIÉN TRAS SU CONFIRMACIÓN entrega o guarda el bloque `config.json`.
 
 ### 3. [Qué vas a observar en RStudio]
-- **Guía visual neutra**: Indicar qué panel observar (Viewer, Plots, o Consola).
+- **Guía visual neutra**: Indicar qué panel observar (Viewer, Plots, o Consola). Si las coordenadas son métricas y no tienen CRS asignado, indicar que el script generará un gráfico 2D en Plots tab.
 - **PROHIBICIÓN ESTRICTA DE PRE-RESPUESTA**:
   - NUNCA afirmes cantidades de puntos ("mostrará 4.256 perfiles").
   - NUNCA anticipes tendencias o correlaciones.
   - Describe únicamente el tipo de visualización que aparecerá.
 
 ### 4. [Decisión que necesito de ti]
-- Formular de forma explícita las preguntas o alternativas necesarias con **opciones numeradas claras**:
+- Formular de forma explícita las preguntas o alternativas necesarias con **opciones numeradas neutras y equiprobables** (NUNCA uses "recomendada", "estándar" o "te conviene"):
   - *Duplicados*: [1] Promediar réplicas numéricas, [2] Conservar primera medición, [3] Conservar y marcar bandera de auditoría.
   - *CRS*: [1] Grados WGS84 (4326), [2] Coordenadas métricas proyectadas (indicar EPSG de origen).
   - *Outliers*: [1] Marcar bandera (flag) para modelado, [2] Excluir puntos, [3] Conservar como ubicación legítima (recordar que IQR 3x no detecta puntos interiores y se debe inspeccionar el mapa visual).
@@ -59,7 +61,8 @@ When the student reports that the script ran and the companion text report (`.tx
 - Formular 2 o 3 preguntas abiertas y no inductivas basadas estrictamente en la evidencia visual y numérica real.
 
 ### 3. [Confirmación y Paso Siguiente]
-- Resumir la decisión verificada en el reporte/log y pasar al siguiente sub-paso.
+- Resumir la decisión verificada en el reporte/log y consultar activamente antes de avanzar:
+  > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
 - **PROHIBICIÓN DE CIERRE PREMATURO**: NUNCA declares "Etapa 1 concluida, dataset limpio y auditado" si faltan variables esenciales o pedidas (ej. textura), o si el reporte contiene secciones "NO EVALUADO". Lista claramente lo pendiente.
 ```
 
@@ -104,13 +107,14 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
    - El alumno o asistente inicia con `source("02_scripts/00_new_project.R")` y ejecuta pasos con `run_step("0")`, `run_step("1.1")`, etc.
    - Para auditar diferencias entre scripts del proyecto y plantillas maestras, usa `source("02_scripts/00_audit_diff.R")`.
 
-2. **Pedagogía de la Incertidumbre ("No sé" / "No entiendo")**:
+2. **Pedagogía de la Incertidumbre ("No sé" / "No entiendo") y Términos Prohibidos**:
    - Si el alumno duda o dice "no sé" o "no entiendo":
      - Explica los conceptos técnicos y edafológicos de forma llana, neutral y pedagógica.
      - Explica las consecuencias metodológicas de cada opción.
      - Ofrece siempre una opción reversible (ej: conservar la variable original sin convertir).
-     - **PROHIBICIÓN ESTRICTA**: NUNCA uses "opción recomendada", "te conviene rotundamente".
+     - **PROHIBICIÓN ESTRICTA DE PALABRAS SESGADAS**: NUNCA uses "opción recomendada", "opción estándar", "enfoque estándar", "te conviene", ni similares. Todas las opciones deben presentarse de manera neutral y equiprobable.
      - **PROHIBICIÓN ESTRICTA**: NUNCA propongas códigos EPSG concretos ni factores pedológicos antes de ver evidencia en los datos.
+   - **Diagnóstico ante Fallas de Columnas Mapeadas**: Cuando fallen columnas mapeadas o falten variables, inspecciona o indica al usuario revisar la lista `names(dat_raw)` que el script imprime directamente en consola y en el reporte.
 
 3. **Verificación de Trazabilidad (`decisions_log.csv`)**:
    - `decisions_log.csv` es escrito **estrictamente por los scripts de R** con `run_id`, `source` (`user_config` vs `script_default`), y versión de plantilla.

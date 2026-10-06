@@ -17,9 +17,34 @@
 # ==============================================================================
 
 # 1. Configuración de rutas y archivo de entrada --------------------------------
-is_project_env <- dir.exists("data") && dir.exists("reports")
-default_data_dir <- if (is_project_env) "data" else "01_data/profiles"
-default_rep_dir  <- if (is_project_env) "reports" else "01_data/profiles"
+proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
+  as.character(PROJECT_DIR)
+} else if (exists("CURRENT_PROJECT_DIR") && !is.null(CURRENT_PROJECT_DIR) && nzchar(as.character(CURRENT_PROJECT_DIR))) {
+  as.character(CURRENT_PROJECT_DIR)
+} else if (dir.exists("data") && dir.exists("reports")) {
+  "."
+} else {
+  NULL
+}
+
+if (!is.null(proj_active)) {
+  default_data_dir <- file.path(proj_active, "data")
+  default_rep_dir  <- file.path(proj_active, "reports")
+  proj_cfg_file    <- file.path(proj_active, "config.json")
+} else {
+  default_data_dir <- "01_data/profiles"
+  default_rep_dir  <- "01_data/profiles"
+  proj_cfg_file    <- file.path(default_data_dir, "user_config.json")
+}
+
+if (!exists("input_file") || is.null(input_file) || !nzchar(input_file)) {
+  if (file.exists(proj_cfg_file) && requireNamespace("jsonlite", quietly = TRUE)) {
+    cfg_tmp <- tryCatch(jsonlite::fromJSON(proj_cfg_file, simplifyVector = FALSE), error = function(e) NULL)
+    if (!is.null(cfg_tmp$input_file) && file.exists(as.character(cfg_tmp$input_file))) {
+      input_file <- as.character(cfg_tmp$input_file)
+    }
+  }
+}
 
 if (!exists("input_file") || is.null(input_file) || !nzchar(input_file)) {
   avail <- list.files(default_data_dir, pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE, ignore.case = TRUE)
@@ -38,7 +63,7 @@ if (!exists("input_file") || is.null(input_file) || !nzchar(input_file)) {
   }
 }
 
-if (!exists("output_report")) {
+if (!exists("output_report") || is.null(output_report) || !nzchar(output_report)) {
   output_report <- file.path(default_rep_dir, "data_inspection_report.txt")
 }
 

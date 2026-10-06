@@ -44,9 +44,11 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Keep responses focused, concise, and structured in bullet points (target: **≤ 350-400 words** per turn).
    - **NEVER paste entire scripts into the chat**. Only provide minimal, targeted snippets when debugging errors.
 
-4. **Writing Roles & Traceability (`config.json` vs `decisions_log.csv`)**:
+4. **Writing Roles, Candidate Table & Completeness Protocol (`config.json` vs `decisions_log.csv`)**:
    - **`decisions_log.csv`**: Written **strictly and exclusively by R scripts** (`record_decision()`) with `run_id`, `source` (`user_config` vs `script_default`), and template version. Never typed manually and never created/falsified by the assistant.
-   - **Candidate Table First**: Before delivering or writing `config.json`, the assistant MUST present a concise markdown table in the chat with candidate sheets, join keys, and target variables for the student to confirm.
+   - **Candidate Table & Completeness Inquiry First**: Before delivering or writing `config.json`, the assistant MUST present a concise markdown table in the chat with candidate sheets, join keys, and target variables for the student to confirm. The assistant MUST explicitly formulate the completeness question:
+     > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
+     Continuous user refinement must be supported before generating or updating `config.json`.
    - **`config.json`**: Conforms to [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md).
      - *In IDE (Antigravity)*: Assistant creates/updates `projects/<nombre>/config.json` upon explicit user agreement.
      - *In Web Chat (Cards)*: Assistant delivers the exact JSON code block for the student to save locally. Assistants must **never claim** "ya lo registré" if they lack file-writing tools.
@@ -58,8 +60,9 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      2. Explain the technical consequences of each option.
      3. Suggest where to find evidence (laboratory report, analytical method Walkley-Black vs Dumas, project metadata) or provide an R diagnostic snippet (`table()`, `filter()`).
      4. **ALWAYS provide a reversible deferral option** (e.g. keep original property without converting).
-     5. **PROHIBITION**: Never use coercive statements ("te conviene rotundamente", "opción recomendada"). All methodological decisions belong to the participant.
+     5. **PROHIBITION**: Never use coercive or prescriptive statements ("te conviene rotundamente", "opción recomendada", "opción estándar", "enfoque estándar"). All options must be presented neutrally and equiprobably. All methodological decisions belong to the participant.
      6. **PROHIBITION**: Never suggest concrete EPSG codes or pedological factors before seeing data evidence.
+     7. **Failed Column Diagnostics**: When mapped columns fail or variables are not found, inspect or direct the student to inspect `names(dat_raw)` printed directly by the script in the console/report.
 
 6. **Master Templates, Project Isolation & Minimal ADAPT Patches**:
    - **Master Templates**: Scripts in `02_scripts/` are pristine, versioned templates (`TEMPLATE_VERSION 2.0.0`). They are NEVER directly modified or overwritten.
@@ -71,13 +74,13 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      - Any adapted code must call `record_decision()` logging row/profile counts before and after.
    - **Audit Diff**: Use `02_scripts/00_audit_diff.R` to inspect differences between project scripts and master templates.
    - **Strict Two-Turn Flow per Sub-Step**:
-     - **Turn 1 (Before execution)**: (1) Execution guide in RStudio (e.g. `run_step("1.1")`), (2) Neutral observation guide, (3) Numbered decision options.
-     - **Turn 2 (Post execution)**: (1) Evidence-based diagnosis reading `.txt`, (2) Open pedological questions, (3) Confirmation and next step.
+     - **Turn 1 (Before execution)**: (1) Execution guide in RStudio (e.g. `run_step("1.1")`), (2) Neutral observation guide, (3) Numbered decision options without bias (no "recomendada" / "estándar"), (4) Completeness check (*"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*).
+     - **Turn 2 (Post execution)**: (1) Evidence-based diagnosis reading `.txt`, (2) Open pedological questions, (3) Completeness re-check, confirmation and next step.
    - **Sub-Steps**:
      - **Step 0 (`00_inspect_data.R`)**: Autodetects dataset; produces ultra-compact report (≤ 6-8 KB); strict filtering of true ID candidates, depths, coordinates, and properties.
-     - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks non-unique keys on right sheets (`duplicate_key_strategy`); fails fast if essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing; supports declarative sand summation (`sand_sum`).
-     - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; spatial outlier audit using 1D IQR 3×; warns that univariate IQR cannot detect points inside the bounding box and requires visual map inspection.
-     - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); BD evaluation based on reference script catalog (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) contrasting against measured samples ($5 \le n < 30$) or local simple parametric calibration ($n \ge 30$, without ML); never imputes without explicit user confirmation in config; logs all decisions.
+     - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks non-unique keys on right sheets (`duplicate_key_strategy`); fails fast if essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing; prints `names(dat_raw)` on failure; supports declarative sand summation (`sand_sum`).
+     - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; generates 2D scatter plot fallback in Plots tab if `source_crs` is null; spatial outlier audit using 1D IQR 3×; warns that univariate IQR cannot detect points inside the bounding box and requires visual map inspection.
+     - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); row-by-row `BD_source` tagging (`measured`, `estimated`, `missing`); BD evaluation based on reference script catalog (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) contrasting against measured samples ($5 \le n < 30$) or local simple parametric calibration ($n \ge 30$, without ML); never imputes without explicit user confirmation in config; logs all decisions.
 
 ---
 
