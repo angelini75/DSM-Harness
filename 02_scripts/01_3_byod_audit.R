@@ -1,22 +1,21 @@
 # ==============================================================================
-# DSM-Harness | Paso 1.3: Profundidades, Límites de Horizontes y Coherencia Edafológica
+# DSM-Harness | Paso 1.3: Profundidades, Continuidad Vertical y Coherencia Edafológica
 # ==============================================================================
 # OBJETIVO:
-# Auditar los límites verticales de horizontes (upper, lower), verificar coherencia
-# física y solapamientos dentro de perfiles, comprobar balance analítico de texturas,
-# detectar valores físicamente imposibles, evaluar estimación de densidad aparente
-# de forma no destructiva (solo si es solicitada por el usuario), generar gráficos
-# diagnósticos y producir un reporte edafológico 100% calculado.
+# Auditar la coherencia vertical (solapes de profundidad, discontinuidades y
+# espesores), evaluar coherencia analítica (balance de texturas 100%, rangos
+# plausibles de pH y SOC), estimar opcionalmente Densidad Aparente (BD) en columna
+# separada 'BD_est' evitando circularidad con SOC, registrar decisiones en
+# decisions_log.csv y generar el dataset limpio 'cleaned_profiles.csv'.
 #
 # SALIDAS GENERADAS:
-# 1. Dataset final Etapa 1: '01_data/profiles/cleaned_profiles.csv'
-# 2. Reporte edafológico:   '01_data/profiles/step1_3_pedological_report.txt'
-# 3. Log de decisiones:     '01_data/profiles/decisions_log.csv'
-# 4. Gráficos en RStudio:   Curvas de profundidad y balance de textura
+# 1. Dataset limpio final: 'data/cleaned_profiles.csv'
+# 2. Reporte edafológico:  'reports/step1_3_pedological_report.txt'
+# 3. Log de decisiones:    'decisions_log.csv'
 #
 # INSTRUCCIONES PARA EL ALUMNO:
 # 1. Ejecuta este script en RStudio (Source o Ctrl+Shift+S).
-# 2. Observa los gráficos de perfiles en la pestaña 'Plots' y las alertas en consola.
+# 2. Revisa el reporte edafológico en consola y archivo de texto.
 # 3. Dialoga con la IA en el chat sobre los hallazgos y decisiones de consistencia.
 # ==============================================================================
 
@@ -29,29 +28,42 @@ suppressPackageStartupMessages({
 })
 
 # 1. Configuración de rutas y parámetros ---------------------------------------
-config_file   <- "01_data/profiles/user_config.json"
-input_csv     <- "01_data/profiles/step1_2_spatial.csv"
-output_csv    <- "01_data/profiles/cleaned_profiles.csv"
-output_report <- "01_data/profiles/step1_3_pedological_report.txt"
-decisions_log <- "01_data/profiles/decisions_log.csv"
+is_project_env <- dir.exists("data") && dir.exists("reports")
+base_data_dir  <- if (is_project_env) "data" else "01_data/profiles"
+base_rep_dir   <- if (is_project_env) "reports" else "01_data/profiles"
+
+config_file   <- if (file.exists("config.json")) "config.json" else file.path(base_data_dir, "user_config.json")
+input_csv     <- file.path(base_data_dir, "step1_2_spatial.csv")
+output_csv    <- file.path(base_data_dir, "cleaned_profiles.csv")
+output_report <- file.path(base_rep_dir, "step1_3_pedological_report.txt")
+decisions_log <- if (file.exists("decisions_log.csv")) "decisions_log.csv" else file.path(base_data_dir, "decisions_log.csv")
+
+SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
-# Función auxiliar para registrar decisiones en decisions_log.csv
-record_decision <- function(step, criterion, decision, affected_rows = 0, affected_profiles = 0, details = "") {
+record_decision <- function(step, criterion, decision, source = "user_config", affected_rows = 0, affected_profiles = 0, details = "") {
   log_entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    run_id = SCRIPT_RUN_ID,
     step = as.character(step),
     criterion = as.character(criterion),
     user_decision = as.character(decision),
+    source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
     details = as.character(details),
+    template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
   if (!file.exists(decisions_log)) {
     write.csv(log_entry, decisions_log, row.names = FALSE)
   } else {
-    write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
+    first_line <- readLines(decisions_log, n = 1, warn = FALSE)
+    if (!grepl("run_id", first_line)) {
+      write.csv(log_entry, decisions_log, row.names = FALSE)
+    } else {
+      write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
+    }
   }
   decision_logged <<- TRUE
 }
@@ -61,62 +73,63 @@ user_cfg <- list()
 if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
-      user_cfg <- jsonlite::fromJSON(config_file)
-      cat(sprintf("[*] Configuración de usuario cargada desde: '%s'\n", config_file))
+      user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
     }
-  }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
-  })
+  }, error = function(e) NULL)
 }
 
 if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR] No se encontró '%s'. Debes ejecutar primero '02_scripts/01_2_byod_audit.R'.", input_csv))
+  stop(sprintf("[ERROR FATAL]: No se encontró el dataset intermedio '%s'. Ejecuta primero el Paso 1.2.", input_csv))
 }
 
-cat(sprintf("\n[*] Cargando dataset del Paso 1.2: %s ...\n", input_csv))
+cat(sprintf("\n[*] Cargando datos desde: %s ...\n", input_csv))
 dat <- readr::read_csv(input_csv, show_col_types = FALSE)
-n_initial <- nrow(dat)
 
-# 2. Auditoría de Límites Verticales de Horizontes ------------------------------
+# Identificar duplicados exactos previos para separar artefactos de unión
+exact_dup_mask <- duplicated(dat) | duplicated(dat, fromLast = TRUE)
+exact_dup_count <- sum(duplicated(dat))
+
+# 2. Auditoría de Profundidades y Continuidad Vertical -------------------------
 # >>> ADAPT:pedological_checks
-cat("[*] Auditando profundidades de horizontes (upper, lower)...\n")
+cat("[*] Evaluando límites de profundidad y continuidad de horizontes...\n")
 
-dat <- dat %>%
-  mutate(
-    upper = as.numeric(upper),
-    lower = as.numeric(lower)
-  )
+if (!("upper" %in% names(dat)) || !("lower" %in% names(dat))) {
+  stop("[ERROR FATAL]: El dataset no contiene columnas 'upper' y 'lower' requeridas para auditar profundidades.")
+}
 
-# Detección de anomalías de profundidad
-inv_depths_mask  <- (!is.na(dat$upper)) & (!is.na(dat$lower)) & (dat$lower < dat$upper)
-zero_thick_mask  <- (!is.na(dat$upper)) & (!is.na(dat$lower)) & (dat$lower == dat$upper)
-neg_depths_mask  <- (!is.na(dat$upper) & dat$upper < 0) | (!is.na(dat$lower) & dat$lower < 0)
-na_depths_mask   <- is.na(dat$upper) | is.na(dat$lower)
+dat$upper <- suppressWarnings(as.numeric(dat$upper))
+dat$lower <- suppressWarnings(as.numeric(dat$lower))
 
+# A. Inversión de límites (upper > lower)
+inv_depths_mask <- (!is.na(dat$upper)) & (!is.na(dat$lower)) & (dat$upper > dat$lower)
 inv_depths_count <- sum(inv_depths_mask)
+
+if (inv_depths_count > 0) {
+  cat(sprintf("[AVISO] Se detectaron %d registros con límites invertidos (upper > lower). Invirtiendo límites...\n", inv_depths_count))
+  tmp_up <- dat$upper[inv_depths_mask]
+  dat$upper[inv_depths_mask] <- dat$lower[inv_depths_mask]
+  dat$lower[inv_depths_mask] <- tmp_up
+  record_decision(1.3, "Profundidades invertidas", "Inversión automática de límites (swap)",
+                  source = "script_default", affected_rows = inv_depths_count)
+}
+
+# B. Espesor nulo o negativo
+dat$thickness <- dat$lower - dat$upper
+zero_thick_mask <- (!is.na(dat$thickness)) & (dat$thickness == 0)
+neg_depths_mask <- (!is.na(dat$upper) & dat$upper < 0) | (!is.na(dat$lower) & dat$lower < 0)
+na_depths_mask  <- is.na(dat$upper) | is.na(dat$lower)
+
 zero_thick_count <- sum(zero_thick_mask)
 neg_depths_count <- sum(neg_depths_mask)
 na_depths_count  <- sum(na_depths_mask)
 
-# Corrección segura de profundidades invertidas (swap si lower < upper)
-if (inv_depths_count > 0) {
-  cat(sprintf("[AVISO]: Se detectaron %d registros con lower < upper. Invirtiendo límites...\n", inv_depths_count))
-  dat <- dat %>%
-    mutate(
-      temp_up = if_else(inv_depths_mask, pmin(upper, lower), upper),
-      temp_lo = if_else(inv_depths_mask, pmax(upper, lower), lower),
-      upper = temp_up,
-      lower = temp_lo
-    ) %>%
-    select(-temp_up, -temp_lo)
-  record_decision(1.3, "Profundidades invertidas", "Inversión de límites (swap)", affected_rows = inv_depths_count)
-}
-
-# Auditoría de coherencia vertical interna por perfil (solapamientos y huecos)
-dat$flag_depth_overlap <- FALSE
-dat$flag_depth_gap     <- FALSE
+# C. Solapes (overlaps) y Discontinuidades (gaps) dentro de cada perfil
+overlaps_raw_count <- 0
+overlaps_clean_count <- 0
+gaps_count <- 0
 
 if ("profile_code" %in% names(dat)) {
+  # Evaluación en datos completos
   dat <- dat %>%
     group_by(profile_code) %>%
     arrange(upper, .by_group = TRUE) %>%
@@ -127,10 +140,22 @@ if ("profile_code" %in% names(dat)) {
     ) %>%
     select(-prev_lower) %>%
     ungroup()
+  
+  overlaps_raw_count <- sum(dat$flag_depth_overlap, na.rm = TRUE)
+  gaps_count         <- sum(dat$flag_depth_gap, na.rm = TRUE)
+  
+  # Evaluación en datos sin duplicados exactos (para identificar artefactos de unión)
+  dat_dedup <- dat %>% distinct(profile_code, upper, lower, .keep_all = TRUE)
+  dat_dedup <- dat_dedup %>%
+    group_by(profile_code) %>%
+    arrange(upper, .by_group = TRUE) %>%
+    mutate(
+      prev_lower = lag(lower),
+      flag_overlap_dedup = !is.na(prev_lower) & !is.na(upper) & (upper < prev_lower)
+    ) %>%
+    ungroup()
+  overlaps_clean_count <- sum(dat_dedup$flag_overlap_dedup, na.rm = TRUE)
 }
-
-overlaps_count <- sum(dat$flag_depth_overlap, na.rm = TRUE)
-gaps_count     <- sum(dat$flag_depth_gap, na.rm = TRUE)
 
 # No eliminar silenciosamente registros; marcar banderas de calidad
 dat$flag_invalid_depth <- na_depths_mask | zero_thick_mask | neg_depths_mask
@@ -199,44 +224,39 @@ if (has_soc) {
   dat$flag_soc_anomaly <- FALSE
 }
 
-# D. Densidad Aparente (BD): Chequeo físico y Pedotransferencia No Destructiva --
+# D. Coherencia y Estimación Opcional de Densidad Aparente (BD)
 has_bd <- "BD" %in% names(dat)
-if (!has_bd) dat$BD <- NA_real_ else dat$BD <- as.numeric(dat$BD)
+bd_impossible_count <- 0
+if (has_bd) {
+  dat$BD <- as.numeric(dat$BD)
+  bd_impossible_mask <- (!is.na(dat$BD)) & (dat$BD < 0.2 | dat$BD > 2.2)
+  bd_impossible_count <- sum(bd_impossible_mask)
+  dat$flag_bd_anomaly <- bd_impossible_mask
+} else {
+  dat$BD <- NA_real_
+  dat$flag_bd_anomaly <- FALSE
+  bd_impossible_mask <- rep(FALSE, nrow(dat))
+}
 
-bd_measured_count   <- sum(!is.na(dat$BD))
-bd_missing_count    <- sum(is.na(dat$BD))
-bd_impossible_mask  <- (!is.na(dat$BD)) & (dat$BD <= 0 | dat$BD > 2.65)
-bd_impossible_count <- sum(bd_impossible_mask)
-dat$flag_bd_anomaly <- bd_impossible_mask
-
-# Inicializar columnas no destructivas
-dat$BD_est    <- NA_real_
-dat$BD_source <- if_else(!is.na(dat$BD), "measured", "missing")
-
-# Estimación de BD: SOLO si el usuario lo activó explícitamente en user_config.json
-ptf_status <- "No activada (imputación por defecto desactivada para evitar circularidad)"
+# Estimación opcional de BD en columna separada BD_est (PTF Rawls et al., 1982)
+estimate_bd_req <- if (!is.null(user_cfg$estimate_bd)) isTRUE(user_cfg$estimate_bd) else FALSE
+dat$BD_est <- NA_real_
+dat$BD_source <- if (has_bd && sum(!is.na(dat$BD)) > 0) "measured" else "missing"
+ptf_status <- "No solicitada (conservando BD medida original sin imputar)"
 ptf_val_r2 <- NA_real_; ptf_val_rmse <- NA_real_; ptf_val_bias <- NA_real_
-bd_imputed_count <- 0
 
-estimate_bd_requested <- isTRUE(user_cfg$estimate_bd)
-
-if (estimate_bd_requested) {
-  cat("[*] Estimación de Densidad Aparente solicitada por configuración de usuario...\n")
-  # Implementación verificable de Rawls et al. (1982) / Saxton & Rawls (2006)
-  # BD_est = 100 / ( (%OM / BD_om) + ( (100 - %OM) / BD_mineral ) )
-  # con BD_om = 0.224 g/cm3 y BD_mineral = 1.45 g/cm3 (o dependiente de arena/arcilla)
-  
-  om_vals <- if ("OM" %in% names(dat) && sum(!is.na(dat$OM)) > 0) {
+if (estimate_bd_req) {
+  cat("[*] Solicitud de estimación de Densidad Aparente detectada (estimate_bd = true) ...\n")
+  om_vals <- if ("OM" %in% names(dat)) {
     as.numeric(dat$OM)
-  } else if (has_soc && sum(!is.na(dat$SOC)) > 0) {
+  } else if ("SOC" %in% names(dat)) {
     as.numeric(dat$SOC) * 1.724
-  } else NULL
+  } else {
+    NULL
+  }
   
-  if (!is.null(om_vals)) {
-    # Evitar divisiones por cero o valores negativos
-    om_clean <- pmax(om_vals, 0.01)
-    
-    # Densidad mineral base aproximada (Rawls et al. 1982)
+  if (!is.null(om_vals) && sum(!is.na(om_vals)) > 0) {
+    om_clean <- pmin(pmax(om_vals, 0.01), 60)
     bd_min_base <- if (has_texture && sum(!is.na(dat$Sand)) > 0) {
       1.15 + 0.0038 * dat$Sand + 0.001 * dat$Clay
     } else {
@@ -244,16 +264,12 @@ if (estimate_bd_requested) {
     }
     
     rawls_bd <- 100 / ((om_clean / 0.224) + ((100 - om_clean) / bd_min_base))
-    
-    # Asignar a BD_est sin sobreescribir BD medido
     dat$BD_est <- round(rawls_bd, 3)
     
-    # Identificar registros donde se imputa
     impute_mask <- is.na(dat$BD) & !is.na(dat$BD_est)
     bd_imputed_count <- sum(impute_mask)
     dat$BD_source[impute_mask] <- "estimated"
     
-    # Validación sobre los datos que sí tenían BD medida
     val_mask <- (!is.na(dat$BD)) & (!is.na(dat$BD_est)) & (!bd_impossible_mask)
     if (sum(val_mask) >= 5) {
       obs <- dat$BD[val_mask]
@@ -263,14 +279,18 @@ if (estimate_bd_requested) {
       ptf_val_bias <- round(mean(prd - obs), 3)
     }
     
-    ptf_status <- sprintf("PTF Rawls/Saxton aplicada: %d horizontes estimados. Valida sobre medidos (n=%d): R2=%.3f, RMSE=%.3f, Sesgo=%.3f",
+    ptf_status <- sprintf("PTF Rawls/Saxton aplicada: %d horizontes estimados. Validación sobre medidos (n=%d): R2=%.3f, RMSE=%.3f, Sesgo=%.3f",
                           bd_imputed_count, sum(val_mask), ptf_val_r2, ptf_val_rmse, ptf_val_bias)
-    record_decision(1.3, "Estimación BD", "PTF Rawls et al. (1982) en BD_est", 
+    record_decision(1.3, "Estimación BD", "PTF Rawls et al. (1982) en BD_est", source = "user_config",
                     affected_rows = bd_imputed_count, 
                     details = sprintf("R2=%.3f, RMSE=%.3f sobre %d medidos", ptf_val_r2, ptf_val_rmse, sum(val_mask)))
   } else {
     ptf_status <- "No fue posible estimar BD (datos de OM/SOC ausentes)"
   }
+} else {
+  record_decision(1.3, "Estimación BD", "Omitida / Conservar medidos sin imputar",
+                  source = if (!is.null(user_cfg$estimate_bd)) "user_config" else "script_default",
+                  affected_rows = 0, details = "No se aplicó imputación PTF")
 }
 # <<< ADAPT:pedological_checks
 
@@ -294,81 +314,85 @@ writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
 writeLines(paste("Archivo analizado:", input_csv), report_con)
 writeLines(paste("Total registros evaluados:", nrow(dat)), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
+writeLines("AUDITORÍA DE DUPLICADOS Y ARTEFACTOS DE UNIÓN:", report_con)
+writeLines(sprintf("  Filas exactamente duplicadas:               %d (artefactos de unión)", exact_dup_count), report_con)
+writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("AUDITORÍA DE LÍMITES VERTICALES Y ESPESORES:", report_con)
 writeLines(sprintf("  Límites invertidos detectados (corregidos): %d", inv_depths_count), report_con)
 writeLines(sprintf("  Horizontes con espesor cero:                %d", zero_thick_count), report_con)
 writeLines(sprintf("  Horizontes con profundidades negativas:     %d", neg_depths_count), report_con)
-writeLines(sprintf("  Horizontes con profundidades nulas (NA):    %d", na_depths_count), report_con)
-writeLines(sprintf("  Solapamientos verticales dentro de perfil:  %d", overlaps_count), report_con)
-writeLines(sprintf("  Discontinuidades / huecos verticales:       %d", gaps_count), report_con)
+writeLines(sprintf("  Horizontes con profundidades NA:            %d", na_depths_count), report_con)
+writeLines(sprintf("  Solapes verticales brutos detectados:       %d", overlaps_raw_count), report_con)
+writeLines(sprintf("  Solapes reales tras deduplicación:          %d", overlaps_clean_count), report_con)
+if (overlaps_raw_count > overlaps_clean_count) {
+  writeLines(sprintf("  -> NOTA: %d solapes fueron artefactos producidos por filas duplicadas.", 
+                     overlaps_raw_count - overlaps_clean_count), report_con)
+}
+writeLines(sprintf("  Discontinuidades / huecos verticales (gaps): %d", gaps_count), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE TEXTURA (ARENA + LIMO + ARCILLA):", report_con)
+writeLines("AUDITORÍA DE COHERENCIA DE TEXTURA:", report_con)
 if (has_texture) {
-  writeLines(sprintf("  Rango de suma de textura:         Min = %.1f%% | Mediana = %.1f%% | Max = %.1f%%", tex_min, tex_med, tex_max), report_con)
-  writeLines(sprintf("  Suma dentro de tolerancia (95-105%%):  %d registros", tex_normal_count), report_con)
-  writeLines(sprintf("  Desviación moderada (90-95%% / 105-110%%): %d registros", tex_mod_count), report_con)
-  writeLines(sprintf("  Inconsistencia grave (<90%% o >110%%):   %d registros", tex_severe_count), report_con)
-  writeLines(sprintf("  Casos extremos (<=0%% o >150%%):         %d registros", tex_extreme_count), report_con)
+  writeLines(sprintf("  Horizontes evaluados con textura:           %d", sum(!is.na(dat$texture_sum))), report_con)
+  writeLines(sprintf("  Rango de suma (Clay+Sand+Silt):             [%.1f, %.1f] %% (Mediana: %.1f %%)", tex_min, tex_max, tex_med), report_con)
+  writeLines(sprintf("  Textura balanceada (95 - 105 %%):             %d horizontes", tex_normal_count), report_con)
+  writeLines(sprintf("  Desbalance moderado (90-95 %% o 105-110 %%):   %d horizontes", tex_mod_count), report_con)
+  writeLines(sprintf("  Desbalance severo (< 90 %% o > 110 %%):        %d horizontes", tex_severe_count), report_con)
+  writeLines(sprintf("  Valores imposibles (<= 0 %% o > 150 %%):       %d horizontes", tex_extreme_count), report_con)
 } else {
-  writeLines("  Variables de textura (Clay, Sand, Silt) no presentes en el dataset.", report_con)
+  writeLines("  Variables de textura (Clay, Sand, Silt) no presentes en el dataset: NO EVALUADO", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE VALORES FÍSICAMENTE SOSPECHOSOS:", report_con)
-writeLines(sprintf("  Densidad Aparente medida <= 0 o > 2.65 g/cm3: %d", bd_impossible_count), report_con)
-writeLines(sprintf("  pH fuera del rango físico (2.5 - 11.5):       %d", ph_impossible_count), report_con)
-writeLines(sprintf("  Carbono Orgánico (SOC) negativo:              %d", soc_neg_count), report_con)
-writeLines(sprintf("  Carbono Orgánico (SOC) > 30%% (orgánico):      %d", soc_high_count), report_con)
+writeLines("AUDITORÍA DE PROPIEDADES QUÍMICAS (pH y SOC):", report_con)
+if (has_ph) {
+  writeLines(sprintf("  pH en agua: Rango [%.2f, %.2f] | Valores anómalos (< 2.5 o > 11.5): %d", 
+                     min(dat$pH_H2O, na.rm = TRUE), max(dat$pH_H2O, na.rm = TRUE), ph_impossible_count), report_con)
+} else {
+  writeLines("  pH_H2O: NO EVALUADO (variable no presente)", report_con)
+}
+if (has_soc) {
+  writeLines(sprintf("  SOC: Rango [%.2f, %.2f] | Valores negativos: %d | Valores > 30 %%: %d",
+                     min(dat$SOC, na.rm = TRUE), max(dat$SOC, na.rm = TRUE), soc_neg_count, soc_high_count), report_con)
+} else {
+  writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
+}
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("ESTADO DE DENSIDAD APARENTE (BD):", report_con)
-writeLines(sprintf("  Valores medidos originalmente en 'BD':      %d (%.1f%%)", bd_measured_count, (bd_measured_count / nrow(dat)) * 100), report_con)
-writeLines(sprintf("  Valores faltantes (NA):                     %d", bd_missing_count), report_con)
-writeLines(sprintf("  Valores estimados en 'BD_est':              %d", bd_imputed_count), report_con)
-writeLines(sprintf("  Detalle de Pedotransferencia:               %s", ptf_status), report_con)
+writeLines("DENSIDAD APARENTE (BD) Y ESTIMACIÓN PTF:", report_con)
+writeLines(sprintf("  Estado de estimación BD: %s", ptf_status), report_con)
+if (has_bd) {
+  writeLines(sprintf("  BD medida: Rango [%.2f, %.2f] g/cm3 | Anómalos (< 0.2 o > 2.2): %d",
+                     min(dat$BD, na.rm = TRUE), max(dat$BD, na.rm = TRUE), bd_impossible_count), report_con)
+}
+if (!is.na(ptf_val_r2)) {
+  writeLines(sprintf("  Validación cruzada PTF: R2 = %.3f | RMSE = %.3f g/cm3 | Sesgo = %.3f", 
+                     ptf_val_r2, ptf_val_rmse, ptf_val_bias), report_con)
+}
 writeLines("================================================================================", report_con)
 close(report_con)
 
-# 6. Guardar dataset final de la Etapa 1 ----------------------------------------
+# 6. Guardar dataset limpio final -----------------------------------------------
 readr::write_csv(dat, output_csv)
 
-# 7. Diagnósticos Gráficos en RStudio -------------------------------------------
-cat("\n[*] Generando gráficos diagnósticos edafológicos en RStudio...\n")
-
-if (has_texture && sum(!is.na(dat$texture_sum)) > 0) {
-  p1 <- ggplot(dat, aes(x = texture_sum)) +
-    geom_histogram(binwidth = 2, fill = "#3182bd", color = "white", alpha = 0.8) +
-    geom_vline(xintercept = 100, color = "red", linetype = "dashed", size = 1) +
-    annotate("rect", xmin = 95, xmax = 105, ymin = 0, ymax = Inf, alpha = 0.15, fill = "green") +
-    theme_minimal() +
-    labs(
-      title = "Balance de Textura (Arena + Limo + Arcilla)",
-      subtitle = "Banda verde = Tolerancia aceptable (95% - 105%) | Línea roja = 100% ideal",
-      x = "Suma de Textura (%)",
-      y = "Frecuencia de Horizontes"
-    )
-  print(p1)
-  cat("[OK] Gráfico de balance de textura generado en 'Plots'.\n")
-}
-
+# 7. Resumen en consola --------------------------------------------------------
 cat("\n==============================================================================\n")
 cat("  RESUMEN DE AUDITORÍA EDAFOLÓGICA (Paso 1.3)\n")
 cat("==============================================================================\n")
-cat(sprintf("  Registros procesados:          %d\n", nrow(dat)))
-cat(sprintf("  Solapes verticales:            %d | Huecos verticales: %d\n", overlaps_count, gaps_count))
-if (has_texture) cat(sprintf("  Textura fuera de balance:      %d registros\n", tex_severe_count))
-cat(sprintf("  BD imposibles (<=0 o >2.65):   %d | pH anómalos: %d\n", bd_impossible_count, ph_impossible_count))
-cat(sprintf("  BD medidos: %d | BD estimados: %d (columna 'BD_est')\n", bd_measured_count, bd_imputed_count))
-cat(sprintf("[OK] Dataset final guardado en:   %s\n", output_csv))
-cat(sprintf("[OK] Reporte guardado en:         %s\n", output_report))
+cat(sprintf("Registros totales evaluados:          %d\n", nrow(dat)))
+cat(sprintf("Filas duplicadas de unión:            %d\n", exact_dup_count))
+cat(sprintf("Límites invertidos corregidos:        %d\n", inv_depths_count))
+cat(sprintf("Solapes verticales brutos / netos:    %d / %d\n", overlaps_raw_count, overlaps_clean_count))
+if (has_texture) {
+  cat(sprintf("Balance textural (95-105%%):           %d horizontes (Desbalance severo: %d)\n", tex_normal_count, tex_severe_count))
+}
+cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
+cat(sprintf("[OK] Dataset limpio guardado en:      %s\n", output_csv))
+cat(sprintf("[OK] Reporte edafológico guardado en: %s\n", output_report))
 if (decision_logged) {
-  cat(sprintf("[OK] Registro decisiones:         %s\n", decisions_log))
-} else {
-  cat(sprintf("[*] Registro decisiones:         Sin cambios en esta corrida (%s)\n", decisions_log))
+  cat(sprintf("[OK] Registro de decisiones en:       %s\n", decisions_log))
 }
 cat("==============================================================================\n\n")
 
 cat("------------------------------------------------------------------------------\n")
 cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa los gráficos y métricas de consistencia en RStudio.\n")
-cat("2. En el chat con la IA, dialoga sobre las posibles anomalías de profundidad\n")
-cat("   o textura, y decide si requieres estimar BD antes de avanzar a la Etapa 2.\n")
+cat("1. Revisa el reporte edafológico guardado en 'reports/step1_3_pedological_report.txt'.\n")
+cat("2. En el chat con la IA, comenta los resultados de texturas, solapes y BD.\n")
 cat("------------------------------------------------------------------------------\n\n")

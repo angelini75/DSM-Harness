@@ -9,9 +9,9 @@
 # en decisions_log.csv y generar reporte de trazabilidad verídico.
 #
 # SALIDAS GENERADAS:
-# 1. Dataset intermedio:  '01_data/profiles/step1_1_variables.csv'
-# 2. Reporte descriptivo: '01_data/profiles/step1_1_variables_report.txt'
-# 3. Log de decisiones:   '01_data/profiles/decisions_log.csv'
+# 1. Dataset intermedio:  'data/step1_1_variables.csv' (o 01_data/profiles/)
+# 2. Reporte descriptivo: 'reports/step1_1_variables_report.txt'
+# 3. Log de decisiones:   'decisions_log.csv'
 #
 # INSTRUCCIONES PARA EL ALUMNO:
 # 1. Ejecuta este script en RStudio (Source o Ctrl+Shift+S).
@@ -29,29 +29,42 @@ suppressPackageStartupMessages({
 })
 
 # 1. Configuración de rutas y validación de esquema ----------------------------
-config_file   <- "01_data/profiles/user_config.json"
-mapping_csv   <- "01_data/profiles/mapping_confirmed.csv"
-output_csv    <- "01_data/profiles/step1_1_variables.csv"
-output_report <- "01_data/profiles/step1_1_variables_report.txt"
-decisions_log <- "01_data/profiles/decisions_log.csv"
+is_project_env <- dir.exists("data") && dir.exists("reports")
+base_data_dir  <- if (is_project_env) "data" else "01_data/profiles"
+base_rep_dir   <- if (is_project_env) "reports" else "01_data/profiles"
 
+config_file   <- if (file.exists("config.json")) "config.json" else file.path(base_data_dir, "user_config.json")
+mapping_csv   <- file.path(base_data_dir, "mapping_confirmed.csv")
+output_csv    <- file.path(base_data_dir, "step1_1_variables.csv")
+output_report <- file.path(base_rep_dir, "step1_1_variables_report.txt")
+decisions_log <- if (file.exists("decisions_log.csv")) "decisions_log.csv" else file.path(base_data_dir, "decisions_log.csv")
+
+SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
-record_decision <- function(step, criterion, decision, affected_rows = 0, affected_profiles = 0, details = "") {
+record_decision <- function(step, criterion, decision, source = "user_config", affected_rows = 0, affected_profiles = 0, details = "") {
   log_entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    run_id = SCRIPT_RUN_ID,
     step = as.character(step),
     criterion = as.character(criterion),
     user_decision = as.character(decision),
+    source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
     details = as.character(details),
+    template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
   if (!file.exists(decisions_log)) {
     write.csv(log_entry, decisions_log, row.names = FALSE)
   } else {
-    write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
+    first_line <- readLines(decisions_log, n = 1, warn = FALSE)
+    if (!grepl("run_id", first_line)) {
+      write.csv(log_entry, decisions_log, row.names = FALSE)
+    } else {
+      write.table(log_entry, decisions_log, sep = ",", col.names = FALSE, row.names = FALSE, append = TRUE)
+    }
   }
   decision_logged <<- TRUE
 }
@@ -59,8 +72,9 @@ record_decision <- function(step, criterion, decision, affected_rows = 0, affect
 # Validación formal de user_config.json contra docs/CONFIG_SCHEMA.md
 known_config_keys <- c(
   "_comment", "input_file", "skip_rows", "has_units_row", "site_sheet", "site_key",
-  "horiz_sheet", "join_key", "horizon_sheets", "duplicate_action", "column_mapping",
-  "om_to_soc_factor", "source_crs", "outlier_action", "outlier_ids", "estimate_bd"
+  "horiz_sheet", "join_key", "horizon_sheets", "duplicate_action", "duplicate_key_strategy",
+  "allow_missing_essentials", "sand_sum", "column_mapping",
+  "om_to_soc_factor", "source_crs", "outlier_action", "spatial_outlier_action", "outlier_ids", "estimate_bd"
 )
 
 user_cfg <- list()
@@ -68,9 +82,8 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración de usuario cargada desde: '%s'\n", config_file))
+      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
       
-      # Validar claves desconocidas
       cfg_keys <- setdiff(names(user_cfg), known_config_keys)
       if (length(cfg_keys) > 0) {
         cat(sprintf("\n[AVISO CONFIG]: Se detectaron claves no reconocidas en '%s':\n  [%s]\n",
@@ -78,9 +91,8 @@ if (file.exists(config_file)) {
         cat("  -> Consulta 'docs/CONFIG_SCHEMA.md' para ver el esquema canónico admitido.\n\n")
       }
       
-      # Informar claves aplicadas
       applied_keys <- intersect(names(user_cfg), known_config_keys)
-      cat(sprintf("[*] Parámetros de configuración aplicados: [%s]\n", paste(applied_keys, collapse = ", ")))
+      cat(sprintf("[*] Parámetros aplicados: [%s]\n", paste(applied_keys, collapse = ", ")))
     }
   }, error = function(e) {
     cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
@@ -93,19 +105,18 @@ if (!is.null(user_cfg$input_file) && file.exists(as.character(user_cfg$input_fil
 } else if (exists("input_file") && !is.null(input_file) && file.exists(input_file)) {
   # Respeta variable de entorno R
 } else {
-  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE, ignore.case = TRUE)
+  avail <- list.files(base_data_dir, pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE, ignore.case = TRUE)
   avail <- avail[!grepl("(_report\\.txt|step1_.*\\.csv|cleaned_profiles\\.csv|decisions_log|mapping_confirmed|template)", avail)]
   if (length(avail) >= 1) {
     input_file <- avail[1]
   } else {
-    stop("[ERROR FATAL]: No se encontró ningún archivo de datos en '01_data/profiles/'.")
+    stop(sprintf("[ERROR FATAL]: No se encontró ningún archivo de datos en '%s/'.", base_data_dir))
   }
 }
 
 ext <- tolower(tools::file_ext(input_file))
 cat(sprintf("\n[*] Cargando archivo de perfiles: %s (formato .%s) ...\n", input_file, ext))
 
-# Opciones de lectura
 skip_n <- if (!is.null(user_cfg$skip_rows)) as.integer(user_cfg$skip_rows) else 0
 has_units <- if (!is.null(user_cfg$has_units_row)) isTRUE(user_cfg$has_units_row) else FALSE
 
@@ -171,137 +182,151 @@ if (ext %in% c("xlsx", "xls")) {
       if (is.null(df_horiz_acc)) {
         df_horiz_acc <- df_h_cur
       } else {
-        # Determinar clave compartida con acumulado
         common_jkey <- intersect(names(df_horiz_acc), names(df_h_cur))
         target_j <- if (h_jkey %in% common_jkey) h_jkey else common_jkey[1]
         
         if (is.na(target_j) || length(target_j) == 0) {
           stop(sprintf("[ERROR MULTI-HOJA]: No se encontró clave común para unir la hoja '%s' con las anteriores.", h_name))
         }
+        
+        # Pre-chequeo de claves repetidas en la hoja derecha (Issue #17: prevención de many-to-many)
+        dup_right_count <- sum(duplicated(na.omit(df_h_cur[[target_j]])))
+        dup_strat <- if (!is.null(user_cfg$duplicate_key_strategy)) user_cfg$duplicate_key_strategy else "fail"
+        
+        if (dup_right_count > 0) {
+          cat(sprintf("\n[ALERTA CLAVE REPETIDA EN HOJA SECUNDARIA]: La clave '%s' tiene %d registros duplicados en '%s'.\n",
+                      target_j, dup_right_count, h_name))
+          if (dup_strat == "fail") {
+            cat("  [ERROR FATAL]: La unión produciría un producto cartesiano (many-to-many) multiplicando filas artificialmente.\n")
+            cat("  ACCIONES DISPONIBLES:\n")
+            cat("  1. En 'config.json', configura 'duplicate_key_strategy': 'average' (promediar numéricos) o 'keep_first'.\n")
+            cat("  2. Revisa la hoja en Excel para consolidar las réplicas antes de unir.\n\n")
+            stop(sprintf("Ejecución detenida: Clave no única '%s' en hoja '%s' (%d filas repetidas).", target_j, h_name, dup_right_count))
+          } else if (dup_strat %in% c("average", "aggregate")) {
+            num_c <- names(df_h_cur)[sapply(df_h_cur, is.numeric)]
+            char_c <- setdiff(names(df_h_cur), c(num_c, target_j))
+            df_h_cur <- df_h_cur %>%
+              group_by(across(all_of(target_j))) %>%
+              summarise(across(all_of(num_c), ~ mean(.x, na.rm = TRUE)),
+                        across(all_of(char_c), ~ first(na.omit(.x))), .groups = "drop")
+            record_decision(1.1, "Claves duplicadas en unión", "Promediar réplicas antes de unir",
+                            source = "user_config", affected_rows = dup_right_count, details = sprintf("Hoja: %s", h_name))
+          } else if (dup_strat == "keep_first") {
+            df_h_cur <- df_h_cur %>% distinct(across(all_of(target_j)), .keep_all = TRUE)
+            record_decision(1.1, "Claves duplicadas en unión", "Conservar primera ocurrencia",
+                            source = "user_config", affected_rows = dup_right_count, details = sprintf("Hoja: %s", h_name))
+          }
+        }
+        
+        nrow_before <- nrow(df_horiz_acc)
         df_horiz_acc <- dplyr::left_join(df_horiz_acc, df_h_cur, by = target_j)
+        nrow_after  <- nrow(df_horiz_acc)
+        
+        if (nrow_after > nrow_before) {
+          cat(sprintf("\n[ALERTA INFLACIÓN DE FILAS]: La unión con '%s' incrementó las filas de %d a %d (+%d filas).\n",
+                      h_name, nrow_before, nrow_after, nrow_after - nrow_before))
+        }
       }
     }
     
     n_horiz_raw <- nrow(df_horiz_acc)
     
-    # Auditoría de réplicas en horizontes
+    # Auditoría de réplicas en horizontes: evaluar estrictamente sobre clave de horizonte si existe
     evaluated_duplicates <- TRUE
-    h_site_key_matches <- intersect(names(df_horiz_acc), c(site_k, tolower(site_k), toupper(site_k)))
-    join_k_horiz <- if (length(h_site_key_matches) > 0) h_site_key_matches[1] else names(df_horiz_acc)[1]
+    h_site_matches <- intersect(names(df_horiz_acc), c(site_k, tolower(site_k), toupper(site_k)))
+    join_k_site_in_horiz <- if (length(h_site_matches) > 0) h_site_matches[1] else names(df_horiz_acc)[1]
     
-    dup_keys_vec <- df_horiz_acc[[join_k_horiz]]
-    dup_mask <- duplicated(dup_keys_vec) | duplicated(dup_keys_vec, fromLast = TRUE)
-    dup_key_count <- sum(duplicated(dup_keys_vec))
+    # Buscar clave de horizonte única para no confundir múltiples horizontes por perfil con réplicas
+    cand_hkey <- names(df_horiz_acc)[grepl("^(id_horiz|horiz_id|horizon_id|id_capa|id_sample|sample_id)$", tolower(names(df_horiz_acc)))]
+    if (length(cand_hkey) > 0) {
+      target_h_key <- cand_hkey[1]
+      dup_keys_vec <- df_horiz_acc[[target_h_key]]
+      dup_mask <- duplicated(dup_keys_vec) | duplicated(dup_keys_vec, fromLast = TRUE)
+      dup_key_count <- sum(duplicated(dup_keys_vec))
+    } else {
+      # Sin clave explícita de horizonte, no marcar como réplicas los horizontes del mismo perfil
+      dup_key_count <- 0
+      dup_mask <- rep(FALSE, nrow(df_horiz_acc))
+    }
+    
     dup_action <- if (!is.null(user_cfg$duplicate_action)) user_cfg$duplicate_action else "preserve_and_flag"
+    dup_source <- if (!is.null(user_cfg$duplicate_action)) "user_config" else "script_default"
     
     if (dup_key_count > 0) {
-      cat(sprintf("\n[ALERTA CLAVES DUPLICADAS]: Se detectaron %d registros repetidos en la clave '%s'.\n", dup_key_count, join_k_horiz))
-      cat(sprintf("  -> Acción aplicada: %s\n", dup_action))
+      cat(sprintf("\n[ALERTA CLAVES DUPLICADAS EN HORIZONTES]: Se detectaron %d registros repetidos en la clave '%s'.\n", dup_key_count, target_h_key))
       if (dup_action == "average") {
         num_c <- names(df_horiz_acc)[sapply(df_horiz_acc, is.numeric)]
-        char_c <- setdiff(names(df_horiz_acc), c(num_c, join_k_horiz))
+        char_c <- setdiff(names(df_horiz_acc), c(num_c, target_h_key))
         df_horiz_acc <- df_horiz_acc %>%
-          group_by(across(all_of(join_k_horiz))) %>%
+          group_by(across(all_of(target_h_key))) %>%
           summarise(across(all_of(num_c), ~ mean(.x, na.rm = TRUE)),
                     across(all_of(char_c), ~ first(na.omit(.x))), .groups = "drop")
         duplicate_handling_applied <- sprintf("Promedio numérico de réplicas (%d agrupadas)", n_horiz_raw)
-        record_decision(1.1, "Claves duplicadas", "Promediar réplicas analíticas", affected_rows = dup_key_count)
+        record_decision(1.1, "Claves duplicadas en horizontes", "Promediar réplicas analíticas", source = dup_source, affected_rows = dup_key_count)
       } else if (dup_action == "keep_first") {
-        df_horiz_acc <- df_horiz_acc %>% distinct(across(all_of(join_k_horiz)), .keep_all = TRUE)
+        df_horiz_acc <- df_horiz_acc %>% distinct(across(all_of(target_h_key)), .keep_all = TRUE)
         duplicate_handling_applied <- sprintf("Conservar primera ocurrencia (%d descartadas)", dup_key_count)
-        record_decision(1.1, "Claves duplicadas", "Conservar primera ocurrencia", affected_rows = dup_key_count)
+        record_decision(1.1, "Claves duplicadas en horizontes", "Conservar primera ocurrencia", source = dup_source, affected_rows = dup_key_count)
       } else {
         df_horiz_acc$audit_replica_flag <- dup_mask
         duplicate_handling_applied <- sprintf("Conservar marcando columna 'audit_replica_flag' (%d filas)", sum(dup_mask))
-        record_decision(1.1, "Claves duplicadas", "Conservar y marcar bandera", affected_rows = sum(dup_mask))
+        record_decision(1.1, "Claves duplicadas en horizontes", "Conservar y marcar bandera", source = dup_source, affected_rows = sum(dup_mask))
       }
     }
     
     # Unión final sitios + horizontes acumulados
-    dat_raw <- dplyr::left_join(df_horiz_acc, df_sites, by = setNames(site_k, join_k_horiz))
-    orphan_horizons <- length(setdiff(unique(df_horiz_acc[[join_k_horiz]]), unique(df_sites[[site_k]])))
-    orphan_sites    <- length(setdiff(unique(df_sites[[site_k]]), unique(df_horiz_acc[[join_k_horiz]])))
-    join_info <- sprintf("Unión Multi-Hoja: '%s' (%d filas) + %d hojas horizontes (%d filas)",
+    dat_raw <- dplyr::left_join(df_horiz_acc, df_sites, by = setNames(site_k, join_k_site_in_horiz))
+    orphan_horizons <- length(setdiff(unique(df_horiz_acc[[join_k_site_in_horiz]]), unique(df_sites[[site_k]])))
+    orphan_sites    <- length(setdiff(unique(df_sites[[site_k]]), unique(df_horiz_acc[[join_k_site_in_horiz]])))
+    join_info <- sprintf("Unión Multi-Hoja: '%s' (%d perfiles) + %d hojas horizontes (%d filas)",
                          s_sites, n_sites_raw, length(user_cfg$horizon_sheets), nrow(dat_raw))
-    record_decision(1.1, "Unión multi-hoja", "left_join secuencial", affected_rows = nrow(dat_raw),
+    record_decision(1.1, "Unión multi-hoja", "left_join relacional", source = "user_config",
+                    affected_rows = nrow(dat_raw),
                     affected_profiles = length(unique(na.omit(df_sites[[site_k]]))),
                     details = sprintf("Orphan sites: %d | Orphan horizons: %d", orphan_sites, orphan_horizons))
 
   # Caso 3: Dos hojas (Sitios + 1 de Horizontes heurístico o configurado)
-  } else {
-    s_sites <- if (!is.null(user_cfg$site_sheet)) user_cfg$site_sheet else sheets[grepl("site|sitio|perfil|loc|header|ubic", tolower(sheets))][1]
-    s_horiz <- if (!is.null(user_cfg$horiz_sheet)) user_cfg$horiz_sheet else sheets[grepl("hor|capa|layer|anal|prop|quim|text", tolower(sheets))][1]
+  } else if (length(sheets) >= 2) {
+    s_sites <- if (!is.null(user_cfg$site_sheet)) user_cfg$site_sheet else sheets[1]
+    s_horiz <- if (!is.null(user_cfg$horiz_sheet)) user_cfg$horiz_sheet else sheets[2]
     
-    if (!is.na(s_sites) && !is.na(s_horiz) && s_sites != s_horiz) {
-      df_sites <- readxl::read_excel(input_file, sheet = s_sites, skip = skip_n, guess_max = 100000)
-      df_horiz <- readxl::read_excel(input_file, sheet = s_horiz, skip = skip_n, guess_max = 100000)
-      df_sites <- clean_units_row(df_sites)
-      df_horiz <- clean_units_row(df_horiz)
-      n_sites_raw <- nrow(df_sites)
-      n_horiz_raw <- nrow(df_horiz)
+    cat(sprintf("[*] Modo 2 Hojas: Sitios = '%s' | Horizontes = '%s'\n", s_sites, s_horiz))
+    df_sites <- readxl::read_excel(input_file, sheet = s_sites, skip = skip_n, guess_max = 100000)
+    df_horiz <- readxl::read_excel(input_file, sheet = s_horiz, skip = skip_n, guess_max = 100000)
+    df_sites <- clean_units_row(df_sites)
+    df_horiz <- clean_units_row(df_horiz)
+    
+    n_sites_raw <- nrow(df_sites)
+    n_horiz_raw <- nrow(df_horiz)
+    
+    key_matches <- if (!is.null(user_cfg$join_key)) {
+      user_cfg$join_key
+    } else {
+      common_keys <- intersect(tolower(names(df_sites)), tolower(names(df_horiz)))
+      common_keys[grepl("^(id|code|perfil|sitio|profile)|(_id|_code|_key)$", common_keys)]
+    }
+    
+    if (length(key_matches) > 0) {
+      target_key <- key_matches[1]
+      join_key_site  <- names(df_sites)[which(tolower(names(df_sites)) == target_key)[1]]
+      join_key_horiz <- names(df_horiz)[which(tolower(names(df_horiz)) == target_key)[1]]
       
-      key_matches <- if (!is.null(user_cfg$join_key)) {
-        user_cfg$join_key
-      } else {
-        common_keys <- intersect(tolower(names(df_sites)), tolower(names(df_horiz)))
-        common_keys[grepl("^(id|code|perfil|sitio|profile)|(_id|_code|_key)$", common_keys)]
-      }
-      
-      if (length(key_matches) > 0) {
-        target_key <- key_matches[1]
-        join_key_site  <- names(df_sites)[which(tolower(names(df_sites)) == target_key)[1]]
-        join_key_horiz <- names(df_horiz)[which(tolower(names(df_horiz)) == target_key)[1]]
-        
-        evaluated_duplicates <- TRUE
-        horiz_keys <- df_horiz[[join_key_horiz]]
-        dup_mask <- duplicated(horiz_keys) | duplicated(horiz_keys, fromLast = TRUE)
-        dup_key_count <- sum(duplicated(horiz_keys))
-        dup_action <- if (!is.null(user_cfg$duplicate_action)) user_cfg$duplicate_action else "preserve_and_flag"
-        
-        if (dup_key_count > 0) {
-          cat(sprintf("\n[ALERTA CLAVES DUPLICADAS]: %d registros con claves repetidas en '%s'.\n", dup_key_count, s_horiz))
-          if (dup_action == "average") {
-            num_cols <- names(df_horiz)[sapply(df_horiz, is.numeric)]
-            char_cols <- setdiff(names(df_horiz), c(num_cols, join_key_horiz))
-            df_horiz <- df_horiz %>%
-              group_by(across(all_of(join_key_horiz))) %>%
-              summarise(across(all_of(num_cols), ~ mean(.x, na.rm = TRUE)),
-                        across(all_of(char_cols), ~ first(na.omit(.x))), .groups = "drop")
-            duplicate_handling_applied <- sprintf("Promedio numérico de réplicas (%d agrupadas)", n_horiz_raw)
-            record_decision(1.1, "Claves duplicadas", "Promediar réplicas analíticas", affected_rows = dup_key_count)
-          } else if (dup_action == "keep_first") {
-            df_horiz <- df_horiz %>% distinct(across(all_of(join_key_horiz)), .keep_all = TRUE)
-            duplicate_handling_applied <- sprintf("Conservar primera ocurrencia (%d descartadas)", dup_key_count)
-            record_decision(1.1, "Claves duplicadas", "Conservar primera ocurrencia", affected_rows = dup_key_count)
-          } else {
-            df_horiz$audit_replica_flag <- dup_mask
-            duplicate_handling_applied <- sprintf("Conservar marcando columna 'audit_replica_flag' (%d filas)", sum(dup_mask))
-            record_decision(1.1, "Claves duplicadas", "Conservar y marcar bandera", affected_rows = sum(dup_mask))
-          }
-        }
-        
-        dat_raw <- dplyr::left_join(df_horiz, df_sites, by = setNames(join_key_site, join_key_horiz))
-        orphan_horizons <- length(setdiff(unique(df_horiz[[join_key_horiz]]), unique(df_sites[[join_key_site]])))
-        orphan_sites    <- length(setdiff(unique(df_sites[[join_key_site]]), unique(df_horiz[[join_key_horiz]])))
-        join_info <- sprintf("Unión relacional: '%s' (%d filas) y '%s' (%d filas) usando clave '%s'", 
-                             s_sites, n_sites_raw, s_horiz, n_horiz_raw, target_key)
-        record_decision(1.1, "Unión de tablas", "left_join relacional", affected_rows = nrow(dat_raw),
-                        affected_profiles = length(unique(na.omit(df_sites[[join_key_site]]))),
-                        details = sprintf("Orphan sites: %d | Orphan horizons: %d", orphan_sites, orphan_horizons))
-      } else {
-        cat("[AVISO]: No se detectó clave común entre hojas. Se carga la primera hoja.\n")
-        dat_raw <- readxl::read_excel(input_file, sheet = 1, skip = skip_n, guess_max = 100000)
-        dat_raw <- clean_units_row(dat_raw)
-        join_info <- paste("Lectura de hoja principal:", sheets[1], "(sin unión relacional)")
-      }
+      dat_raw <- dplyr::left_join(df_horiz, df_sites, by = setNames(join_key_site, join_key_horiz))
+      orphan_horizons <- length(setdiff(unique(df_horiz[[join_key_horiz]]), unique(df_sites[[join_key_site]])))
+      orphan_sites    <- length(setdiff(unique(df_sites[[join_key_site]]), unique(df_horiz[[join_key_horiz]])))
+      join_info <- sprintf("Unión relacional: '%s' (%d filas) y '%s' (%d filas) usando clave '%s'", 
+                           s_sites, n_sites_raw, s_horiz, n_horiz_raw, target_key)
+      record_decision(1.1, "Unión de tablas", "left_join relacional", source = "user_config",
+                      affected_rows = nrow(dat_raw),
+                      affected_profiles = length(unique(na.omit(df_sites[[join_key_site]]))),
+                      details = sprintf("Orphan sites: %d | Orphan horizons: %d", orphan_sites, orphan_horizons))
     } else {
       dat_raw <- readxl::read_excel(input_file, sheet = 1, skip = skip_n, guess_max = 100000)
       dat_raw <- clean_units_row(dat_raw)
-      join_info <- paste("Lectura de hoja principal:", sheets[1])
+      join_info <- paste("Lectura de hoja principal:", sheets[1], "(sin clave común detectada)")
     }
   }
 } else {
-  # CSV / TSV
   dat_raw <- readr::read_csv(input_file, skip = skip_n, show_col_types = FALSE)
   dat_raw <- clean_units_row(dat_raw)
   join_info <- "Archivo delimitado plano (CSV)"
@@ -378,11 +403,43 @@ if (!is.null(user_cfg$column_mapping) && length(user_cfg$column_mapping) > 0) {
     }
   }
 }
+
+# Tratamiento de suma de fracciones de arena (Issue #18)
+sand_sum_applied <- FALSE
+if (!is.null(user_cfg$sand_sum) && length(user_cfg$sand_sum) > 0) {
+  sand_cols <- unlist(user_cfg$sand_sum)
+  missing_sand <- setdiff(sand_cols, names(dat_raw))
+  if (length(missing_sand) > 0) {
+    cat(sprintf("\n[AVISO sand_sum]: Columnas de arena no encontradas en datos: [%s]\n", paste(missing_sand, collapse = ", ")))
+  } else {
+    cat(sprintf("\n[*] Calculando Sand sumando fracciones: [%s] ...\n", paste(sand_cols, collapse = " + ")))
+    raw_sand_mat <- sapply(dat_raw[, sand_cols, drop = FALSE], function(x) {
+      val <- suppressWarnings(as.numeric(as.character(x)))
+      val[is.na(val)] <- 0
+      val
+    })
+    dat_raw$Sand <- rowSums(raw_sand_mat, na.rm = TRUE)
+    all_na_sand <- apply(is.na(dat_raw[, sand_cols, drop = FALSE]), 1, all)
+    dat_raw$Sand[all_na_sand] <- NA_real_
+    
+    if (!("Sand" %in% mapping$Estandar_DSM)) {
+      mapping <- rbind(mapping, data.frame(Original = "Sand", Estandar_DSM = "Sand", stringsAsFactors = FALSE))
+      rename_vector["Sand"] <- "Sand"
+    }
+    record_decision(1.1, "Suma de fracciones de arena", sprintf("Sand = %s", paste(sand_cols, collapse = " + ")),
+                    source = "user_config", affected_rows = nrow(dat_raw), details = "Fracciones de arena consolidadas en Sand para análisis textural")
+    sand_sum_applied <- TRUE
+  }
+}
 # <<< ADAPT:column_mapping
 
-# 4. Fail-Fast Pedológico: Validación Estricta de Columnas -----------------------
-essential_vars <- c("profile_code", "longitude", "latitude", "upper", "lower")
+# 4. Fail-Fast Pedológico Estricto de Variables Esenciales (Issue #18) ----------
+essential_vars <- c("profile_code", "upper", "lower")
+has_coords <- any(c("longitude", "latitude") %in% mapping$Estandar_DSM) || any(c("x", "y") %in% mapping$Estandar_DSM)
 missing_essentials <- setdiff(essential_vars, mapping$Estandar_DSM)
+if (!has_coords) missing_essentials <- c(missing_essentials, "coordenadas (longitude/latitude o x/y)")
+
+allow_missing <- if (!is.null(user_cfg$allow_missing_essentials)) isTRUE(user_cfg$allow_missing_essentials) else FALSE
 
 if (nrow(mapping) == 0) {
   cat("\n==============================================================================\n")
@@ -390,17 +447,27 @@ if (nrow(mapping) == 0) {
   cat("No se pudo identificar automáticamente ninguna variable DSM (0 variables mapeadas).\n")
   cat("Columnas encontradas en el dataset:\n  [", paste(cols_raw, collapse = ", "), "]\n\n")
   cat("ACCIONES NECESARIAS:\n")
-  cat("1. Revisa '01_data/profiles/data_inspection_report.txt'.\n")
-  cat("2. Abre '01_data/profiles/user_config.json' (ver 'docs/CONFIG_SCHEMA.md') y declara\n")
-  cat("   las hojas y columnas en 'column_mapping', o dialoga con la IA en el chat.\n")
+  cat("1. Revisa el reporte de inspección.\n")
+  cat("2. Abre 'config.json' y declara 'column_mapping' según 'docs/CONFIG_SCHEMA.md'.\n")
   cat("==============================================================================\n\n")
   stop("Ejecución detenida: No hay variables DSM identificadas.")
 }
 
-if (length(missing_essentials) > 0) {
-  cat(sprintf("\n[ALERTA METODOLÓGICA]: Faltan las siguientes variables fundamentales para DSM: [%s]\n",
-              paste(missing_essentials, collapse = ", ")))
-  cat("-> Si estas columnas existen con otro nombre, decláralas en 'user_config.json' bajo 'column_mapping'.\n\n")
+if (length(missing_essentials) > 0 && !allow_missing) {
+  cat("\n==============================================================================\n")
+  cat("[ERROR FATAL: VARIABLES ESENCIALES AUSENTES (Paso 1.1)]:\n")
+  cat(sprintf("Faltan variables fundamentales para DSM: [%s]\n\n", paste(missing_essentials, collapse = ", ")))
+  cat("El flujo no puede continuar sin identificador de perfil, límites de profundidad y coordenadas.\n")
+  cat("ACCIONES NECESARIAS:\n")
+  cat("1. Revisa los nombres reales de columnas en el reporte de inspección.\n")
+  cat("2. En 'config.json', bajo 'column_mapping', mapea los nombres originales a:\n")
+  cat("   - 'profile_code': identificador del perfil\n")
+  cat("   - 'upper' / 'lower': límites superior e inferior de profundidad (cm)\n")
+  cat("   - 'longitude' / 'latitude': coordenadas espaciales\n")
+  cat("3. Si tu dataset intencionalmente carece de estas variables, define:\n")
+  cat("   'allow_missing_essentials': true en config.json para permitir la exportación.\n")
+  cat("==============================================================================\n\n")
+  stop(sprintf("Ejecución detenida: Variables esenciales ausentes [%s].", paste(missing_essentials, collapse = ", ")))
 }
 
 # 5. Creación del dataset limpio de variables -----------------------------------
@@ -413,15 +480,13 @@ if ("audit_replica_flag" %in% names(dat_raw) && !("audit_replica_flag" %in% name
 }
 
 # Tratamiento verídico de SOC / Materia Orgánica
-soc_conversion_note <- "NO EVALUADO (sin columna SOC ni OM en el mapeo)"
-if ("SOC" %in% names(dat_step1)) {
-  soc_conversion_note <- "SOC medido directamente en el dataset"
-} else if ("OM" %in% names(dat_step1)) {
+soc_conversion_note <- "No aplica"
+if ("OM" %in% names(dat_step1) && !("SOC" %in% names(dat_step1))) {
   om_factor <- if (!is.null(user_cfg$om_to_soc_factor)) as.numeric(user_cfg$om_to_soc_factor) else NULL
   if (!is.null(om_factor) && om_factor > 0) {
     dat_step1 <- dat_step1 %>% mutate(SOC = round(as.numeric(OM) / om_factor, 2))
     soc_conversion_note <- sprintf("Derivado por usuario: SOC = OM / %.3f", om_factor)
-    record_decision(1.1, "Derivación SOC", sprintf("SOC = OM / %.3f", om_factor), 
+    record_decision(1.1, "Derivación SOC", sprintf("SOC = OM / %.3f", om_factor), source = "user_config",
                     affected_rows = nrow(dat_step1), details = "Conversión de Materia Orgánica a Carbono Orgánico aprobada por usuario")
   } else {
     soc_conversion_note <- "OM presente pero NO convertido a SOC (pendiente factor del usuario; reversible)"
@@ -454,14 +519,24 @@ if (evaluated_duplicates) {
   writeLines("  Claves duplicadas/réplicas en horizontes: NO EVALUADO (sin unión de horizontes)", report_con)
   writeLines("  Tratamiento de duplicados aplicado:        NO APLICA", report_con)
 }
-
-if (!is.na(orphan_sites)) {
-  writeLines(sprintf("  Perfiles en hoja sitios sin horizontes:    %d", orphan_sites), report_con)
-  writeLines(sprintf("  Horizontes sin perfil correspondiente:     %d", orphan_horizons), report_con)
-} else {
-  writeLines("  Perfiles sin horizontes / huérfanos:       NO EVALUADO (hoja única o CSV)", report_con)
+if (!is.na(orphan_horizons)) {
+  writeLines(sprintf("  Horizontes huérfanos (sin perfil en sitios): %d", orphan_horizons), report_con)
+  writeLines(sprintf("  Sitios sin horizontes registrados:          %d", orphan_sites), report_con)
 }
-writeLines(sprintf("  Estado de Carbono Orgánico (SOC):          %s", soc_conversion_note), report_con)
+writeLines("--------------------------------------------------------------------------------", report_con)
+writeLines("VARIABLES FUNDAMENTALES EVALUADAS:", report_con)
+for (ev in essential_vars) {
+  status_ev <- if (ev %in% names(dat_step1)) sprintf("PRESENTE (mapeada desde '%s')", rename_vector[ev]) else "FALTANTE"
+  writeLines(sprintf("  %-15s : %s", ev, status_ev), report_con)
+}
+status_coord <- if (has_coords) "PRESENTE" else "FALTANTE"
+writeLines(sprintf("  %-15s : %s", "coordenadas", status_coord), report_con)
+writeLines("--------------------------------------------------------------------------------", report_con)
+writeLines("ESTADO DE PROPIEDADES COMPLEMENTARIAS:", report_con)
+writeLines(paste("  Derivación de SOC desde OM:", soc_conversion_note), report_con)
+if (sand_sum_applied) {
+  writeLines(sprintf("  Suma de fracciones de arena: APLICADA (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
+}
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("TABLA DE CORRESPONDENCIA DE VARIABLES:", report_con)
 for (i in seq_len(nrow(mapping))) {

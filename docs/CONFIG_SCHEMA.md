@@ -27,6 +27,9 @@ Both AI assistants and human participants must adhere to this specification to a
 | `join_key` | String | `null` (auto-detect) | *(Legacy 2-sheet mode)* Common key column name linking `site_sheet` and `horiz_sheet`. |
 | `horizon_sheets` | Array of Objects | `[]` | *(Multi-sheet mode)* Ordered list of horizon sheets to join sequentially. See §3. |
 | `duplicate_action` | String | `"preserve_and_flag"` | How to treat duplicate keys: `"preserve_and_flag"`, `"average"`, or `"keep_first"`. |
+| `duplicate_key_strategy` | String | `"fail"` | Policy when secondary horizon sheet has non-unique join keys: `"fail"`, `"average"`, or `"keep_first"`. Prevents many-to-many cross product explosion. |
+| `allow_missing_essentials` | Boolean | `false` | If `false`, Step 1.1 strictly stops (fail-fast) if `profile_code`, `upper`, `lower`, or coordinates are missing. |
+| `sand_sum` | Array of Strings | `[]` | List of sand sub-fraction column names in raw data to sum into the canonical `Sand` variable (e.g. `["Sand_VF", "Sand_F", "Sand_M", "Sand_C"]`). |
 | `column_mapping` | Object | `{}` | Key-value dictionary: `{"Standard_DSM_Var": "Original_Column_Name"}`. See §4. |
 | `om_to_soc_factor` | Numeric | `null` | Factor to derive $SOC = OM / factor$ (e.g. `1.724` or `2.0`). If omitted, OM is not converted. |
 | `source_crs` | Integer | `null` (auto-detect) | EPSG code of input coordinates (e.g. `4326` for WGS84, `32616` for UTM 16N). |

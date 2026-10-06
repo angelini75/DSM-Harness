@@ -17,6 +17,9 @@
     }
   ],
   "duplicate_action": "preserve_and_flag",
+  "duplicate_key_strategy": "fail",
+  "allow_missing_essentials": false,
+  "sand_sum": [],
   "column_mapping": {
     "profile_code": "id_sitio",
     "Horizon": "horizonte",

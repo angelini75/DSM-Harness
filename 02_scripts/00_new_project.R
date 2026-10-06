@@ -102,7 +102,7 @@ if (file.exists(template_cfg) && requireNamespace("jsonlite", quietly = TRUE)) {
 
 # 3. Inicializar decisions_log.csv del proyecto --------------------------------
 proj_log <- file.path(proj_dir, "decisions_log.csv")
-log_header <- "timestamp,step,criterion,user_decision,affected_rows,affected_profiles,details\n"
+log_header <- "timestamp,run_id,step,criterion,user_decision,source,affected_rows,affected_profiles,details,template_version\n"
 cat(log_header, file = proj_log)
 cat(sprintf("[*] Log de auditoría inicializado: '%s'\n", proj_log))
 
@@ -127,11 +127,11 @@ run_step_code <- c(
   "  source(s_file, local = FALSE)",
   "}",
   "",
-  "cat(sprintf('\\n[*] Entorno cargado para proyecto: \"%s\"\\n', PROJECT_NAME)),",
-  "cat('Comandos disponibles:\\n'),",
-  "cat('  run_step(\"0\")   -> Inspección estructural\\n'),",
-  "cat('  run_step(\"1.1\") -> Mapeo y selección de variables\\n'),",
-  "cat('  run_step(\"1.2\") -> Auditoría espacial y CRS\\n'),",
+  sprintf("cat('\\n[*] Entorno cargado para proyecto: \"%s\"\\n')", project_name),
+  "cat('Comandos disponibles:\\n')",
+  "cat('  run_step(\"0\")   -> Inspección estructural\\n')",
+  "cat('  run_step(\"1.1\") -> Mapeo y selección de variables\\n')",
+  "cat('  run_step(\"1.2\") -> Auditoría espacial y CRS\\n')",
   "cat('  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n\\n')"
 )
 writeLines(run_step_code, file.path(proj_dir, "run_step.R"))
