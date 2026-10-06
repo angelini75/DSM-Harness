@@ -58,7 +58,7 @@ When harmonizing analytical properties, the following standard column codes are 
 - `BD`: Bulk Density ($g/cm^3$ or $kg/dm^3$) — can be estimated via Saxton PTF
 - `CEC`: Cation Exchange Capacity ($cmol(+)/kg$ or $meq/100g$)
 
-> **Non-blocking Rule**: If a country brings a dataset with custom column names (e.g., `carbono_organico`, `prof_sup`, `prof_inf`), the `byod-audit` skill maps them dynamically via a lookup vector rather than stopping execution.
+> **Non-blocking Rule & Extensibility**: If a country brings a dataset with custom column names (e.g., `carbono_organico`, `prof_sup`, `prof_inf`), the `byod-audit` process maps them dynamically via `column_mapping`. Furthermore, additional project-specific properties (e.g., `pH_nKCl`, `CaCO3`, extractable nutrients, heavy metals) can be preserved declaratively via `"keep_columns": ["col_A", "col_B"]` or custom entries in `column_mapping`. DSM-Harness never blocks or discards analytical properties requested by the user.
 
 ---
 

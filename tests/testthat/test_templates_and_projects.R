@@ -439,3 +439,94 @@ test_that("Issue #28: Step 1.2 generates 2D plot fallback when coordinates are p
   rep_lines <- readLines("01_data/profiles/step1_2_spatial_report.txt", encoding = "UTF-8")
   expect_true(any(grepl("Coordenadas en rango métrico proyectado sin CRS asignado", rep_lines, fixed = TRUE)))
 })
+
+test_that("Issue #31: Step 1.1 preserves keep_columns and carries them through to output", {
+  test_csv <- "01_data/profiles/test_keep_cols.csv"
+  cfg_json <- "01_data/profiles/user_config.json"
+  
+  df_in <- data.frame(
+    id_prof = paste0("P", 1:5),
+    top = 0, bottom = 20,
+    x = -60, y = -34,
+    carb = c(1.1, 1.2, 1.3, 1.4, 1.5),
+    pH_nKCl = c(5.2, 5.4, 5.1, 5.8, 6.0),
+    CaCO3 = c(0.1, 0.2, 0.0, 0.5, 0.3),
+    survey_meta = c("A", "B", "C", "D", "E")
+  )
+  write.csv(df_in, test_csv, row.names = FALSE)
+  
+  cfg <- list(
+    input_file = test_csv,
+    column_mapping = list(
+      profile_code = "id_prof",
+      upper = "top",
+      lower = "bottom",
+      longitude = "x",
+      latitude = "y",
+      SOC = "carb"
+    ),
+    keep_columns = c("pH_nKCl", "CaCO3")
+  )
+  jsonlite::write_json(cfg, cfg_json, auto_unbox = TRUE)
+  
+  on.exit({
+    unlink(test_csv)
+    if (file.exists(cfg_json)) unlink(cfg_json)
+    if (file.exists("01_data/profiles/step1_1_variables.csv")) unlink("01_data/profiles/step1_1_variables.csv")
+    if (file.exists("01_data/profiles/step1_1_variables_report.txt")) unlink("01_data/profiles/step1_1_variables_report.txt")
+    if (file.exists("01_data/profiles/step1_2_spatial.csv")) unlink("01_data/profiles/step1_2_spatial.csv")
+    if (file.exists("01_data/profiles/step1_2_spatial_report.txt")) unlink("01_data/profiles/step1_2_spatial_report.txt")
+    if (file.exists("01_data/profiles/cleaned_profiles.csv")) unlink("01_data/profiles/cleaned_profiles.csv")
+    if (file.exists("01_data/profiles/step1_3_pedological_report.txt")) unlink("01_data/profiles/step1_3_pedological_report.txt")
+  }, add = TRUE)
+  
+  source("02_scripts/01_1_byod_audit.R", local = new.env())
+  
+  res1 <- read.csv("01_data/profiles/step1_1_variables.csv")
+  expect_true(all(c("pH_nKCl", "CaCO3") %in% names(res1)))
+  expect_false("survey_meta" %in% names(res1))
+  expect_equal(res1$pH_nKCl, df_in$pH_nKCl)
+  expect_equal(res1$CaCO3, df_in$CaCO3)
+  
+  rep_lines <- readLines("01_data/profiles/step1_1_variables_report.txt", encoding = "UTF-8")
+  expect_true(any(grepl("Columnas adicionales preservadas (keep_columns): pH_nKCl, CaCO3", rep_lines, fixed = TRUE)))
+  expect_true(any(grepl("survey_meta", rep_lines, fixed = TRUE)))
+  
+  # Check persistence into Step 1.2 and Step 1.3
+  source("02_scripts/01_2_byod_audit.R", local = new.env())
+  res2 <- read.csv("01_data/profiles/step1_2_spatial.csv")
+  expect_true(all(c("pH_nKCl", "CaCO3") %in% names(res2)))
+  
+  source("02_scripts/01_3_byod_audit.R", local = new.env())
+  res3 <- read.csv("01_data/profiles/cleaned_profiles.csv")
+  expect_true(all(c("pH_nKCl", "CaCO3") %in% names(res3)))
+})
+
+test_that("Issue #32: ADAPT blocks are clean insertion-only slots in master templates", {
+  scripts <- c(
+    "02_scripts/01_1_byod_audit.R",
+    "02_scripts/01_2_byod_audit.R",
+    "02_scripts/01_3_byod_audit.R"
+  )
+  
+  for (sc in scripts) {
+    lines <- readLines(sc, encoding = "UTF-8")
+    start_idxs <- grep("^# >>> ADAPT:", lines)
+    end_idxs   <- grep("^# <<< ADAPT:", lines)
+    
+    expect_equal(length(start_idxs), length(end_idxs), info = paste("Mismatched ADAPT tags in", sc))
+    
+    for (k in seq_along(start_idxs)) {
+      inner <- lines[(start_idxs[k] + 1):(end_idxs[k] - 1)]
+      # Inner lines must only be comments or empty lines in pristine master templates
+      non_comments <- grep("^\\s*[^#\\s]", inner, value = TRUE)
+      expect_equal(length(non_comments), 0, info = paste("Found executable code inside master ADAPT slot in", sc, lines[start_idxs[k]]))
+    }
+  }
+})
+
+test_that("Issue #33: 01_2_byod_audit.R does not contain concrete hardcoded EPSG 32616", {
+  lines <- readLines("02_scripts/01_2_byod_audit.R", encoding = "UTF-8")
+  expect_false(any(grepl("32616", lines, fixed = TRUE)))
+})
+

@@ -49,6 +49,10 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - **Candidate Table & Completeness Inquiry First**: Before delivering or writing `config.json`, the assistant MUST present a concise markdown table in the chat with candidate sheets, join keys, and target variables for the student to confirm. The assistant MUST explicitly formulate the completeness question:
      > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
      Continuous user refinement must be supported before generating or updating `config.json`.
+   - **Extensibility & Cumulative Retention**:
+     - **NEVER invent schema restrictions**: Assistant must NEVER claim that `CONFIG_SCHEMA.md` or DSM-Harness forbids non-diagnostic variables, auxiliary properties, or creates "dimensional overload". Any additional analytical property requested by the student (e.g. `pH_nKCl`, `CaCO3`) MUST be retained declaratively using `keep_columns` in `config.json` or custom mapping.
+     - **Cumulative Persistence Across Turns**: When refining `config.json` over multiple turns, the assistant MUST cumulatively retain all previously agreed columns and properties. NEVER drop requested variables in subsequent revisions.
+     - **ABSOLUTE BAN on Analytical Method Mixing**: NEVER map different analytical methods to the same canonical variable (e.g., NEVER map `pH_nKCl` into `pH_H2O`). Preserve distinct methods under their own original names using `keep_columns`.
    - **`config.json`**: Conforms to [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md).
      - *In IDE (Antigravity)*: Assistant creates/updates `projects/<nombre>/config.json` upon explicit user agreement.
      - *In Web Chat (Cards)*: Assistant delivers the exact JSON code block for the student to save locally. Assistants must **never claim** "ya lo registré" if they lack file-writing tools.
@@ -64,14 +68,15 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      6. **PROHIBITION**: Never suggest concrete EPSG codes or pedological factors before seeing data evidence.
      7. **Failed Column Diagnostics**: When mapped columns fail or variables are not found, inspect or direct the student to inspect `names(dat_raw)` printed directly by the script in the console/report.
 
-6. **Master Templates, Project Isolation & Minimal ADAPT Patches**:
+6. **Master Templates, Project Isolation & Insertion-Only ADAPT Contract**:
    - **Master Templates**: Scripts in `02_scripts/` are pristine, versioned templates (`TEMPLATE_VERSION 2.0.0`). They are NEVER directly modified or overwritten.
    - **Project Workspaces**: Student datasets and execution happen in isolated project folders (`projects/<nombre>/`) generated via `02_scripts/00_new_project.R`. Each project carries its own `config.json`, `decisions_log.csv`, and local script copies with provenance headers.
-   - **Minimal Patch Protocol (Token Saver)**:
+   - **Insertion-Only ADAPT Protocol ([`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md))**:
      - Always attempt declarative configuration first via `config.json` ([`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md)).
-     - If custom logic is strictly necessary, assistants MUST deliver **ONLY the minimal code block** (15-40 lines) targeting the tagged hooks (`# >>> ADAPT:read_and_join`, `# >>> ADAPT:column_mapping`, `# >>> ADAPT:crs_and_outliers`, `# >>> ADAPT:pedological_checks`).
-     - **ABSOLUTE BAN**: Never paste entire scripts or replacements into the chat.
-     - Any adapted code must call `record_decision()` logging row/profile counts before and after.
+     - ADAPT blocks are strictly **insertion-only extension slots** between `# >>> ADAPT:<slot_name>` and `# <<< ADAPT:<slot_name>`.
+     - **ABSOLUTE BAN**: Never instruct the student to replace existing template logic or delete surrounding code.
+     - Assistants MUST deliver **ONLY the minimal code block** (15-40 lines) to be inserted inside the slot, respecting the exact contract and objects documented in [`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md).
+     - Any adapted code must call `record_decision(step, criterion, decision, source, affected_rows, affected_profiles, details)` with its complete signature.
    - **Audit Diff**: Use `02_scripts/00_audit_diff.R` to inspect differences between project scripts and master templates.
    - **Strict Two-Turn Flow per Sub-Step**:
      - **Turn 1 (Before execution)**: (1) Execution guide in RStudio (e.g. `run_step("1.1")`), (2) Neutral observation guide, (3) Numbered decision options without bias (no "recomendada" / "estándar"), (4) Completeness check (*"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*).

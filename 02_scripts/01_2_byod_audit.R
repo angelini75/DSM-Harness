@@ -151,7 +151,6 @@ max_y_raw <- max(dat_valid$latitude, na.rm = TRUE)
 is_projected_coords <- (abs(min_x_raw) > 180 || abs(max_x_raw) > 180 || abs(min_y_raw) > 90 || abs(max_y_raw) > 90)
 
 # 3. Transformación de Coordenadas y CRS ---------------------------------------
-# >>> ADAPT:crs_and_outliers
 crs_used <- "EPSG:4326 (WGS84 no proyectado)"
 coord_diagnosis <- "Coordenadas geográficas estándar WGS84."
 source_crs <- if (!is.null(user_cfg$source_crs)) as.integer(user_cfg$source_crs) else NULL
@@ -165,7 +164,7 @@ if (is_projected_coords) {
     cat("NO está definido en 'config.json'.\n")
     cat(sprintf("Rango detectado: X: [%.1f, %.1f] | Y: [%.1f, %.1f]\n", min_x_raw, max_x_raw, min_y_raw, max_y_raw))
     cat("Por favor, consulta el EPSG de tu país/zona en 'docs/OPENNSIS_STANDARDS.md' o con la IA,\n")
-    cat("y decláralo en 'config.json' (ej: \"source_crs\": 32616).\n")
+    cat("y decláralo en 'config.json' (ej: \"source_crs\": <código EPSG de tu zona>).\n")
     cat("==============================================================================\n\n")
     crs_used <- "MÉTRICAS SIN EPSG (Gráfico 2D generado en panel Plots; mapa base omitido hasta declarar source_crs)"
   } else {
@@ -249,6 +248,11 @@ if (!is.null(target_outlier_act) && outlier_count > 0) {
   record_decision(1.2, "Outliers espaciales", "Evaluación completada", source = outlier_act_source,
                   affected_rows = outlier_count, details = outlier_action_applied)
 }
+
+# >>> ADAPT:crs_and_outliers
+# Punto de extensión: inserción de filtros o transformaciones espaciales personalizadas.
+# Objetos disponibles: dat_valid (data.frame), outlier_mask (logical), source_crs (int), user_cfg (list), record_decision (función)
+# Invariante: dat_valid debe conservar columnas longitude y latitude válidas.
 # <<< ADAPT:crs_and_outliers
 
 # Perfiles colocalizados (mismas coordenadas)

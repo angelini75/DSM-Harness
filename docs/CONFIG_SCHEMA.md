@@ -30,9 +30,10 @@ Both AI assistants and human participants must adhere to this specification to a
 | `duplicate_key_strategy` | String | `"fail"` | Policy when secondary horizon sheet has non-unique join keys: `"fail"`, `"average"`, or `"keep_first"`. Prevents many-to-many cross product explosion. |
 | `allow_missing_essentials` | Boolean | `false` | If `false`, Step 1.1 strictly stops (fail-fast) if `profile_code`, `upper`, `lower`, or coordinates are missing. |
 | `sand_sum` | Array of Strings | `[]` | List of sand sub-fraction column names in raw data to sum into the canonical `Sand` variable (e.g. `["Sand_VF", "Sand_F", "Sand_M", "Sand_C"]`). |
+| `keep_columns` | Array of Strings | `[]` | List of additional raw column names to preserve in the final cleaned dataset without renaming or discarding (e.g. `["pH_nKCl", "CaCO3"]`). |
 | `column_mapping` | Object | `{}` | Key-value dictionary: `{"Standard_DSM_Var": "Original_Column_Name"}`. See §4. |
-| `om_to_soc_factor` | Numeric | `null` | Factor to derive $SOC = OM / factor$ (e.g. `1.724` or `2.0`). If omitted, OM is not converted. |
-| `source_crs` | Integer | `null` (auto-detect) | EPSG code of input coordinates (e.g. `4326` for WGS84, `32616` for UTM 16N). |
+| `om_to_soc_factor` | Numeric | `null` | Factor to derive $SOC = OM / factor$ (according to laboratory analytical method). If omitted, OM is not converted. |
+| `source_crs` | Integer | `null` (auto-detect) | EPSG code of input coordinates if projected in metric coordinates (e.g. `4326` for WGS84, or local projected EPSG code). |
 | `outlier_action` | String | `"flag"` | Spatial outlier policy: `"flag"`, `"exclude"`, or `"keep"`. |
 | `outlier_ids` | Array of Strings | `[]` | List of `profile_code` IDs confirmed as spatial outliers. |
 | `estimate_bd` | Boolean | `false` | If `true`, enables Bulk Density estimation into `BD_est` upon user confirmation of the selected model. |
@@ -96,6 +97,9 @@ The `column_mapping` object maps canonical OpenNSIS / ISO 28258 variable names t
 | `Total_N` | Numeric | Total Nitrogen (%) |
 | `P_ext` | Numeric | Extractable Phosphorus (mg/kg or ppm) |
 
+> [!NOTE]
+> **Extensibility**: The variables listed above represent canonical diagnostic properties for Digital Soil Mapping. However, DSM-Harness does NOT restrict or prohibit extra analytical variables. Participants can freely include additional variables via `column_mapping` (e.g. `{"pH_nKCl": "PH_KCL", "CaCO3": "CARBONATOS"}`) or declaratively retain any raw columns via `"keep_columns": ["COL_A", "COL_B"]`. All preserved columns flow cleanly through all audit steps into `cleaned_profiles.csv`.
+
 ---
 
 ## 5. Complete Examples
@@ -114,6 +118,7 @@ The `column_mapping` object maps canonical OpenNSIS / ISO 28258 variable names t
     "pH_H2O": "PH_AGUA",
     "Clay": "ARCILLA"
   },
+  "keep_columns": ["pH_nKCl", "CaCO3"],
   "source_crs": 4326,
   "duplicate_action": "preserve_and_flag"
 }
@@ -149,8 +154,9 @@ The `column_mapping` object maps canonical OpenNSIS / ISO 28258 variable names t
     "Sand": "ARENA_PCT",
     "Silt": "LIMO_PCT"
   },
-  "om_to_soc_factor": 1.724,
-  "source_crs": 32616,
+  "keep_columns": ["METODO_ANALISIS"],
+  "om_to_soc_factor": null,
+  "source_crs": 4326,
   "duplicate_action": "preserve_and_flag"
 }
 ```

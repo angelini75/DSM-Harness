@@ -148,7 +148,6 @@ clean_units_row <- function(df) {
 }
 
 # 2. Carga y Estructuración Relacional (1 o N Hojas) ---------------------------
-# >>> ADAPT:read_and_join
 join_info <- "Lectura directa"
 n_sites_raw <- 0
 n_horiz_raw <- 0
@@ -462,6 +461,11 @@ if (ext %in% c("xlsx", "xls")) {
   exact_dup_rows <- sum(duplicated(dat_raw))
   join_info <- "Archivo delimitado plano (CSV)"
 }
+
+# >>> ADAPT:read_and_join
+# Punto de extensión: inserción de filtros o transformaciones personalizadas post-unión.
+# Objetos disponibles: dat_raw (data.frame), user_cfg (list), record_decision (función)
+# Invariante: dat_raw debe contener las filas y columnas requeridas para el mapeo.
 # <<< ADAPT:read_and_join
 
 # 3. Diccionario Edafológico de Variables Clave para DSM (ISO 28258) ------------
@@ -497,7 +501,6 @@ dsm_dict <- list(
 cols_raw   <- names(dat_raw)
 cols_clean <- tolower(trimws(gsub("[^[:alnum:]_]", "_", cols_raw)))
 
-# >>> ADAPT:column_mapping
 mapping <- data.frame(Original = character(), Estandar_DSM = character(), stringsAsFactors = FALSE)
 rename_vector <- character()
 
@@ -564,6 +567,11 @@ if (!is.null(user_cfg$sand_sum) && length(user_cfg$sand_sum) > 0) {
     sand_sum_applied <- TRUE
   }
 }
+
+# >>> ADAPT:column_mapping
+# Punto de extensión: inserción de correspondencias o variables derivadas personalizadas.
+# Objetos disponibles: dat_raw, mapping (data.frame: Original, Estandar_DSM), rename_vector (named chr), user_cfg, record_decision
+# Invariante: registrar nuevas correspondencias en mapping y rename_vector antes de dat_step1.
 # <<< ADAPT:column_mapping
 
 # 4. Fail-Fast Pedológico Estricto de Variables Esenciales (Issue #18) ----------
@@ -613,6 +621,34 @@ if ("audit_replica_flag" %in% names(dat_raw) && !("audit_replica_flag" %in% name
   dat_step1$audit_replica_flag <- dat_raw$audit_replica_flag
 }
 
+# Tratamiento de columnas adicionales declaradas para conservar (keep_columns, Issue #31)
+keep_cols_cfg <- if (!is.null(user_cfg$keep_columns)) unlist(user_cfg$keep_columns) else character(0)
+extra_cols_added <- character(0)
+
+if (length(keep_cols_cfg) > 0) {
+  keep_cols_exist <- intersect(keep_cols_cfg, names(dat_raw))
+  keep_cols_missing <- setdiff(keep_cols_cfg, names(dat_raw))
+  if (length(keep_cols_missing) > 0) {
+    cat(sprintf("\n[AVISO keep_columns]: Columnas solicitadas no encontradas en datos tras la unión: [%s]\n",
+                paste(keep_cols_missing, collapse = ", ")))
+  }
+  
+  extra_to_add <- setdiff(keep_cols_exist, names(dat_step1))
+  for (col_extra in extra_to_add) {
+    dat_step1[[col_extra]] <- dat_raw[[col_extra]]
+  }
+  extra_cols_added <- extra_to_add
+  
+  if (length(extra_cols_added) > 0) {
+    cat(sprintf("[*] Conservando %d columnas adicionales (keep_columns): [%s]\n",
+                length(extra_cols_added), paste(extra_cols_added, collapse = ", ")))
+    record_decision(1.1, "Conservación de columnas adicionales",
+                    sprintf("Preservadas: [%s]", paste(extra_cols_added, collapse = ", ")),
+                    source = "user_config", affected_rows = nrow(dat_step1),
+                    details = "Columnas preservadas declarativamente vía 'keep_columns'")
+  }
+}
+
 n_profiles <- if ("profile_code" %in% names(dat_step1)) length(unique(na.omit(dat_step1$profile_code))) else 0
 
 # Tratamiento verídico de SOC / Materia Orgánica
@@ -630,7 +666,7 @@ if ("OM" %in% names(dat_step1) && !("SOC" %in% names(dat_step1))) {
   }
 }
 
-cols_descartadas <- setdiff(cols_raw, mapping$Original)
+cols_descartadas <- setdiff(cols_raw, union(mapping$Original, extra_cols_added))
 
 # 6. Generar Reporte de Texto UTF-8 100% Verídico ------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
@@ -676,6 +712,9 @@ writeLines(paste("  Derivación de SOC desde OM:", soc_conversion_note), report_
 if (sand_sum_applied) {
   writeLines(sprintf("  Suma de fracciones de arena: APLICADA (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
 }
+if (length(extra_cols_added) > 0) {
+  writeLines(sprintf("  Columnas adicionales preservadas (keep_columns): %s", paste(extra_cols_added, collapse = ", ")), report_con)
+}
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("TABLA DE CORRESPONDENCIA DE VARIABLES:", report_con)
 for (i in seq_len(nrow(mapping))) {
@@ -706,6 +745,9 @@ for (i in seq_len(nrow(mapping))) {
 cat("------------------------------------------------------------------------------\n")
 if ("profile_code" %in% names(dat_step1)) {
   cat(sprintf("Perfiles únicos identificados:         %d\n", n_profiles))
+}
+if (length(extra_cols_added) > 0) {
+  cat(sprintf("Columnas adicionales preservadas:      %d [%s]\n", length(extra_cols_added), paste(extra_cols_added, collapse = ", ")))
 }
 if (dup_site_count > 0) {
   cat(sprintf("Claves duplicadas en hoja de sitios:   %d\n", dup_site_count))

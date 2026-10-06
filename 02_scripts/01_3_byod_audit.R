@@ -114,7 +114,6 @@ exact_dup_mask <- duplicated(dat) | duplicated(dat, fromLast = TRUE)
 exact_dup_count <- sum(duplicated(dat))
 
 # 2. Auditoría de Profundidades y Continuidad Vertical -------------------------
-# >>> ADAPT:pedological_checks
 cat("[*] Evaluando límites de profundidad y continuidad de horizontes...\n")
 
 if (!("upper" %in% names(dat)) || !("lower" %in% names(dat))) {
@@ -512,6 +511,11 @@ if (estimate_bd_req && has_user_ptf_choice) {
                     source = "script_default", affected_rows = 0)
   }
 }
+
+# >>> ADAPT:pedological_checks
+# Punto de extensión: inserción de reglas de consistencia edafológica o banderas personalizadas.
+# Objetos disponibles: dat (data.frame), user_cfg (list), record_decision (función)
+# Invariante: dat debe conservar columnas upper, lower y variables analíticas.
 # <<< ADAPT:pedological_checks
 
 # 4. Cálculo de Métricas por Capas Estándar (0-30 cm vs 30-100 cm) --------------

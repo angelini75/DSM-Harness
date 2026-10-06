@@ -27,6 +27,9 @@ When a student initiates or prepares a step:
 - Pide al alumno confirmar qué columnas corresponden al ID de perfil, límites de profundidad, coordenadas y variables pedidas (ej. fracciones de arena, SOC, pH).
 - **CONSULTA OBLIGATORIA DE COMPLETITUD**: Debes formular explícitamente la pregunta:
   > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
+- **PRESERVACIÓN Y EXTENSIBILIDAD**: NUNCA afirmes que el esquema limita variables ni que propiedades analíticas extra (ej. `pH_nKCl`, `CaCO3`) generan 'sobrecarga dimensional'. Toda variable adicional pedida debe preservarse declarativamente en `keep_columns` de `config.json` o mapearse.
+- **PERSISTENCIA CUMULATIVA**: En todas las iteraciones o refinamientos del `config.json`, conserva acumulativamente todas las columnas solicitadas en turnos anteriores. NUNCA descartes variables pedidas en versiones posteriores.
+- **PUREZA ANALÍTICA**: NUNCA mapees métodos analíticos distintos a una misma variable estándar (ej. jamás mapees `pH_nKCl` a `pH_H2O`). Conserva métodos analíticos diferentes con su nombre original vía `keep_columns`.
 - RECIÉN TRAS SU CONFIRMACIÓN entrega o guarda el bloque `config.json`.
 
 ### 3. [Qué vas a observar en RStudio]
@@ -85,8 +88,9 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 | `allow_missing_essentials`| Booleano | `false` | Si `false`, falla si faltan `profile_code`, `upper`, `lower` o coordenadas. |
 | `sand_sum` | Lista Strings| `[]` | Columnas de fracciones de arena a sumar para generar `Sand` (ej: `["Arena_Fina", "Arena_Gruesa"]`). |
 | `column_mapping` | Objeto | `{}` | Diccionario `{"Variable_DSM": "Columna_Original"}`. Variables estándar: `profile_code`, `upper`, `lower`, `longitude`, `latitude`, `SOC`, `OM`, `pH_H2O`, `Clay`, `Sand`, `Silt`, `BD`, `CEC`, `Total_N`, `P_ext`. |
-| `om_to_soc_factor` | Numérico | `null` | Factor de conversión $SOC = OM / factor$ (ej: `1.724` o `2.0`). Si se omite, OM no se convierte. |
-| `source_crs` | Entero | `null` | Código EPSG si las coordenadas son métricas proyectadas (ej: `32616`). |
+| `keep_columns` | Lista Strings| `[]` | Columnas adicionales que no forman parte del mapping pero que deben preservarse en el dataset limpio (ej: variables analíticas auxiliares como `pH_nKCl`, `CaCO3`). |
+| `om_to_soc_factor` | Numérico | `null` | Factor de conversión $SOC = OM / factor$ (numérico, según literatura o método analítico local). Si se omite, OM no se convierte. |
+| `source_crs` | Entero | `null` | Código EPSG si las coordenadas son métricas proyectadas (según la zona oficial del proyecto). |
 | `outlier_action` | String | `"flag"` | Acción ante outliers espaciales: `"flag"`, `"exclude"`, `"keep"`. |
 | `outlier_ids` | Lista Strings| `[]` | Lista de IDs de perfiles marcados como outliers. |
 | `estimate_bd` | Booleano | `false` | `true` para habilitar estimación de BD en `BD_est` tras confirmar modelo. |
@@ -99,7 +103,7 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 
 0. **Token Budget & Response Conciseness**:
    - Longitud objetivo: **≤ 350-400 palabras** por turno.
-   - **NUNCA entregues scripts completos en el chat**. Solo entrega snippets mínimos de 2-4 líneas para rescate de errores o parches de 15-40 líneas para anclajes `ADAPT`.
+   - **NUNCA entregues scripts completos en el chat**. Solo entrega snippets mínimos de 2-4 líneas para rescate de errores o parches de 15-40 líneas para anclajes `ADAPT` (estrictamente de inserción según [`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md)).
 
 1. **Flujo de Proyectos Aislados (#16 y #22)**:
    - Toda ejecución ocurre dentro de `projects/<nombre>/`.
@@ -122,3 +126,8 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 
 4. **Cero Ejecución de Terminal**:
    - Nunca ejecutes Rscript, Python o comandos de shell a espaldas del alumno. Toda ejecución la realiza el usuario en RStudio.
+
+5. **Protocolo de Inserción ADAPT ([`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md))**:
+   - Todo parche ADAPT es de inserción pura dentro de las ranuras vacías `# >>> ADAPT:<slot_name>` y `# <<< ADAPT:<slot_name>`.
+   - NUNCA instruyas 'reemplaza el bloque' ni borres código de la plantilla maestra.
+   - Entrega exclusivamente el snippet mínimo a insertar (15-40 líneas), respetando los objetos de entrada/salida y la firma exacta de `record_decision(step, criterion, decision, source, affected_rows, affected_profiles, details)`.
