@@ -84,7 +84,7 @@ log_line <- function(...) {
 }
 
 log_line("================================================================================")
-log_line("  DSM-HARNESS: REPORTE COMPACTO DE INSPECCIÓN ESTRUCTURAL (BYOD)")
+log_line("  DSM-HARNESS: REPORTE COMPACTO DE INSPECCION ESTRUCTURAL (BYOD)")
 log_line("================================================================================")
 log_line("Fecha y hora:         ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
 log_line("Archivo inspeccionado: ", input_file)

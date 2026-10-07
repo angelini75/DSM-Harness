@@ -675,7 +675,7 @@ cols_descartadas <- setdiff(cols_raw, union(mapping$Original, extra_cols_added))
 # 6. Generar Reporte de Texto UTF-8 100% Verídico ------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.1: MAPEO Y SELECCIÓN DE VARIABLES", report_con)
+writeLines("  DSM-HARNESS | REPORTE PASO 1.1: MAPEO Y SELECCION DE VARIABLES", report_con)
 writeLines("================================================================================", report_con)
 writeLines(paste("Fecha y hora:        ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
 writeLines(paste("Archivo de entrada:  ", input_file), report_con)
@@ -683,23 +683,23 @@ writeLines(paste("Estructura de carga: ", join_info), report_con)
 writeLines(paste("Dimensiones iniciales:", nrow(dat_raw), "filas x", ncol(dat_raw), "columnas"), report_con)
 writeLines(paste("Dimensiones filtradas:", nrow(dat_step1), "filas x", ncol(dat_step1), "variables DSM"), report_con)
 if ("profile_code" %in% names(dat_step1)) {
-  writeLines(paste("Número de perfiles únicos:", n_profiles), report_con)
+  writeLines(paste("Numero de perfiles unicos:", n_profiles), report_con)
 } else {
-  writeLines("Número de perfiles únicos: NO EVALUADO (falta mapear 'profile_code')", report_con)
+  writeLines("Numero de perfiles unicos: NO EVALUADO (falta mapear 'profile_code')", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE CLAVES Y RELACIONES:", report_con)
+writeLines("AUDITORIA DE CLAVES Y RELACIONES:", report_con)
 writeLines(sprintf("  Claves duplicadas en hoja de sitios:       %d", dup_site_count), report_con)
 if (evaluated_duplicates) {
-  writeLines(sprintf("  Claves duplicadas/réplicas en horizontes:  %d", dup_key_count), report_con)
+  writeLines(sprintf("  Claves duplicadas/replicas en horizontes:  %d", dup_key_count), report_con)
   writeLines(sprintf("  Tratamiento de duplicados aplicado:        %s", duplicate_handling_applied), report_con)
 } else {
-  writeLines("  Claves duplicadas/réplicas en horizontes:  NO EVALUADO (sin clave de horizonte)", report_con)
+  writeLines("  Claves duplicadas/replicas en horizontes:  NO EVALUADO (sin clave de horizonte)", report_con)
   writeLines("  Tratamiento de duplicados aplicado:        NO APLICA", report_con)
 }
-writeLines(sprintf("  Filas exactamente duplicadas post-unión:   %d", exact_dup_rows), report_con)
+writeLines(sprintf("  Filas exactamente duplicadas post-union:   %d", exact_dup_rows), report_con)
 if (!is.na(orphan_horizons)) {
-  writeLines(sprintf("  Horizontes huérfanos (sin perfil en sitios): %d", orphan_horizons), report_con)
+  writeLines(sprintf("  Horizontes huerfanos (sin perfil en sitios): %d", orphan_horizons), report_con)
   writeLines(sprintf("  Sitios sin horizontes registrados:          %d", orphan_sites), report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
@@ -712,7 +712,7 @@ status_coord <- if (has_coords) "PRESENTE" else "FALTANTE"
 writeLines(sprintf("  %-15s : %s", "coordenadas", status_coord), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("ESTADO DE PROPIEDADES COMPLEMENTARIAS:", report_con)
-writeLines(paste("  Derivación de SOC desde OM:", soc_conversion_note), report_con)
+writeLines(paste("  Derivacion de SOC desde OM:", soc_conversion_note), report_con)
 if (sand_sum_applied) {
   writeLines(sprintf("  Suma de fracciones de arena: APLICADA (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
 }

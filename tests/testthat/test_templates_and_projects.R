@@ -650,4 +650,25 @@ test_that("Issue #42: Spectroscopy is strictly banished from DSM documentation a
   expect_true(any(grepl("ABSOLUTE BAN on Spectroscopy", agents_lines)))
 })
 
+test_that("Issue #43: Step 1.2 reports resulting WGS84 bounding box and requires territorial verification", {
+  lines_12 <- readLines("02_scripts/01_2_byod_audit.R", encoding = "UTF-8")
+  expect_true(any(grepl("RANGOS DE COORDENADAS WGS84 (CONFIRMACION HUMANA REQUERIDA)", lines_12, fixed = TRUE)))
+  expect_true(any(grepl("Rango resultante en grados (WGS84):", lines_12, fixed = TRUE)))
+  expect_true(any(grepl("Revisa el rango geografico resultante:", lines_12, fixed = TRUE)))
+  
+  agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
+  expect_true(any(grepl("EPSG Candidate Protocol (#43)", agents_lines, fixed = TRUE)))
+  expect_true(any(grepl("Post-Reprojection Bounding Box Verification (#43)", agents_lines, fixed = TRUE)))
+})
+
+test_that("Issue #44: Companion reports use clean ASCII without encoding conversion risks, and AGENTS mandates evidence rigor", {
+  lines_03 <- readLines("02_scripts/03_spatial_modelling.R", encoding = "UTF-8")
+  expect_true(any(grepl("R^2 (Coeficiente determinacion):", lines_03, fixed = TRUE)))
+  expect_false(any(grepl("R²", lines_03, fixed = TRUE)))
+  
+  agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
+  expect_true(any(grepl("ABSOLUTE BAN on Hallucinated File Names & Sources (#44)", agents_lines, fixed = TRUE)))
+  expect_true(any(grepl("ABSOLUTE BAN on Unilateral Target Properties & Prescriptive Intervals (#44)", agents_lines, fixed = TRUE)))
+})
+
 

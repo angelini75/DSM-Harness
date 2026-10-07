@@ -541,29 +541,29 @@ n_excluded_missing_om <- if (has_bd) sum(!is.na(dat$BD) & !dat$flag_bd_anomaly &
 # 5. Generar Reporte de Texto Edafológico UTF-8 ---------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.3: PROFUNDIDADES Y COHERENCIA EDAFOLÓGICA", report_con)
+writeLines("  DSM-HARNESS | REPORTE PASO 1.3: PROFUNDIDADES Y COHERENCIA EDAFOLOGICA", report_con)
 writeLines("================================================================================", report_con)
 writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
 writeLines(paste("Archivo analizado:", input_csv), report_con)
 writeLines(paste("Total registros evaluados:", nrow(dat)), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE DUPLICADOS Y ARTEFACTOS DE UNIÓN:", report_con)
-writeLines(sprintf("  Filas exactamente duplicadas:               %d (artefactos de unión)", exact_dup_count), report_con)
+writeLines("AUDITORIA DE DUPLICADOS Y ARTEFACTOS DE UNION:", report_con)
+writeLines(sprintf("  Filas exactamente duplicadas:               %d (artefactos de union)", exact_dup_count), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE LÍMITES VERTICALES Y ESPESORES:", report_con)
-writeLines(sprintf("  Límites invertidos detectados (corregidos): %d", inv_depths_count), report_con)
+writeLines("AUDITORIA DE LIMITES VERTICALES Y ESPESORES:", report_con)
+writeLines(sprintf("  Limites invertidos detectados (corregidos): %d", inv_depths_count), report_con)
 writeLines(sprintf("  Horizontes con espesor cero:                %d", zero_thick_count), report_con)
 writeLines(sprintf("  Horizontes con profundidades negativas:     %d", neg_depths_count), report_con)
 writeLines(sprintf("  Horizontes con profundidades NA:            %d", na_depths_count), report_con)
 writeLines(sprintf("  Solapes verticales brutos detectados:       %d", overlaps_raw_count), report_con)
-writeLines(sprintf("  Solapes reales tras deduplicación:          %d", overlaps_clean_count), report_con)
+writeLines(sprintf("  Solapes reales tras deduplicacion:          %d", overlaps_clean_count), report_con)
 if (overlaps_raw_count > overlaps_clean_count) {
   writeLines(sprintf("  -> NOTA: %d solapes fueron artefactos producidos por filas duplicadas.", 
                      overlaps_raw_count - overlaps_clean_count), report_con)
 }
 writeLines(sprintf("  Discontinuidades / huecos verticales (gaps): %d", gaps_count), report_con)
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE COHERENCIA DE TEXTURA:", report_con)
+writeLines("AUDITORIA DE COHERENCIA DE TEXTURA:", report_con)
 if (has_texture) {
   writeLines(sprintf("  Horizontes evaluados con textura:           %d", sum(!is.na(dat$texture_sum))), report_con)
   writeLines(sprintf("  Rango de suma (Clay+Sand+Silt):             [%.1f, %.1f] %% (Mediana: %.1f %%)", tex_min, tex_max, tex_med), report_con)
@@ -575,9 +575,9 @@ if (has_texture) {
   writeLines("  Variables de textura (Clay, Sand, Silt) no presentes en el dataset: NO EVALUADO", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORÍA DE PROPIEDADES QUÍMICAS (pH y SOC):", report_con)
+writeLines("AUDITORIA DE PROPIEDADES QUIMICAS (pH y SOC):", report_con)
 if (has_ph) {
-  writeLines(sprintf("  pH en agua: Rango [%.2f, %.2f] | Valores anómalos (< 2.5 o > 11.5): %d", 
+  writeLines(sprintf("  pH en agua: Rango [%.2f, %.2f] | Valores anomalos (< 2.5 o > 11.5): %d", 
                      min(dat$pH_H2O, na.rm = TRUE), max(dat$pH_H2O, na.rm = TRUE), ph_impossible_count), report_con)
 } else {
   writeLines("  pH_H2O: NO EVALUADO (variable no presente)", report_con)
@@ -589,21 +589,21 @@ if (has_soc) {
   writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
 }
 writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACIÓN DE PTFS:", report_con)
-writeLines(sprintf("  Estado de estimación BD: %s", ptf_status), report_con)
+writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACION DE PTFS:", report_con)
+writeLines(sprintf("  Estado de estimacion BD: %s", ptf_status), report_con)
 if (has_bd || estimate_bd_req) {
   writeLines("\nBALANCE Y COBERTURA DE DENSIDAD APARENTE (BD):", report_con)
   writeLines(sprintf("  Filas totales evaluadas:                       %d", nrow(dat)), report_con)
-  writeLines(sprintf("  BD con medición válida (BD_source = 'measured'):  %d (%.1f%%)",
+  writeLines(sprintf("  BD con medicion valida (BD_source = 'measured'):  %d (%.1f%%)",
                      n_bd_measured, (n_bd_measured / nrow(dat)) * 100), report_con)
   writeLines(sprintf("  BD estimada por PTF   (BD_source = 'estimated'): %d (%.1f%%)",
                      n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100), report_con)
   writeLines(sprintf("  Sin dato de BD        (BD_source = 'missing'):   %d (%.1f%%)",
                      n_bd_missing, (n_bd_missing / nrow(dat)) * 100), report_con)
   
-  writeLines("\nDETALLE DE CALIBRACIÓN Y EXCLUSIONES:", report_con)
+  writeLines("\nDETALLE DE CALIBRACION Y EXCLUSIONES:", report_con)
   writeLines(sprintf("  Mediciones analizadas brutas:                  %d", n_bd_raw_non_na), report_con)
-  writeLines(sprintf("  Excluidas por valor anómalo (<= 0 o > 2.65):   %d", n_excluded_anomaly), report_con)
+  writeLines(sprintf("  Excluidas por valor anomalo (<= 0 o > 2.65):   %d", n_excluded_anomaly), report_con)
   writeLines(sprintf("  Excluidas por falta de OM/SOC predictor:       %d", n_excluded_missing_om), report_con)
   writeLines(sprintf("  Total observaciones utilizadas en contraste:   %d (Umbral ajuste local: %d)",
                      n_val_total, bd_fit_min_n), report_con)

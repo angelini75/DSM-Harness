@@ -39,6 +39,8 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Every script produces graphical diagnostics and a companion `.txt` report in `reports/` (o `01_data/profiles/`).
    - **EVIDENCE-ONLY**: If a number or diagnostic was not computed or is absent from the `.txt` report, NEVER affirm it. State "NO EVALUADO".
    - Never invent country/region origins, analytical causes, EPSG projections, or PTF authors.
+   - **ABSOLUTE BAN on Hallucinated File Names & Sources (#44)**: AI assistants must NEVER affirm or cite filenames not produced by the workflow (e.g. NEVER cite `modelling_dataset.csv`; the actual file is `step2_covariates.csv`). NEVER invent covariate sources or sensor origins (e.g. never claim "WorldClim/CHELSA, MODIS NDVI, EVI, FPAR, LST" if only layer names are listed in the report).
+   - **ABSOLUTE BAN on Unilateral Target Properties & Prescriptive Intervals (#44)**: NEVER configure `target_property` (e.g. `OM` or `SOC`) without first presenting the available candidate properties and asking the student. NEVER use the word "estándar" when referring to soil depth intervals (e.g. NEVER use "intervalo superficial estándar").
    - **ABSOLUTE BAN on Speculative Claims**: Never assure "no habrá advertencias" or forecast counts ("verás los 4.256 puntos") without reading evidence in the `.txt` report.
    - **ABSOLUTE BAN on Premature Completion**: Never declare "Etapa 1 concluida, dataset limpio y auditado" if essential variables or requested properties (e.g. texture) are missing, or if report sections state "NO EVALUADO". List pending items explicitly.
    - **OpenNSIS Naming & COG Rigor (#41)**: For map naming (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-<stat>.tif`), ALWAYS ask the user for `<CC>` and `<PROJ>`; NEVER invent them (e.g. never invent `SOILFER`). NEVER affirm "COG estándar" unless verified to be true Cloud-Optimized GeoTIFF (`LAYOUT=COG` or overviews + tiled DEFLATE). Present metrics ($R^2$, RMSE, CCC) neutrally without arbitrary qualitative praise.
@@ -61,16 +63,17 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      - *In Web Chat (Cards)*: Assistant delivers the exact JSON code block for the student to save locally. Assistants must **never claim** "ya lo registré" if they lack file-writing tools.
      - *Interactive R CLI*: Students can run `02_scripts/00_setup_config.R` in RStudio to configure sheets and keys without touching JSON.
 
-5. **Pedagogy of Uncertainty, Grounding & Neutrality (#36)**:
+5. **Pedagogy of Uncertainty, Grounding & Neutrality (#36, #43)**:
    - When diagnosing projections, units or analytical methods:
-     1. **Metadata First**: ALWAYS direct the student to inspect internal metadata sheets, code tables, or notes in their Excel workbook first.
+     1. **Metadata First & EPSG Candidate Protocol (#43)**: ALWAYS direct the student to inspect internal metadata sheets, code tables, or notes in their Excel workbook first. NEVER assert an EPSG code as "exacto" from vague metadata text (e.g. "Gauss-Krueger", "UTM"). Propose a short list of 2–3 plausible candidate EPSG codes filtered by country (e.g. from epsg.io) presenting them equiprobably and neutrally for the student to choose.
      2. Explain technical and pedological concepts objectively in plain language without bias.
      3. **No Concrete EPSG in Snippets**: When providing code snippets or placeholders, use `<código EPSG de tu zona>` or `<código EPSG>`, NEVER specific numbers (e.g. 32634).
-     4. **No Analytical Method Confusion**: NEVER confuse analytical laboratory methods with mathematical conversion factors (e.g., Walkley-Black is an analytical wet-digestion laboratory method, not a conversion factor). Present factors neutrally with citations to literature or defer to laboratory reports.
-     5. **No Persistent Numeric Examples in Options**: Present choices neutrally without embedding fixed numbers (e.g. avoid 'ej. 2.0').
-     6. **ALWAYS provide a reversible deferral option** (e.g. keep original property without converting).
-     7. **PROHIBITION**: Never use coercive or prescriptive statements ("te conviene rotundamente", "opción recomendada", "opción estándar", "enfoque estándar"). All options must be presented neutrally and equiprobably. All methodological decisions belong to the participant.
-     8. **Failed Column Diagnostics**: When mapped columns fail or variables are not found, inspect or direct the student to inspect `names(dat_raw)` printed directly by the script in the console/report.
+     4. **Post-Reprojection Bounding Box Verification (#43)**: After running Step 1.2, ALWAYS check the resulting geographic bounding box (Lon min–max, Lat min–max en grados decimales) in `step1_2_spatial_report.txt` and ask the student to verify if that range falls inside their national/regional territory before moving to Step 1.3 (warning that an erroneous EPSG can place points in the ocean without throwing errors).
+     5. **No Analytical Method Confusion**: NEVER confuse analytical laboratory methods with mathematical conversion factors (e.g., Walkley-Black is an analytical wet-digestion laboratory method, not a conversion factor). Present factors neutrally with citations to literature or defer to laboratory reports.
+     6. **No Persistent Numeric Examples in Options**: Present choices neutrally without embedding fixed numbers (e.g. avoid 'ej. 2.0').
+     7. **ALWAYS provide a reversible deferral option** (e.g. keep original property without converting).
+     8. **PROHIBITION**: Never use coercive or prescriptive statements ("te conviene rotundamente", "opción recomendada", "opción estándar", "enfoque estándar"). All options must be presented neutrally and equiprobably. All methodological decisions belong to the participant.
+     9. **Failed Column Diagnostics**: When mapped columns fail or variables are not found, inspect or direct the student to inspect `names(dat_raw)` printed directly by the script in the console/report.
 
 6. **Master Templates, Project Isolation & Insertion-Only ADAPT Contract**:
    - **Master Templates**: Scripts in `02_scripts/` are pristine, versioned templates (`TEMPLATE_VERSION 2.0.0`). They are NEVER directly modified or overwritten.

@@ -5,7 +5,7 @@
 # Realizar la selección de variables con Boruta, entrenar un modelo de bosque
 # aleatorio de regresión cuantílica (QRF) con ranger/caret y validación cruzada
 # repetida con afinación de grilla de hiperparámetros (mtry), evaluar métricas
-# de desempeño (R², RMSE, CCC, sesgo) y guardar el modelo entrenado.
+# de desempeño (R^2, RMSE, CCC, sesgo) y guardar el modelo entrenado.
 #
 # SALIDAS GENERADAS:
 # 1. Modelo entrenado:        'outputs/ranger_model_<target>.rds'
@@ -256,14 +256,14 @@ val_ccc  <- calc_ccc(obs_vals, pred_vals)
 
 cat("\n------------------------------------------------------------------------------\n")
 cat(sprintf("MÉTRICAS DE VALIDACIÓN CRUZADA (Variable: %s):\n", target_prop))
-cat(sprintf("  R²:    %.3f\n", val_r2))
+cat(sprintf("  R^2:   %.3f\n", val_r2))
 cat(sprintf("  RMSE:  %.3f\n", val_rmse))
 cat(sprintf("  CCC:   %.3f (Concordancia de Lin)\n", val_ccc))
 cat(sprintf("  MAE:   %.3f\n", val_mae))
 cat(sprintf("  Sesgo: %.3f\n", val_bias))
 cat("------------------------------------------------------------------------------\n\n")
 
-record_decision(3.0, "Evaluación de modelo", sprintf("R²=%.3f, RMSE=%.3f, CCC=%.3f", val_r2, val_rmse, val_ccc),
+record_decision(3.0, "Evaluación de modelo", sprintf("R^2=%.3f, RMSE=%.3f, CCC=%.3f", val_r2, val_rmse, val_ccc),
                 source = "script_default", affected_rows = length(obs_vals), affected_profiles = n_train,
                 details = sprintf("CV %dx%d. Mejor mtry=%d, splitrule=%s", cv_folds, cv_repeats, best_tune$mtry, best_tune$splitrule))
 
@@ -279,7 +279,7 @@ g_scatter <- ggplot(residuals_df, aes(x = Observed, y = Predicted)) +
   theme_minimal() +
   labs(
     title = sprintf("Observado vs Predicho en CV - %s", target_prop),
-    subtitle = sprintf("R² = %.3f | RMSE = %.3f | CCC = %.3f | n = %d", val_r2, val_rmse, val_ccc, n_train),
+    subtitle = sprintf("R^2 = %.3f | RMSE = %.3f | CCC = %.3f | n = %d", val_r2, val_rmse, val_ccc, n_train),
     x = sprintf("%s Observado", target_prop),
     y = sprintf("%s Predicho", target_prop)
   )
@@ -300,8 +300,8 @@ cat(sprintf("[OK] Modelo QRF guardado en: '%s'\n", model_rds))
 # 9. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", rep_con)
-writeLines("DSM-HARNESS | REPORTE DE MODELADO ESPACIAL Y VALIDACIÓN CRUZADA (PASO 3)", rep_con)
-writeLines(sprintf("Fecha de ejecución: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+writeLines("DSM-HARNESS | REPORTE DE MODELADO ESPACIAL Y VALIDACION CRUZADA (PASO 3)", rep_con)
+writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
 writeLines("================================================================================", rep_con)
 writeLines(sprintf("Variable objetivo modelada:      %s", target_prop), rep_con)
 writeLines(sprintf("Total perfiles de entrenamiento: %d", n_train), rep_con)
@@ -310,16 +310,16 @@ writeLines(sprintf("Covariables seleccionadas:       %d", length(selected_featur
 writeLines("Covariables seleccionadas por Boruta:", rep_con)
 for (sf in selected_features) writeLines(sprintf("  - %s", sf), rep_con)
 writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("CONFIGURACIÓN DE ENTRENAMIENTO Y AFINACIÓN:", rep_con)
+writeLines("CONFIGURACION DE ENTRENAMIENTO Y AFINACION:", rep_con)
 writeLines(sprintf("  Algoritmo:                     Quantile Regression Forest (ranger)"), rep_con)
-writeLines(sprintf("  Esquema de validación:         Validación Cruzada Repetida (%d folds, %d repeticiones)", cv_folds, cv_repeats), rep_con)
+writeLines(sprintf("  Esquema de validacion:         Validacion Cruzada Repetida (%d folds, %d repeticiones)", cv_folds, cv_repeats), rep_con)
 writeLines(sprintf("  Mejor mtry:                    %d", best_tune$mtry), rep_con)
-writeLines(sprintf("  Regla de división (splitrule): %s", best_tune$splitrule), rep_con)
+writeLines(sprintf("  Regla de division (splitrule): %s", best_tune$splitrule), rep_con)
 writeLines(sprintf("  min.node.size:                 %d", best_tune$min.node.size), rep_con)
 writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("MÉTRICAS DE RENDIMIENTO PEDOMÉTRICO (EVALUACIÓN CRUZADA):", rep_con)
-writeLines(sprintf("  R² (Coeficiente determinación): %.4f", val_r2), rep_con)
-writeLines(sprintf("  RMSE (Error cuadrático medio):  %.4f", val_rmse), rep_con)
+writeLines("METRICAS DE RENDIMIENTO PEDOMETRICO (EVALUACION CRUZADA):", rep_con)
+writeLines(sprintf("  R^2 (Coeficiente determinacion): %.4f", val_r2), rep_con)
+writeLines(sprintf("  RMSE (Error cuadratico medio):  %.4f", val_rmse), rep_con)
 writeLines(sprintf("  CCC (Concordancia de Lin):      %.4f", val_ccc), rep_con)
 writeLines(sprintf("  MAE (Error absoluto medio):     %.4f", val_mae), rep_con)
 writeLines(sprintf("  Sesgo medio (Bias):             %.4f", val_bias), rep_con)
@@ -334,7 +334,7 @@ cat("===========================================================================
 cat(sprintf("Variable modelada:      %s\n", target_prop))
 cat(sprintf("Perfiles evaluados:     %d\n", n_train))
 cat(sprintf("Covariables elegidas:   %d de %d\n", length(selected_features), length(cov_cols)))
-cat(sprintf("R²: %.3f | RMSE: %.3f | CCC: %.3f\n", val_r2, val_rmse, val_ccc))
+cat(sprintf("R^2: %.3f | RMSE: %.3f | CCC: %.3f\n", val_r2, val_rmse, val_ccc))
 cat(sprintf("[OK] Modelo guardado:   %s\n", model_rds))
 cat(sprintf("[OK] Reporte guardado:  %s\n", output_report))
 cat(sprintf("[OK] Gráficos:          %s y %s\n", basename(boruta_png), basename(scatter_png)))
