@@ -1,0 +1,305 @@
+---
+title: "Reporte de mapeo"
+output:
+  html_document:
+    self_contained: true
+    theme: null
+    css: null
+params:
+  project: "nacional"
+  cc: "MKD"
+  proj: "NACIONAL"
+  property: "pH_H2O"
+  d1: 0
+  d2: 30
+  unit: ""
+  project_dir: ""
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
+suppressPackageStartupMessages({
+  library(ggplot2)
+  library(terra)
+  library(dplyr)
+})
+
+# 1. Resolución de directorio de proyecto y metadatos ------------------------
+p <- if (!is.null(params$project_dir) && nzchar(params$project_dir) && dir.exists(params$project_dir)) {
+  params$project_dir
+} else if (dir.exists(file.path("projects", params$project))) {
+  file.path("projects", params$project)
+} else if (dir.exists(params$project)) {
+  params$project
+} else {
+  "."
+}
+
+tag <- sprintf("%s-%s-%s-%s-%s", params$cc, params$proj, params$property, params$d1, params$d2)
+na_txt <- "NO EVALUADO"
+fmt <- function(x, d = 3) ifelse(is.na(x), na_txt, formatC(x, format = "f", digits = d))
+
+# 2. Carga de datos de covariables y perfiles ---------------------------------
+f_cov <- file.path(p, "data", "step2_covariates.csv")
+dat <- if (file.exists(f_cov)) read.csv(f_cov, stringsAsFactors = FALSE) else data.frame()
+has_prop <- (params$property %in% names(dat))
+y <- if (has_prop) dat[[params$property]] else numeric()
+
+# 3. Carga de modelo QRF y métricas -------------------------------------------
+f_mdl <- file.path(p, "outputs", sprintf("ranger_model_%s.rds", params$property))
+mdl <- if (file.exists(f_mdl)) readRDS(f_mdl) else NULL
+
+bt <- if (!is.null(mdl) && !is.null(mdl$bestTune)) mdl$bestTune else NULL
+cvp <- if (!is.null(mdl) && !is.null(mdl$pred) && !is.null(bt)) {
+  merge(mdl$pred, bt[, names(bt), drop = FALSE])
+} else {
+  NULL
+}
+
+ccc_func <- function(o, e) {
+  denom <- (var(o) + var(e) + (mean(o) - mean(e))^2)
+  if (is.na(denom) || denom == 0) return(NA_real_)
+  2 * cov(o, e) / denom
+}
+
+# Comprobar si existe archivo JSON de métricas pre-guardado
+f_metrics_json <- file.path(p, "outputs", sprintf("metrics_%s.json", params$property))
+if (file.exists(f_metrics_json) && requireNamespace("jsonlite", quietly = TRUE)) {
+  m_parsed <- jsonlite::fromJSON(f_metrics_json)
+  m <- c(
+    R2 = if (!is.null(m_parsed$R2)) m_parsed$R2 else NA_real_,
+    RMSE = if (!is.null(m_parsed$RMSE)) m_parsed$RMSE else NA_real_,
+    MAE = if (!is.null(m_parsed$MAE)) m_parsed$MAE else NA_real_,
+    CCC = if (!is.null(m_parsed$CCC)) m_parsed$CCC else NA_real_,
+    Sesgo = if (!is.null(m_parsed$Bias)) m_parsed$Bias else (if (!is.null(m_parsed$Sesgo)) m_parsed$Sesgo else NA_real_)
+  )
+} else if (!is.null(cvp) && nrow(cvp) > 0) {
+  m <- c(
+    R2 = 1 - sum((cvp$obs - cvp$pred)^2) / sum((cvp$obs - mean(cvp$obs))^2),
+    RMSE = sqrt(mean((cvp$obs - cvp$pred)^2)),
+    MAE = mean(abs(cvp$obs - cvp$pred)),
+    CCC = ccc_func(cvp$obs, cvp$pred),
+    Sesgo = mean(cvp$pred - cvp$obs)
+  )
+} else {
+  m <- c(R2 = NA_real_, RMSE = NA_real_, MAE = NA_real_, CCC = NA_real_, Sesgo = NA_real_)
+}
+
+# 4. Carga de rasters predichos ------------------------------------------------
+f_mean <- file.path(p, "outputs", paste0(tag, "-mean.tif"))
+f_sd   <- file.path(p, "outputs", paste0(tag, "-sd.tif"))
+has_rasters <- file.exists(f_mean) && file.exists(f_sd)
+r_mean <- if (has_rasters) tryCatch(rast(f_mean), error = function(e) NULL) else NULL
+r_sd   <- if (has_rasters) tryCatch(rast(f_sd), error = function(e) NULL) else NULL
+
+# Funciones de formateo UI
+tile <- function(l, v) sprintf('<div class="tile"><span>%s</span><b>%s</b></div>', l, v)
+rows <- function(df) paste0('<div class="kv">', paste0('<div><span>', df[[1]], '</span><b>', df[[2]], '</b></div>', collapse = ""), '</div>')
+th <- theme_minimal(base_family = "sans", base_size = 12) +
+  theme(panel.grid.minor = element_blank(), plot.title = element_text(face = "bold"))
+```
+
+```{r css, results="asis"}
+cat('<style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&display=swap");
+body{margin:0;background:#FBFAF6;color:#1F2421;font:14px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+.page{max-width:900px;margin:0 auto;padding:48px 24px}
+h1{font:600 40px/1.1 "Source Serif 4",Georgia,serif;color:#8A5A2B;margin:8px 0 20px}
+h2{font:600 22px "Source Serif 4",Georgia,serif;margin:40px 0 12px}
+.top{border-bottom:2px solid #1F2421;padding-bottom:20px}
+.meta{font:12px "IBM Plex Mono",monospace;color:#5B625D;text-transform:uppercase;letter-spacing:.06em}
+.kv>div{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid #D9D6CC}
+.kv span{color:#5B625D}.kv b{font:500 14px "IBM Plex Mono",monospace}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin:12px 0}
+.tile{border:1px solid #D9D6CC;background:#fff;padding:14px;display:flex;flex-direction:column}
+.tile span{font-size:12px;color:#5B625D;text-transform:uppercase;letter-spacing:.05em}
+.tile b{font:500 24px "IBM Plex Mono",monospace;color:#8A5A2B}
+.note{font-size:13px;color:#5B625D}
+.log-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:12px}
+.log-table th,.log-table td{border:1px solid #D9D6CC;padding:6px 10px;text-align:left}
+.log-table th{background:#F0EEE6;font-family:"IBM Plex Mono",monospace;color:#1F2421}
+img{max-width:100%}
+</style><div class="page">')
+```
+
+<div class="top"><div class="meta">DSM-Harness · Reporte de mapeo · `r format(Sys.time(), "%Y-%m-%d")`</div>
+<h1>`r params$property` · `r params$d1`–`r params$d2` cm</h1>
+`r rows(data.frame(a = c("País / proyecto", "Perfiles usados", "Salida"), b = c(paste(params$cc, params$proj, sep = " · "), nrow(dat), tag)))`
+</div>
+
+## 1. Sitios de observación
+
+```{r sites, fig.width=7, fig.height=4.6}
+if (nrow(dat) > 0 && all(c("longitude", "latitude") %in% names(dat))) {
+  ggplot(dat, aes(longitude, latitude)) +
+    geom_point(alpha = .45, size = .8, colour = "#8A5A2B") +
+    coord_quickmap() +
+    labs(x = "Longitud", y = "Latitud") + th
+} else {
+  cat("<p class=\"note\">Coordenadas no disponibles o dataset vacío: NO EVALUADO.</p>")
+}
+```
+
+```{r sites_meta, results="asis"}
+if (nrow(dat) > 0 && length(y) > 0 && all(c("longitude", "latitude") %in% names(dat))) {
+  cat(rows(data.frame(
+    a = c("Perfiles con la variable", "Rango longitud", "Rango latitud"),
+    b = c(
+      sum(!is.na(y)),
+      paste(round(range(dat$longitude, na.rm = TRUE), 2), collapse = " a "),
+      paste(round(range(dat$latitude, na.rm = TRUE), 2), collapse = " a ")
+    )
+  )))
+} else {
+  cat(sprintf('<p class="note">%s</p>', na_txt))
+}
+```
+
+<p class="note">Descripción de la distribución espacial: solo la observada en el mapa y en los reportes; lo demás, NO EVALUADO.</p>
+
+## 2. Distribución de los valores
+
+```{r hist, fig.width=7, fig.height=3.6}
+if (length(y) > 0 && any(!is.na(y))) {
+  lbl_x <- if (nzchar(params$unit)) paste(params$property, paste0("(", params$unit, ")")) else params$property
+  ggplot(dat, aes(.data[[params$property]])) +
+    geom_histogram(bins = 30, fill = "#C98B4B", colour = "#FBFAF6") +
+    labs(x = lbl_x, y = "Perfiles") + th
+} else {
+  cat("<p class=\"note\">Variable no presente en datos: NO EVALUADO.</p>")
+}
+```
+
+```{r hist_meta, results="asis"}
+if (length(y) > 0 && any(!is.na(y))) {
+  y_v <- y[!is.na(y)]
+  cat(rows(data.frame(
+    a = c("Mínimo", "P25", "Mediana", "Media", "P75", "Máximo", "Desv. estándar"),
+    b = fmt(c(min(y_v), quantile(y_v, .25), median(y_v), mean(y_v), quantile(y_v, .75), max(y_v), sd(y_v)), 2)
+  )))
+} else {
+  cat(sprintf('<p class="note">%s</p>', na_txt))
+}
+```
+
+## 3. Modelo y desempeño
+
+<div class="tiles">`r paste(mapply(tile, names(m), fmt(m)), collapse = "")`</div>
+
+```{r model_meta, results="asis"}
+if (!is.null(bt)) {
+  init_covs <- if (nrow(dat) > 0) max(0, ncol(dat) - 5) else 0
+  cat(rows(data.frame(
+    a = c("Algoritmo", "mtry", "Regla de división", "min.node.size", "Covariables iniciales"),
+    b = c("Quantile Regression Forest (ranger)", bt$mtry, bt$splitrule, bt$min.node.size, init_covs)
+  )))
+} else {
+  cat(sprintf('<p class="note">Parámetros de afinación del modelo: %s</p>', na_txt))
+}
+```
+
+```{r boruta, results="asis"}
+f_boruta <- file.path(p, "reports", sprintf("boruta_%s.png", params$property))
+if (file.exists(f_boruta) && requireNamespace("base64enc", quietly = TRUE)) {
+  cat(sprintf('<div style="margin-top:16px;"><img src="data:image/png;base64,%s" style="max-width:100%%;border:1px solid #D9D6CC;" /></div>', base64enc::base64encode(f_boruta)))
+} else {
+  cat(sprintf('<p class="note">Gráfico de selección Boruta: %s</p>', na_txt))
+}
+```
+
+## 4. Validación
+
+```{r scatter, fig.width=5.5, fig.height=5.5}
+if (!is.null(cvp) && nrow(cvp) > 0) {
+  ggplot(cvp, aes(obs, pred)) +
+    geom_point(alpha = .35, size = .8, colour = "#2F6F6B") +
+    geom_abline(slope = 1, intercept = 0, colour = "#C0392B", linewidth = 0.8) +
+    coord_equal() +
+    labs(x = "Observado", y = "Predicho (validación cruzada)") + th
+} else {
+  cat("<p class=\"note\">Predicciones de validación cruzada: NO EVALUADO.</p>")
+}
+```
+
+<p class="note">La línea roja es la recta 1:1 (predicho = observado), no una regresión de los puntos. Validación independiente: NO EVALUADA salvo que se haya hecho.</p>
+
+## 5. Mapas finales
+
+```{r maps, fig.width=9, fig.height=4.4}
+if (!is.null(r_mean) && !is.null(r_sd)) {
+  agg <- function(r) {
+    f_fact <- max(1, floor(ncol(r) / 400))
+    as.data.frame(aggregate(r, fact = f_fact, na.rm = TRUE), xy = TRUE) |> setNames(c("x", "y", "v"))
+  }
+  mp <- function(r, pal, ttl) {
+    ggplot(agg(r), aes(x, y, fill = v)) +
+      geom_raster() +
+      coord_quickmap() +
+      scale_fill_gradientn(colours = pal, name = NULL) +
+      labs(title = ttl, x = NULL, y = NULL) + th
+  }
+  gridExtra::grid.arrange(
+    mp(r_mean, c("#F3E3C3", "#C98B4B", "#6B3F1D"), "Predicción media"),
+    mp(r_sd, c("#DCEBE8", "#4E918B", "#173F3C"), "Incertidumbre (SD)"),
+    ncol = 2
+  )
+} else {
+  cat("<p class=\"note\">Mapas raster no disponibles o no generados todavía (ejecuta el Paso 4 primero): NO EVALUADO.</p>")
+}
+```
+
+```{r maps_meta, results="asis"}
+if (!is.null(r_mean) && !is.null(r_sd)) {
+  crs_desc <- tryCatch(crs(r_mean, describe = TRUE), error = function(e) NULL)
+  crs_label <- if (!is.null(crs_desc) && !is.null(crs_desc$code) && nzchar(as.character(crs_desc$code))) {
+    paste("EPSG:", crs_desc$code)
+  } else {
+    tryCatch(crs(r_mean, proj = TRUE), error = function(e) "NO EVALUADO")
+  }
+  
+  rng_mean <- tryCatch(round(unlist(global(r_mean, "range", na.rm = TRUE)), 2), error = function(e) c(NA, NA))
+  rng_sd   <- tryCatch(round(unlist(global(r_sd, "range", na.rm = TRUE)), 2), error = function(e) c(NA, NA))
+  
+  cat(rows(data.frame(
+    a = c("Archivo media", "Archivo SD", "Resolución", "CRS", "Rango media", "Rango SD"),
+    b = c(
+      basename(f_mean),
+      basename(f_sd),
+      paste(signif(res(r_mean), 3), collapse = " × "),
+      crs_label,
+      paste(rng_mean, collapse = " a "),
+      paste(rng_sd, collapse = " a ")
+    )
+  )))
+} else {
+  cat(sprintf('<p class="note">Metadatos cartográficos: %s</p>', na_txt))
+}
+```
+
+## Observaciones y límites
+
+<p class="note">Decisiones del usuario: ver <code>decisions_log.csv</code>. Pendientes y todo lo no calculado: NO EVALUADO.</p>
+
+```{r decisions_table, results="asis"}
+f_log <- file.path(p, "decisions_log.csv")
+if (file.exists(f_log)) {
+  dlog <- tryCatch(read.csv(f_log, stringsAsFactors = FALSE), error = function(e) NULL)
+  if (!is.null(dlog) && nrow(dlog) > 0) {
+    cat('<div style="overflow-x:auto;"><table class="log-table">')
+    cat('<thead><tr><th>Paso</th><th>Criterio</th><th>Decisión</th><th>Filas</th><th>Detalles</th></tr></thead><tbody>')
+    for (i in seq_len(nrow(dlog))) {
+      cat(sprintf('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
+                  htmltools::htmlEscape(as.character(dlog$step[i])),
+                  htmltools::htmlEscape(as.character(dlog$criterion[i])),
+                  htmltools::htmlEscape(as.character(dlog$user_decision[i])),
+                  htmltools::htmlEscape(as.character(dlog$affected_rows[i])),
+                  htmltools::htmlEscape(as.character(dlog$details[i]))))
+    }
+    cat('</tbody></table></div>')
+  }
+}
+```
+
+```{r close, results="asis"}
+cat("</div>")
+```

@@ -297,6 +297,26 @@ model_rds <- file.path(base_out_dir, sprintf("ranger_model_%s.rds", target_prop)
 saveRDS(qrf_model, model_rds)
 cat(sprintf("[OK] Modelo QRF guardado en: '%s'\n", model_rds))
 
+# Guardar métricas en JSON para consumo por Paso 5 y reporte automatizado
+metrics_json <- file.path(base_out_dir, sprintf("metrics_%s.json", target_prop))
+metrics_data <- list(
+  property = target_prop,
+  n_train = n_train,
+  cv_folds = cv_folds,
+  cv_repeats = cv_repeats,
+  best_tune = as.list(best_tune),
+  selected_features = selected_features,
+  R2 = val_r2,
+  RMSE = val_rmse,
+  CCC = val_ccc,
+  MAE = val_mae,
+  Bias = val_bias
+)
+if (requireNamespace("jsonlite", quietly = TRUE)) {
+  jsonlite::write_json(metrics_data, metrics_json, auto_unbox = TRUE, pretty = TRUE)
+  cat(sprintf("[OK] Métricas JSON guardadas en: '%s'\n", metrics_json))
+}
+
 # 9. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", rep_con)

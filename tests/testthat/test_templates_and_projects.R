@@ -14,7 +14,8 @@ test_that("Master templates exist, parse cleanly and declare TEMPLATE_VERSION 2.
     "01_3_byod_audit.R",
     "02_extract_covariates.R",
     "03_spatial_modelling.R",
-    "04_predict_and_cog.R"
+    "04_predict_and_cog.R",
+    "05_render_report.R"
   )
   for (s in scripts) {
     p <- file.path("02_scripts", s)
@@ -23,7 +24,7 @@ test_that("Master templates exist, parse cleanly and declare TEMPLATE_VERSION 2.
     parsed <- tryCatch(parse(p), error = function(e) e)
     expect_false(inherits(parsed, "error"), info = paste("Valid syntax:", s))
     
-    if (s %in% c("01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R", "02_extract_covariates.R", "03_spatial_modelling.R", "04_predict_and_cog.R")) {
+    if (s %in% c("01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R", "02_extract_covariates.R", "03_spatial_modelling.R", "04_predict_and_cog.R", "05_render_report.R")) {
       lines <- readLines(p, encoding = "UTF-8")
       expect_true(any(grepl('TEMPLATE_VERSION <- "2.0.0"', lines, fixed = TRUE)),
                   info = paste("Declares TEMPLATE_VERSION 2.0.0:", s))
@@ -517,7 +518,8 @@ test_that("Issue #32: ADAPT blocks are clean insertion-only slots in master temp
     "02_scripts/01_3_byod_audit.R",
     "02_scripts/02_extract_covariates.R",
     "02_scripts/03_spatial_modelling.R",
-    "02_scripts/04_predict_and_cog.R"
+    "02_scripts/04_predict_and_cog.R",
+    "02_scripts/05_render_report.R"
   )
   
   for (sc in scripts) {
@@ -548,7 +550,8 @@ test_that("Issue #34: Scripts preserve run_step and PROJECT_NAME in caller envir
     "02_scripts/01_3_byod_audit.R",
     "02_scripts/02_extract_covariates.R",
     "02_scripts/03_spatial_modelling.R",
-    "02_scripts/04_predict_and_cog.R"
+    "02_scripts/04_predict_and_cog.R",
+    "02_scripts/05_render_report.R"
   )
   for (sc in scripts) {
     lines <- readLines(sc, encoding = "UTF-8")
@@ -603,7 +606,8 @@ test_that("Issue #37 & #39: 00_new_project.R instantiates Stages 0 through 4 and
     "01_3_byod_audit.R",
     "02_extract_covariates.R",
     "03_spatial_modelling.R",
-    "04_predict_and_cog.R"
+    "04_predict_and_cog.R",
+    "05_render_report.R"
   )
   for (sc in expected_scripts) {
     p <- file.path(proj_path, "scripts", sc)
@@ -613,11 +617,15 @@ test_that("Issue #37 & #39: 00_new_project.R instantiates Stages 0 through 4 and
     expect_true(any(grepl("PROVENANCE METADATA", first_lines)), info = paste("Tiene metadatos de procedencia:", sc))
   }
   
+  # Plantilla Rmd instanciada como artefacto
+  rmd_file <- file.path(proj_path, "scripts", "05_variable_report.Rmd")
+  expect_true(file.exists(rmd_file), info = "Plantilla Rmd existe en scripts de proyecto")
+  
   # Verificar run_step.R
   run_step_file <- file.path(proj_path, "run_step.R")
   expect_true(file.exists(run_step_file))
   rs_lines <- readLines(run_step_file, encoding = "UTF-8")
-  for (step_id in c("'0'", "'1.1'", "'1.2'", "'1.3'", "'2'", "'3'", "'4'")) {
+  for (step_id in c("'0'", "'1.1'", "'1.2'", "'1.3'", "'2'", "'3'", "'4'", "'5'")) {
     expect_true(any(grepl(step_id, rs_lines, fixed = TRUE)), info = paste("run_step soporta:", step_id))
   }
 })
@@ -669,6 +677,84 @@ test_that("Issue #44: Companion reports use clean ASCII without encoding convers
   agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
   expect_true(any(grepl("ABSOLUTE BAN on Hallucinated File Names & Sources (#44)", agents_lines, fixed = TRUE)))
   expect_true(any(grepl("ABSOLUTE BAN on Unilateral Target Properties & Prescriptive Intervals (#44)", agents_lines, fixed = TRUE)))
+})
+
+test_that("Issue #45: Step 5 parameterized R Markdown report template and runner", {
+  # 1. Master files existence and syntax
+  expect_true(file.exists("02_scripts/05_variable_report.Rmd"))
+  expect_true(file.exists("02_scripts/05_render_report.R"))
+  
+  parsed_runner <- tryCatch(parse("02_scripts/05_render_report.R"), error = function(e) e)
+  expect_false(inherits(parsed_runner, "error"))
+  
+  # 2. Check required sections in Rmd template
+  rmd_lines <- readLines("02_scripts/05_variable_report.Rmd", encoding = "UTF-8")
+  expect_true(any(grepl("## 1\\. Sitios de observación", rmd_lines)))
+  expect_true(any(grepl("## 2\\. Distribución de los valores", rmd_lines)))
+  expect_true(any(grepl("## 3\\. Modelo y desempeño", rmd_lines)))
+  expect_true(any(grepl("## 4\\. Validación", rmd_lines)))
+  expect_true(any(grepl("## 5\\. Mapas finales", rmd_lines)))
+  expect_true(any(grepl("## Observaciones y límites", rmd_lines)))
+  
+  # 3. Explicit note: red line is 1:1, NOT a regression
+  expect_true(any(grepl("La línea roja es la recta 1:1 \\(predicho = observado\\), no una regresión de los puntos", rmd_lines)))
+  
+  # 4. Check that 03_spatial_modelling saves metrics JSON
+  lines_03 <- readLines("02_scripts/03_spatial_modelling.R", encoding = "UTF-8")
+  expect_true(any(grepl("metrics_%s.json", lines_03, fixed = TRUE)))
+  
+  # 5. Check ADAPT block and report summary in 05_render_report.R
+  runner_lines <- readLines("02_scripts/05_render_report.R", encoding = "UTF-8")
+  expect_true(any(grepl(">>> ADAPT:render_report", runner_lines, fixed = TRUE)))
+  expect_true(any(grepl("step5_report_summary.txt", runner_lines, fixed = TRUE)))
+  
+  # 6. Test rendering in an isolated project
+  test_proj <- "test_step5_report"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  # Create synthetic dataset with target property
+  synth_cov <- data.frame(
+    profile_code = paste0("P", 1:30),
+    longitude = runif(30, 21.0, 22.0),
+    latitude = runif(30, 41.0, 42.0),
+    pH_H2O = rnorm(30, mean = 6.5, sd = 0.8),
+    cov1 = runif(30, 100, 200),
+    cov2 = runif(30, 0, 50)
+  )
+  write.csv(synth_cov, file.path(proj_path, "data", "step2_covariates.csv"), row.names = FALSE)
+  
+  # Configure project config.json
+  cfg <- list(
+    target_property = "pH_H2O",
+    target_depth_upper = 0,
+    target_depth_lower = 30,
+    country_code = "MKD",
+    project_code = "NACIONAL",
+    target_unit = "pH units"
+  )
+  jsonlite::write_json(cfg, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  # Execute step 5 runner in project
+  PROJECT_DIR <<- proj_path
+  CURRENT_PROJECT_DIR <<- proj_path
+  PROJECT_NAME <<- test_proj
+  
+  source(file.path(proj_path, "scripts", "05_render_report.R"), local = new.env())
+  
+  expected_html <- file.path(proj_path, "reports", "report_MKD-NACIONAL-pH_H2O-0-30.html")
+  expected_txt  <- file.path(proj_path, "reports", "step5_report_summary.txt")
+  
+  expect_true(file.exists(expected_html), info = "Generated standalone HTML report")
+  expect_true(file.size(expected_html) > 1000, info = "HTML file is non-empty")
+  expect_true(file.exists(expected_txt), info = "Generated companion summary TXT")
+  
+  # Check decision logged
+  log_lines <- readLines(file.path(proj_path, "decisions_log.csv"), encoding = "UTF-8")
+  expect_true(any(grepl("Reporte final de mapeo", log_lines)))
 })
 
 

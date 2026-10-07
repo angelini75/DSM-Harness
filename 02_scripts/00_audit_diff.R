@@ -61,7 +61,16 @@ if (file.exists(log_file)) {
 cat("------------------------------------------------------------------------------\n")
 
 # 2. Comparación de scripts adaptados vs plantillas maestras -------------------
-script_files <- c("00_inspect_data.R", "01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R")
+script_files <- c(
+  "00_inspect_data.R",
+  "01_1_byod_audit.R",
+  "01_2_byod_audit.R",
+  "01_3_byod_audit.R",
+  "02_extract_covariates.R",
+  "03_spatial_modelling.R",
+  "04_predict_and_cog.R",
+  "05_render_report.R"
+)
 
 for (sf in script_files) {
   master_path  <- file.path("02_scripts", sf)

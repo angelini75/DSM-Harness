@@ -19,7 +19,7 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
    - Deliver an immediate, structured onboarding message in the user's preferred language (default: **Spanish**).
    - **Protocol**:
      1. **Bienvenida**: Warm welcome to DSM-Harness (FAO / SoilFER / OpenNSIS).
-     2. **Propósito**: Guiding through the 4 stages of Digital Soil Mapping: (1) BYOD Audit, (2) Covariables, (3) Modeling QRF, (4) Prediction & OpenNSIS COG. **Soil Spectroscopy (DRS) is explicitly out of scope**.
+     2. **Propósito**: Guiding through the 5 stages of Digital Soil Mapping: (1) BYOD Audit, (2) Covariables, (3) Modeling QRF, (4) Prediction & OpenNSIS COG, (5) Parameterized Final Report. **Soil Spectroscopy (DRS) is explicitly out of scope**.
      3. **Reglas Operativas**:
         - Mantener abierto `DSM-Harness.Rproj` en **RStudio** (directorio de trabajo raíz relativo).
         - **Arquitectura de Proyectos Aislados**: El trabajo del alumno ocurre en `projects/<nombre>/`. Las plantillas maestras en `02_scripts/` son genéricas y permanentes: la IA NUNCA las sobrescribe.
@@ -33,7 +33,7 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
 
 1. **Multilingual Policy & Scope Directive**:
    - Internal contracts in English. Assistant interaction, code comments, and pedological explanations MUST always be in the **user's preferred language** (default: **Spanish**).
-   - **ABSOLUTE BAN on Spectroscopy (DRS) (#42)**: Soil spectroscopy is strictly OUT OF SCOPE for DSM-Harness. AI assistants must NEVER propose, suggest, or include spectroscopy as a stage, even if mentioned by the user or present in raw files. The workflow proceeds directly: Profiles (Etapa 1) -> Covariables (Etapa 2) -> Modeling (Etapa 3) -> Prediction & OpenNSIS COG (Etapa 4).
+   - **ABSOLUTE BAN on Spectroscopy (DRS) (#42)**: Soil spectroscopy is strictly OUT OF SCOPE for DSM-Harness. AI assistants must NEVER propose, suggest, or include spectroscopy as a stage, even if mentioned by the user or present in raw files. The workflow proceeds directly: Profiles (Etapa 1) -> Covariables (Etapa 2) -> Modeling (Etapa 3) -> Prediction & OpenNSIS COG (Etapa 4) -> Final Report (Etapa 5).
 
 2. **Visual-First & Evidence-Only Reporting**:
    - Every script produces graphical diagnostics and a companion `.txt` report in `reports/` (o `01_data/profiles/`).
@@ -93,6 +93,10 @@ tags: [dsm-harness, soil-mapping, spectroscopy, opennsis, fao]
      - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks non-unique keys on right sheets (`duplicate_key_strategy`); fails fast if essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing; prints `names(dat_raw)` on failure; supports declarative sand summation (`sand_sum`).
      - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; generates 2D scatter plot fallback in Plots tab if `source_crs` is null; spatial outlier audit using 1D IQR 3×; warns that univariate IQR cannot detect points inside the bounding box and requires visual map inspection.
      - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); row-by-row `BD_source` tagging (`measured`, `estimated`, `missing`); BD evaluation based on reference script catalog (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) contrasting against measured samples ($5 \le n < 30$) or local simple parametric calibration ($n \ge 30$, without ML); never imputes without explicit user confirmation in config; logs all decisions.
+     - **Step 2 (`02_extract_covariates.R`)**: Extracts raster covariates at soil profile coordinates, handles spatial masks, and outputs `step2_covariates.csv`.
+     - **Step 3 (`03_spatial_modelling.R`)**: Feature selection via Boruta, repeated CV tuning of QRF (`ranger`), metrics calculation ($R^2$, RMSE, CCC, MAE, Bias), 1:1 validation scatter plot, and saves model RDS plus `metrics_<var>.json`.
+     - **Step 4 (`04_predict_and_cog.R`)**: Spatial prediction with `terra`, generating Cloud-Optimized GeoTIFFs (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif` and `-sd.tif`) with DEFLATE compression and internal overviews.
+     - **Step 5 (`05_render_report.R` / `05_variable_report.Rmd`)**: Renders standalone parameterized HTML final mapping report (sites, distribution, model tuning & performance, 1:1 validation line strictly non-regression, OpenNSIS maps, and user decisions log).
 
 ---
 

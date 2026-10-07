@@ -160,6 +160,20 @@ record_decision(
 * **Invariantes Requeridos**:
   - Los archivos GeoTIFF deben conservar compresión DEFLATE y estructura COG estándar OpenNSIS.
 
+### G. Paso 5 (`05_render_report.R`)
+
+#### Bloque: `# >>> ADAPT:render_report`
+* **Ubicación**: Tras el renderizado del informe HTML autocontenido y antes del registro de auditoría.
+* **Propósito**: Generación de formatos alternativos (PDF, DOCX), subida a repositorios o inyección de metadatos adicionales.
+* **Entorno y Objetos Disponibles**:
+  | Objeto | Tipo | Descripción |
+  | :--- | :--- | :--- |
+  | `output_html` | `character` | Ruta al archivo HTML generado. |
+  | `render_params` | `list` | Parámetros enviados a la plantilla Rmd (`cc`, `proj`, `property`, etc.). |
+  | `record_decision` | `function` | Función de auditoría. |
+* **Invariantes Requeridos**:
+  - El informe HTML debe conservarse íntegro y accesible en `reports/`.
+
 ---
 
 ## 4. Reglas Operativas para Asistentes de IA

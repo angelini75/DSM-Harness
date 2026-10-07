@@ -61,7 +61,8 @@ source_scripts <- c(
   "01_3_byod_audit.R",
   "02_extract_covariates.R",
   "03_spatial_modelling.R",
-  "04_predict_and_cog.R"
+  "04_predict_and_cog.R",
+  "05_render_report.R"
 )
 
 for (s_file in source_scripts) {
@@ -86,6 +87,13 @@ for (s_file in source_scripts) {
     writeLines(script_content, dst_path, useBytes = FALSE)
     cat(sprintf("  -> Script instanciado: %s\n", dst_path))
   }
+}
+
+# Copiar plantilla R Markdown de reporte final como artefacto no ejecutable R
+rmd_master <- file.path("02_scripts", "05_variable_report.Rmd")
+if (file.exists(rmd_master)) {
+  file.copy(rmd_master, file.path(scripts_dir, "05_variable_report.Rmd"), overwrite = TRUE)
+  cat(sprintf("  -> Plantilla Rmd instanciada: %s\n", file.path(scripts_dir, "05_variable_report.Rmd")))
 }
 
 # 2. Inicializar config.json del proyecto --------------------------------------
@@ -121,7 +129,8 @@ run_step_code <- c(
   "    '1.3' = '01_3_byod_audit.R',",
   "    '2'   = '02_extract_covariates.R',",
   "    '3'   = '03_spatial_modelling.R',",
-  "    '4'   = '04_predict_and_cog.R'",
+  "    '4'   = '04_predict_and_cog.R',",
+  "    '5'   = '05_render_report.R'",
   "  )",
   "  step_char <- as.character(step)",
   "  if (!(step_char %in% names(s_map))) {",
@@ -142,7 +151,8 @@ run_step_code <- c(
   "cat('  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n')",
   "cat('  run_step(\"2\")   -> Extracción de covariables ambientales\\n')",
   "cat('  run_step(\"3\")   -> Modelado QRF y validación cruzada\\n')",
-  "cat('  run_step(\"4\")   -> Predicción espacial y exportación COG\\n\\n')"
+  "cat('  run_step(\"4\")   -> Predicción espacial y exportación COG\\n')",
+  "cat('  run_step(\"5\")   -> Reporte final en HTML parametrizado\\n\\n')"
 )
 writeLines(run_step_code, file.path(proj_dir, "run_step.R"))
 cat(sprintf("[*] Ejecutor de conveniencia creado: '%s'\n", file.path(proj_dir, "run_step.R")))
