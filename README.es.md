@@ -1,12 +1,14 @@
-# DSM-Harness: Digital Soil Mapping & Soil Spectroscopy AI Training Harness
+# DSM-Harness: Digital Soil Mapping AI Training Harness
 
 🌐 **Idioma / Language**: **[Español]** | [English](README.md)
 
-> **Arnés y Orquestador Asistido por IA para Cursos Presenciales de Mapeo Digital de Suelos (DSM) y Espectroscopía de Suelos (DRS).**
+> **Arnés y Orquestador Asistido por IA para Cursos Presenciales de Mapeo Digital de Suelos (DSM) de FAO / SoilFER / OpenNSIS.**
 
-Este repositorio permite a los participantes de cursos presenciales de Mapeo Digital de Suelos y Espectroscopía generar código R reproducible, robusto y estandarizado mediante Inteligencia Artificial, actuando como **científicos de suelos y evaluadores críticos** sin trabarse en la sintaxis de programación.
+Este repositorio permite a los participantes de cursos presenciales de Mapeo Digital de Suelos generar código R reproducible, robusto y estandarizado mediante Inteligencia Artificial, actuando como **científicos de suelos y evaluadores críticos** sin trabarse en la sintaxis de programación.
 
 El flujo de trabajo es modular y adaptable a cursos de distinta duración (3, 4 o 5 días), centrado en la resolución práctica de casos y la interpretación edafológica.
+
+> ℹ️ **Alcance del Arnés (Issue #42)**: El arnés se enfoca exclusivamente en el flujo completo de **Mapeo Digital de Suelos (DSM)**: desde la auditoría de perfiles (BYOD) y extracción de covariables ambientales, hasta el modelado espacial QRF y la predicción en mapas COG bajo estándares OpenNSIS. **La espectroscopía de suelos (DRS) queda formalmente fuera del alcance del harness**.
 
 ---
 
@@ -18,7 +20,7 @@ El flujo de trabajo es modular y adaptable a cursos de distinta duración (3, 4 
 
 ## 🎯 Alcance de los Datos: ¿Qué variables necesita el arnés?
 
-Este arnés está diseñado **exclusivamente para el flujo de modelado espacial (DSM) y espectroscopía de suelos (DRS)**. **No pretende ser una base de datos exhaustiva para almacenar todos los atributos de un sistema nacional de suelos**.
+Este arnés está diseñado **exclusivamente para el flujo de modelado espacial (DSM)**. **No pretende ser una base de datos exhaustiva para almacenar todos los atributos de un sistema nacional de suelos**.
 
 Los archivos de perfiles nacionales frecuentemente contienen decenas de columnas accesorias (clasificación taxonómica, fechas de muestreo, descripción morfológica de campo, geomorfología, uso actual, etc.). **Para el propósito del modelado predictivo en este curso, esas variables no tienen relevancia y son descartadas automáticamente** en la etapa de preparación.
 
@@ -132,6 +134,9 @@ Si utilizas **Google Antigravity** (o un editor con agentes como Cursor o VS Cod
    - **Paso 1.1 (Mapeo, relaciones multi-hoja y selección en `01_1_byod_audit.R`)**: Valida la configuración, soporta 1 a N hojas de horizontes (`horizon_sheets`), previene explosiones cartesianas con `duplicate_key_strategy`, ejecuta fail-fast ante variables esenciales ausentes (`profile_code`, `upper`, `lower`, coordenadas), soporta suma de fracciones de arena (`sand_sum`) y registra decisiones con `run_id` y procedencia en `decisions_log.csv`.
    - **Paso 1.2 (Validación espacial, CRS y outliers en `01_2_byod_audit.R`)**: Audita coordenadas de forma 100% calculada, detecta proyecciones métricas y solicita el EPSG sin adivinar. Detecta outliers espaciales mediante filtro IQR 3×, advierte que el filtro univariado no detecta anomalías interiores requiriendo inspección visual en mapa (`mapview`/`ggplot2`), y registra decisiones de CRS y anomalías.
    - **Paso 1.3 (Profundidades y coherencia edafológica en `01_3_byod_audit.R`)**: Audita coherencia vertical separando artefactos de duplicación de solapes pedológicos reales, balance de texturas y valores físicamente imposibles ($BD \le 0$ o $> 2.65$ g/cm³). La evaluación de Densidad Aparente (BD) se basa en el catálogo de referencia (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) contrastando contra datos medidos ($5 \le n < 30$) o calibrando una función paramétrica simple local ($n \ge 30$, sin ML), jamás imputando sin confirmación explícita del usuario en configuración. Genera `data/cleaned_profiles.csv` y registra todas las decisiones.
+   - **Paso 2 (Extracción de covariables ambientales en `02_extract_covariates.R`)**: Valida la pila de rásters (SCORPAN) en `covariates/`, armoniza el CRS con los perfiles, filtra anomalías espaciales según `filter_spatial_outliers`, estandariza a la profundidad objetivo (`target_depth_upper` / `target_depth_lower`), reporta puntos fuera de máscara ráster y genera `data/step2_covariates.csv` con reporte `.txt` y registro en `decisions_log.csv`.
+   - **Paso 3 (Modelado espacial QRF y validación cruzada en `03_spatial_modelling.R`)**: Selecciona covariables relevantes con el algoritmo Boruta, optimiza hiperparámetros (`mtry`) mediante validación cruzada 10-fold repetida, calcula métricas de desempeño ($R^2$, RMSE, CCC, MAE, Bias), genera el gráfico diagnóstico 1:1 y exporta el modelo calibrado `ranger_model_<target>.rds` con log de decisiones y reporte de métricas.
+   - **Paso 4 (Predicción espacial, incertidumbre y exportación COG en `04_predict_and_cog.R`)**: Ejecuta la predicción espacial por bloques/mosaicos para optimizar el consumo de memoria RAM, estima la media condicional y la incertidumbre (desviación estándar condicional con `what = sd`), valida la nomenclatura OpenNSIS (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-<stat>.tif`) y exporta a Cloud-Optimized GeoTIFF (COG) estricto con pirámides de resolución (overviews) y compresión DEFLATE.
 
 
 ---
@@ -161,18 +166,19 @@ Si **no** tienes Antigravity ni un IDE de IA, puedes usar cualquier chat gratuit
 
 ---
 
-## 🗺️ Flujo de Trabajo Modular (Las 5 Etapas)
+## 🗺️ Flujo de Trabajo Modular (Las 4 Etapas Canónicas de DSM)
 
-El proceso está dividido en 5 etapas secuenciales e independientes de la duración del taller:
+El proceso de Mapeo Digital de Suelos está estructurado en 4 etapas secuenciales:
 
 | Etapa | Módulo Metodológico | Tarjeta de Prompt | Objetivo Central |
 | :--- | :--- | :--- | :--- |
 | **00** | Rescate Express | [`cards/es/00-error-rescue.md`](cards/es/00-error-rescue.md) | **Depuración de Errores**: Diagnóstico rápido de 1 línea y snippet mínimo de corrección sin gastar cuota. |
-| **01** | Auditoría de Datos | [`cards/es/01-byod-audit-card.md`](cards/es/01-byod-audit-card.md) | **Auditoría BYOD**: Validación de coordenadas, chequeo de horizontes/profundidades ISO 28258 y coherencia pedológica. |
-| **02** | Covariables SCORPAN | [`cards/es/02-covariates-card.md`](cards/es/02-covariates-card.md) | **Extracción Espacial**: Inspección de rásteres ambientales, armonización de CRS y extracción puntual (`dat_cov`). |
-| **03** | Espectroscopía de Suelos | [`cards/es/03-spectra-card.md`](cards/es/03-spectra-card.md) | **Espectroscopía DRS**: Preprocesamiento (`prospectr`: SNV, Savitzky-Golay), calibración quimiométrica y dataset aumentado. |
-| **04** | Modelado Predictivo | [`cards/es/04-qrf-modeling-card.md`](cards/es/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Selección con `Boruta`, entrenamiento con `ranger`/`caret`, métricas y gráfico 1:1. |
-| **05** | Mapeo y Publicación | [`cards/es/05-prediction-opennsis-card.md`](cards/es/05-prediction-opennsis-card.md) | **Mapeo Espacial & OpenNSIS**: Predicción por mosaicos (media e incertidumbre), exportación a COG y metadatos ISO 19139. |
+| **01** | Auditoría de Perfiles (BYOD) | [`cards/es/01-byod-audit-card.md`](cards/es/01-byod-audit-card.md) | **Auditoría BYOD**: Validación de coordenadas, chequeo de horizontes/profundidades ISO 28258 y coherencia pedológica. |
+| **02** | Covariables Ambientales | [`cards/es/02-covariates-card.md`](cards/es/02-covariates-card.md) | **Extracción Espacial**: Inspección de rásteres ambientales, armonización de CRS, filtrado de calidad y extracción puntual (`dat_cov`). |
+| **03** | Modelado Espacial QRF | [`cards/es/04-qrf-modeling-card.md`](cards/es/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Selección con `Boruta`, afinación con grilla en validación cruzada y métricas según script de referencia. |
+| **04** | Predicción Espacial & COG | [`cards/es/05-prediction-opennsis-card.md`](cards/es/05-prediction-opennsis-card.md) | **Mapeo Espacial & OpenNSIS**: Predicción por bloques (media e incertidumbre `sd`), exportación a COG estándar y metadatos. |
+
+> 📌 *Nota*: La espectroscopía de suelos (DRS, anteriormente Etapa 03) queda fuera del alcance operativo del arnés por ahora (Issue #42).
 
 ---
 

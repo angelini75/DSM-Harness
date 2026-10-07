@@ -1,12 +1,14 @@
-# DSM-Harness: Digital Soil Mapping & Soil Spectroscopy AI Training Harness
+# DSM-Harness: Digital Soil Mapping AI Training Harness
 
 🌐 **Language / Idioma**: **[English]** | [Español](README.es.md)
 
-> **AI-Orchestrated Training Harness for In-Person Digital Soil Mapping (DSM) & Soil Spectroscopy (DRS) Courses.**
+> **AI-Orchestrated Training Harness for In-Person FAO / SoilFER / OpenNSIS Digital Soil Mapping (DSM) Courses.**
 
-This repository enables participants in in-person Digital Soil Mapping and Soil Spectroscopy training courses to generate reproducible, robust, and standardized R code using Artificial Intelligence, acting as **soil scientists and critical evaluators** without getting bogged down by manual programming syntax.
+This repository enables participants in in-person Digital Soil Mapping training courses to generate reproducible, robust, and standardized R code using Artificial Intelligence, acting as **soil scientists and critical evaluators** without getting bogged down by manual programming syntax.
 
 The workflow is modular and easily adaptable to courses of varying duration (3, 4, or 5 days), focusing on practical problem solving and pedological interpretation.
+
+> ℹ️ **Harness Scope (Issue #42)**: The harness is strictly dedicated to the end-to-end **Digital Soil Mapping (DSM)** workflow: from BYOD profile auditing and environmental covariate extraction, to QRF spatial modeling and OpenNSIS Cloud-Optimized GeoTIFF (COG) generation. **Soil Spectroscopy (DRS) is explicitly out of scope**.
 
 ---
 
@@ -18,7 +20,7 @@ The workflow is modular and easily adaptable to courses of varying duration (3, 
 
 ## 🎯 Data Scope: What variables does the harness need?
 
-This harness is tailored **specifically for the Digital Soil Mapping (DSM) and Soil Spectroscopy (DRS) spatial modeling workflows**. **It is not intended to serve as an exhaustive database for all national soil survey attributes**.
+This harness is tailored **specifically for the Digital Soil Mapping (DSM) spatial modeling workflow**. **It is not intended to serve as an exhaustive database for all national soil survey attributes**.
 
 National soil survey files frequently contain dozens of accessory survey columns (taxonomic classifications, survey dates, field morphology notes, land use, geology, drainage, etc.). **For the spatial predictive modeling in this training, those extraneous variables are not relevant and are filtered out** during data preparation.
 
@@ -133,6 +135,9 @@ If you are using **Google Antigravity** (or an editor with agent capabilities su
    - **Step 1.1 (Mapping, Multi-Sheet Relational Joins & Selection in `01_1_byod_audit.R`)**: Validates configuration, supports 1 to N horizon sheets (`horizon_sheets`), guards against many-to-many explosions via `duplicate_key_strategy`, fails fast when essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing, supports sand fraction summation (`sand_sum`), and logs decisions with `run_id` and provenance to `decisions_log.csv`.
    - **Step 1.2 (Spatial Coordinate, CRS & Outlier Audit in `01_2_byod_audit.R`)**: Audits coordinates using 100% computed metrics, detects metric projections, and prompts for source EPSG without guessing. Audits spatial outliers via 1D IQR 3×, warns that univariate IQR cannot detect points inside the bounding box and mandates visual map inspection (`mapview`/`ggplot2`), and logs CRS and outlier decisions.
    - **Step 1.3 (Depths and Pedological Coherence in `01_3_byod_audit.R`)**: Audits vertical continuity separating join artifacts from true depth overlaps, texture balance, and impossible physical values ($BD \le 0$ or $> 2.65$ g/cm³). Bulk Density (BD) evaluation is based on the reference catalog (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) with performance contrast ($5 \le n < 30$) or local simple parametric calibration ($n \ge 30$, without ML), never imputing without explicit user confirmation in configuration. Generates `data/cleaned_profiles.csv` and logs all decisions.
+   - **Step 2 (Environmental Covariates Extraction in `02_extract_covariates.R`)**: Validates the raster stack (SCORPAN) in `covariates/`, harmonizes CRS with profile points, filters spatial outliers according to `filter_spatial_outliers`, standardizes to target depth interval (`target_depth_upper` / `target_depth_lower`), reports points outside raster mask, and produces `data/step2_covariates.csv` with a companion `.txt` report and `decisions_log.csv` entries.
+   - **Step 3 (QRF Spatial Predictive Modeling in `03_spatial_modelling.R`)**: Performs Boruta feature selection, optimizes `mtry` via repeated 10-fold cross-validation grid search, computes predictive performance metrics ($R^2$, RMSE, CCC, MAE, Bias), renders a 1:1 validation scatterplot, and exports the calibrated model `ranger_model_<target>.rds` with full metric logging.
+   - **Step 4 (Spatial Prediction, Uncertainty & COG Export in `04_predict_and_cog.R`)**: Runs memory-optimized block/tile spatial prediction across raster extent, predicts conditional mean and uncertainty (conditional standard deviation with `what = sd`), enforces OpenNSIS naming (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-<stat>.tif`), and exports strict Cloud-Optimized GeoTIFFs (COG) with overviews and DEFLATE compression.
 
 
 ---
@@ -162,18 +167,19 @@ If you do **not** have Antigravity or an AI IDE, you can use any free web chat i
 
 ---
 
-## 🗺️ Modular Workflow (The 5 Stages)
+## 🗺️ Modular Workflow (The 4 Canonical DSM Stages)
 
-The curriculum is structured into 5 sequential stages, independent of the total number of course days:
+The Digital Soil Mapping curriculum is structured into 4 sequential stages:
 
 | Stage | Methodological Module | Task Card | Core Objective |
 | :--- | :--- | :--- | :--- |
 | **00** | Express Debugger | [`cards/en/00-error-rescue.md`](cards/en/00-error-rescue.md) | **Error Rescue**: 1-line diagnosis and minimal patch snippet (saves token quotas). |
-| **01** | Data Audit | [`cards/en/01-byod-audit-card.md`](cards/en/01-byod-audit-card.md) | **BYOD Audit**: Coordinate checks in national bbox, ISO 28258 horizon validation, and pedological scatterplots. |
-| **02** | SCORPAN Covariates | [`cards/en/02-covariates-card.md`](cards/en/02-covariates-card.md) | **Spatial Extraction**: Raster stack inspection, CRS reprojection, and point extraction (`dat_cov`). |
-| **03** | Soil Spectroscopy | [`cards/en/03-spectra-card.md`](cards/en/03-spectra-card.md) | **Spectroscopy (DRS)**: Spectral preprocessing (`prospectr`: SNV, Savitzky-Golay), chemometrics calibration, and augmented dataset. |
-| **04** | Predictive Modeling | [`cards/en/04-qrf-modeling-card.md`](cards/en/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Boruta selection, QRF tuning with `ranger`/`caret`, metrics, and 1:1 plot. |
-| **05** | Mapping & Delivery | [`cards/en/05-prediction-opennsis-card.md`](cards/en/05-prediction-opennsis-card.md) | **Spatial Prediction & OpenNSIS**: Tiled quantile interpolation (mean & uncertainty), COG export, and ISO 19139 metadata. |
+| **01** | Profile Data Audit (BYOD) | [`cards/en/01-byod-audit-card.md`](cards/en/01-byod-audit-card.md) | **BYOD Audit**: Coordinate checks in national bbox, ISO 28258 horizon validation, and pedological scatterplots. |
+| **02** | Environmental Covariates | [`cards/en/02-covariates-card.md`](cards/en/02-covariates-card.md) | **Spatial Extraction**: Raster stack inspection, CRS harmonization, quality flag filtering, and point extraction (`dat_cov`). |
+| **03** | Spatial Predictive Modeling | [`cards/en/04-qrf-modeling-card.md`](cards/en/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Boruta selection, repeated CV tuning grid, metrics, and scatter plots reflecting reference modeling script. |
+| **04** | Spatial Prediction & COG | [`cards/en/05-prediction-opennsis-card.md`](cards/en/05-prediction-opennsis-card.md) | **Spatial Prediction & OpenNSIS**: Block-wise raster prediction (mean and `sd` uncertainty), standard COG export, and ISO metadata. |
+
+> 📌 *Note*: Soil Spectroscopy (DRS, previously Stage 03) is out of scope for the harness for now (Issue #42).
 
 ---
 

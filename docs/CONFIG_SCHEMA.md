@@ -39,6 +39,17 @@ Both AI assistants and human participants must adhere to this specification to a
 | `estimate_bd` | Boolean | `false` | If `true`, enables Bulk Density estimation into `BD_est` upon user confirmation of the selected model. |
 | `selected_ptf` | String | `null` | Confirmed model for BD estimation: `"local_fit"` (calibrated simple parametric function when $n \ge \text{bd\_fit\_min\_n}$), `"best_published"` (lowest RMSE among published reference PTFs), or specific model: `"saini_1996"`, `"drew_1973"`, `"jeffrey_1979"`, `"grigal_1989"`, `"adams_1973"`, `"honeyset_1989"`. BD is never imputed without user confirmation. |
 | `bd_fit_min_n` | Integer | `30` | Minimum number of measured BD samples required to calibrate a local simple parametric model without machine learning. |
+| `target_property` | String | `"SOC"` | Continuous soil property to extract, model, and predict (e.g. `"SOC"`, `"pH_H2O"`, `"Clay"`). |
+| `target_depth_upper` | Integer | `0` | Upper boundary in cm for depth standardization. |
+| `target_depth_lower` | Integer | `30` | Lower boundary in cm for depth standardization. |
+| `min_depth_support_cm` | Numeric | `5` | Minimum cumulative horizon thickness in cm required to retain a profile. |
+| `include_spatial_outliers` | Boolean | `false` | If `false`, profiles flagged with `flag_spatial_outlier = true` are excluded from covariate extraction. |
+| `covariates_path` | String | `null` (auto-detect) | Path to multi-band or single-band GeoTIFF covariate stack. |
+| `boruta_max_runs` | Integer | `100` | Maximum Boruta iterations for feature selection. |
+| `cv_folds` | Integer | `5` | Number of folds for repeated cross-validation. |
+| `cv_repeats` | Integer | `5` | Number of repeats for repeated cross-validation. |
+| `country_code` | String | `null` | ISO-3 country code for OpenNSIS file naming (e.g. `"GTM"`, `"MKD"`). |
+| `project_code` | String | `null` | Project code for OpenNSIS file naming (e.g. `"NACIONAL"`). |
 
 ---
 

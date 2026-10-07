@@ -21,7 +21,7 @@
 
 TEMPLATE_VERSION <- "2.0.0"
 
-rm(list = setdiff(ls(), c("input_file", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR")))
+rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -89,8 +89,12 @@ record_decision <- function(step, criterion, decision, source = "user_config", a
 known_config_keys <- c(
   "_comment", "input_file", "skip_rows", "has_units_row", "site_sheet", "site_key",
   "horiz_sheet", "join_key", "horizon_sheets", "duplicate_action", "duplicate_key_strategy",
-  "allow_missing_essentials", "sand_sum", "column_mapping",
-  "om_to_soc_factor", "source_crs", "outlier_action", "spatial_outlier_action", "outlier_ids", "estimate_bd"
+  "allow_missing_essentials", "sand_sum", "keep_columns", "column_mapping",
+  "om_to_soc_factor", "source_crs", "outlier_action", "spatial_outlier_action", "outlier_ids",
+  "estimate_bd", "selected_ptf", "bd_fit_min_n",
+  "target_property", "target_depth_upper", "target_depth_lower", "min_depth_support_cm",
+  "include_spatial_outliers", "covariates_path", "boruta_max_runs", "cv_folds", "cv_repeats",
+  "country_code", "project_code"
 )
 
 user_cfg <- list()

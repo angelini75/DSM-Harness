@@ -21,7 +21,7 @@
 
 TEMPLATE_VERSION <- "2.0.0"
 
-rm(list = setdiff(ls(), c("input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR")))
+rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
 suppressPackageStartupMessages({
   library(tidyverse)
@@ -218,6 +218,20 @@ if (!is.null(user_cfg$outlier_ids) && length(user_cfg$outlier_ids) > 0 && "profi
 }
 
 outlier_count <- sum(outlier_mask)
+outlier_profiles <- if ("profile_code" %in% names(dat_valid)) {
+  length(unique(dat_valid$profile_code[outlier_mask]))
+} else {
+  outlier_count
+}
+
+coord_space_iqr <- if (is_projected_coords && is.null(source_crs)) {
+  "Coordenadas métricas originales (sin reproyectar)"
+} else if (is_projected_coords && !is.null(source_crs)) {
+  sprintf("Grados decimales WGS84 (reproyectados desde EPSG:%d)", source_crs)
+} else {
+  "Grados decimales WGS84 (coordenadas geográficas de origen)"
+}
+
 dat_valid$flag_spatial_outlier <- outlier_mask
 
 # Aplicar decisión del usuario sobre outliers si está configurada
@@ -227,26 +241,29 @@ outlier_act_source <- if (!is.null(target_outlier_act)) "user_config" else "scri
 if (!is.null(target_outlier_act) && outlier_count > 0) {
   if (target_outlier_act == "exclude") {
     dat_valid <- dat_valid %>% filter(!flag_spatial_outlier)
-    outlier_action_applied <- sprintf("Excluidos %d registros outliers", outlier_count)
+    outlier_action_applied <- sprintf("Excluidos %d registros (%d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Excluir puntos anómalos", source = outlier_act_source,
-                    affected_rows = outlier_count, details = "Filtro IQR 3x aplicado tras confirmación")
+                    affected_rows = outlier_count, affected_profiles = outlier_profiles,
+                    details = sprintf("Filtro IQR 3x aplicado tras confirmación sobre %s", coord_space_iqr))
   } else if (target_outlier_act == "flag") {
-    outlier_action_applied <- sprintf("Conservados con flag_spatial_outlier = TRUE (%d registros)", outlier_count)
+    outlier_action_applied <- sprintf("Conservados con flag_spatial_outlier = TRUE (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Conservar y marcar bandera", source = outlier_act_source,
-                    affected_rows = outlier_count, details = "Columna flag_spatial_outlier agregada")
+                    affected_rows = outlier_count, affected_profiles = outlier_profiles,
+                    details = sprintf("Columna flag_spatial_outlier agregada sobre %s", coord_space_iqr))
   } else {
-    outlier_action_applied <- "Conservados como válidos por decisión del usuario"
+    outlier_action_applied <- sprintf("Conservados como válidos por decisión del usuario (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Conservar como válidos", source = outlier_act_source,
-                    affected_rows = outlier_count)
+                    affected_rows = outlier_count, affected_profiles = outlier_profiles)
   }
 } else {
   outlier_action_applied <- if (outlier_count > 0) {
-    sprintf("Identificados %d posibles candidatos; marcados con flag_spatial_outlier para inspección visual", outlier_count)
+    sprintf("Identificados %d candidatos (%d perfiles únicos); marcados con flag_spatial_outlier para inspección visual", outlier_count, outlier_profiles)
   } else {
     "0 outliers detectados por filtro univariado IQR 3x"
   }
   record_decision(1.2, "Outliers espaciales", "Evaluación completada", source = outlier_act_source,
-                  affected_rows = outlier_count, details = outlier_action_applied)
+                  affected_rows = outlier_count, affected_profiles = outlier_profiles,
+                  details = sprintf("%s (espacio: %s)", outlier_action_applied, coord_space_iqr))
 }
 
 # >>> ADAPT:crs_and_outliers
@@ -299,13 +316,15 @@ if (is_projected_coords && is.null(source_crs)) {
 writeLines("--------------------------------------------------------------------------------", report_con)
 writeLines("AUDITORÍA DE OUTLIERS ESPACIALES Y DISPERSIÓN:", report_con)
 writeLines(sprintf("  Método aplicado:                  1D IQR por eje (umbral: Q1 - 3·IQR o Q3 + 3·IQR)"), report_con)
-writeLines(sprintf("  Candidatos detectados por IQR 3x: %d", outlier_count), report_con)
+writeLines(sprintf("  Espacio de coordenadas evaluado:  %s", coord_space_iqr), report_con)
+writeLines(sprintf("  Candidatos detectados por IQR 3x: %d perfiles únicos (%d registros/filas)", outlier_profiles, outlier_count), report_con)
 writeLines(sprintf("  Tratamiento de outliers:          %s", outlier_action_applied), report_con)
 writeLines("  NOTA Y LIMITACIÓN METODOLÓGICA:", report_con)
 writeLines("  El filtro IQR univariado por eje detecta exclusivamente valores extremos en los", report_con)
-writeLines("  márgenes exteriores del área muestreada. NO detecta errores de coordenadas o puntos", report_con)
-writeLines("  aislados que se encuentren dentro de la caja envolvente (bounding box). Es indispensable", report_con)
-writeLines("  inspeccionar el mapa interactivo generado en RStudio antes de tomar una decisión.", report_con)
+writeLines("  márgenes exteriores del área muestreada en el espacio de coordenadas evaluado.", report_con)
+writeLines("  NO detecta errores de coordenadas o puntos aislados que se encuentren dentro de", report_con)
+writeLines("  la caja envolvente (bounding box). Es indispensable inspeccionar el mapa interactivo", report_con)
+writeLines("  o gráfico de dispersión generado en RStudio antes de tomar una decisión.", report_con)
 
 if (outlier_count > 0 && "profile_code" %in% names(dat_valid)) {
   out_sample <- dat_valid %>% filter(flag_spatial_outlier) %>% distinct(profile_code, .keep_all = TRUE) %>% head(10)
@@ -374,7 +393,8 @@ cat("  RESUMEN DE AUDITORÍA ESPACIAL (Paso 1.2)\n")
 cat("==============================================================================\n")
 cat(sprintf("Registros válidos analizados:          %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
 cat(sprintf("Sistema de referencia:                 %s\n", crs_used))
-cat(sprintf("Posibles outliers espaciales (IQR 3x): %d puntos detectados\n", outlier_count))
+cat(sprintf("Posibles outliers espaciales (IQR 3x): %d perfiles únicos (%d registros/horizontes)\n", outlier_profiles, outlier_count))
+cat(sprintf("Espacio evaluado para IQR:             %s\n", coord_space_iqr))
 cat(sprintf("Acción aplicada:                       %s\n", outlier_action_applied))
 cat(sprintf("[OK] Dataset espacial guardado en:     %s\n", output_csv))
 cat(sprintf("[OK] Reporte espacial guardado en:     %s\n", output_report))

@@ -37,21 +37,32 @@ proj_dir     <- file.path("projects", project_name)
 data_dir     <- file.path(proj_dir, "data")
 scripts_dir  <- file.path(proj_dir, "scripts")
 outputs_dir  <- file.path(proj_dir, "outputs")
-reports_dir  <- file.path(proj_dir, "reports")
+reports_dir    <- file.path(proj_dir, "reports")
+covariates_dir <- file.path(proj_dir, "covariates")
 
 cat(sprintf("[*] Creando estructura de proyecto en: '%s' ...\n", proj_dir))
 dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(scripts_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(outputs_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(reports_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(covariates_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Crear .gitkeep
 file.create(file.path(data_dir, ".gitkeep"))
 file.create(file.path(outputs_dir, ".gitkeep"))
 file.create(file.path(reports_dir, ".gitkeep"))
+file.create(file.path(covariates_dir, ".gitkeep"))
 
 # 1. Copiar y estampar procedencia en scripts ----------------------------------
-source_scripts <- c("00_inspect_data.R", "01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R")
+source_scripts <- c(
+  "00_inspect_data.R",
+  "01_1_byod_audit.R",
+  "01_2_byod_audit.R",
+  "01_3_byod_audit.R",
+  "02_extract_covariates.R",
+  "03_spatial_modelling.R",
+  "04_predict_and_cog.R"
+)
 
 for (s_file in source_scripts) {
   src_path <- file.path("02_scripts", s_file)
@@ -107,7 +118,10 @@ run_step_code <- c(
   "    '0'   = '00_inspect_data.R',",
   "    '1.1' = '01_1_byod_audit.R',",
   "    '1.2' = '01_2_byod_audit.R',",
-  "    '1.3' = '01_3_byod_audit.R'",
+  "    '1.3' = '01_3_byod_audit.R',",
+  "    '2'   = '02_extract_covariates.R',",
+  "    '3'   = '03_spatial_modelling.R',",
+  "    '4'   = '04_predict_and_cog.R'",
   "  )",
   "  step_char <- as.character(step)",
   "  if (!(step_char %in% names(s_map))) {",
@@ -125,7 +139,10 @@ run_step_code <- c(
   "cat('  run_step(\"0\")   -> Inspección estructural\\n')",
   "cat('  run_step(\"1.1\") -> Mapeo y selección de variables\\n')",
   "cat('  run_step(\"1.2\") -> Auditoría espacial y CRS\\n')",
-  "cat('  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n\\n')"
+  "cat('  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n')",
+  "cat('  run_step(\"2\")   -> Extracción de covariables ambientales\\n')",
+  "cat('  run_step(\"3\")   -> Modelado QRF y validación cruzada\\n')",
+  "cat('  run_step(\"4\")   -> Predicción espacial y exportación COG\\n\\n')"
 )
 writeLines(run_step_code, file.path(proj_dir, "run_step.R"))
 cat(sprintf("[*] Ejecutor de conveniencia creado: '%s'\n", file.path(proj_dir, "run_step.R")))

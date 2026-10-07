@@ -7,7 +7,15 @@ r_cmd <- file.path(R.home("bin"), if (.Platform$OS.type == "windows") "Rscript.e
 if (!file.exists(r_cmd)) r_cmd <- Sys.which("Rscript")
 
 test_that("Master templates exist, parse cleanly and declare TEMPLATE_VERSION 2.0.0", {
-  scripts <- c("00_inspect_data.R", "01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R")
+  scripts <- c(
+    "00_inspect_data.R",
+    "01_1_byod_audit.R",
+    "01_2_byod_audit.R",
+    "01_3_byod_audit.R",
+    "02_extract_covariates.R",
+    "03_spatial_modelling.R",
+    "04_predict_and_cog.R"
+  )
   for (s in scripts) {
     p <- file.path("02_scripts", s)
     expect_true(file.exists(p), info = paste("Script exists:", s))
@@ -15,7 +23,7 @@ test_that("Master templates exist, parse cleanly and declare TEMPLATE_VERSION 2.
     parsed <- tryCatch(parse(p), error = function(e) e)
     expect_false(inherits(parsed, "error"), info = paste("Valid syntax:", s))
     
-    if (s %in% c("01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R")) {
+    if (s %in% c("01_1_byod_audit.R", "01_2_byod_audit.R", "01_3_byod_audit.R", "02_extract_covariates.R", "03_spatial_modelling.R", "04_predict_and_cog.R")) {
       lines <- readLines(p, encoding = "UTF-8")
       expect_true(any(grepl('TEMPLATE_VERSION <- "2.0.0"', lines, fixed = TRUE)),
                   info = paste("Declares TEMPLATE_VERSION 2.0.0:", s))
@@ -506,7 +514,10 @@ test_that("Issue #32: ADAPT blocks are clean insertion-only slots in master temp
   scripts <- c(
     "02_scripts/01_1_byod_audit.R",
     "02_scripts/01_2_byod_audit.R",
-    "02_scripts/01_3_byod_audit.R"
+    "02_scripts/01_3_byod_audit.R",
+    "02_scripts/02_extract_covariates.R",
+    "02_scripts/03_spatial_modelling.R",
+    "02_scripts/04_predict_and_cog.R"
   )
   
   for (sc in scripts) {
@@ -529,4 +540,114 @@ test_that("Issue #33: 01_2_byod_audit.R does not contain concrete hardcoded EPSG
   lines <- readLines("02_scripts/01_2_byod_audit.R", encoding = "UTF-8")
   expect_false(any(grepl("32616", lines, fixed = TRUE)))
 })
+
+test_that("Issue #34: Scripts preserve run_step and PROJECT_NAME in caller environment", {
+  scripts <- c(
+    "02_scripts/01_1_byod_audit.R",
+    "02_scripts/01_2_byod_audit.R",
+    "02_scripts/01_3_byod_audit.R",
+    "02_scripts/02_extract_covariates.R",
+    "02_scripts/03_spatial_modelling.R",
+    "02_scripts/04_predict_and_cog.R"
+  )
+  for (sc in scripts) {
+    lines <- readLines(sc, encoding = "UTF-8")
+    rm_line <- grep("rm\\(list = setdiff", lines, value = TRUE)
+    expect_true(length(rm_line) == 1, info = paste("Found rm line in", sc))
+    expect_true(grepl('"run_step"', rm_line, fixed = TRUE), info = paste("run_step preserved in", sc))
+    expect_true(grepl('"PROJECT_NAME"', rm_line, fixed = TRUE), info = paste("PROJECT_NAME preserved in", sc))
+  }
+})
+
+test_that("Issue #35: 100% of documented keys in CONFIG_SCHEMA.md are present in known_config_keys", {
+  schema_lines <- readLines("docs/CONFIG_SCHEMA.md", encoding = "UTF-8")
+  sec2_start <- grep("^## 2\\. Top-Level Keys Reference", schema_lines)
+  sec3_start <- grep("^## 3\\.", schema_lines)
+  sec2_lines <- schema_lines[sec2_start:sec3_start]
+  table_lines <- grep("^\\| `[a-zA-Z0-9_]+` \\|", sec2_lines, value = TRUE)
+  schema_keys <- sub("^\\| `([a-zA-Z0-9_]+)` \\|.*", "\\1", table_lines)
+  expect_true(length(schema_keys) >= 15, info = "Extracted schema keys from CONFIG_SCHEMA.md")
+  
+  script_lines <- readLines("02_scripts/01_1_byod_audit.R", encoding = "UTF-8")
+  k_start <- grep("known_config_keys <- c\\(", script_lines)
+  k_end <- grep("^\\)", script_lines[k_start:length(script_lines)])[1] + k_start - 1
+  k_code <- paste(script_lines[k_start:k_end], collapse = " ")
+  known_keys <- eval(parse(text = sub("known_config_keys <- ", "", k_code)))
+  
+  missing_keys <- setdiff(schema_keys, known_keys)
+  expect_equal(length(missing_keys), 0,
+               info = sprintf("Missing keys in known_config_keys: [%s]", paste(missing_keys, collapse = ", ")))
+})
+
+test_that("Issue #38: 01_2_byod_audit.R differentiates unique profiles and documents coordinate space", {
+  lines <- readLines("02_scripts/01_2_byod_audit.R", encoding = "UTF-8")
+  expect_true(any(grepl("outlier_profiles <-", lines, fixed = TRUE)))
+  expect_true(any(grepl("coord_space_iqr <-", lines, fixed = TRUE)))
+  expect_true(any(grepl("Espacio de coordenadas evaluado:", lines, fixed = TRUE)))
+  expect_true(any(grepl("perfiles únicos", lines, fixed = TRUE)))
+})
+
+test_that("Issue #37 & #39: 00_new_project.R instantiates Stages 0 through 4 and run_step.R maps all steps", {
+  test_proj <- "test_stages_workflow"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  # Verificar scripts en carpeta del proyecto
+  expected_scripts <- c(
+    "00_inspect_data.R",
+    "01_1_byod_audit.R",
+    "01_2_byod_audit.R",
+    "01_3_byod_audit.R",
+    "02_extract_covariates.R",
+    "03_spatial_modelling.R",
+    "04_predict_and_cog.R"
+  )
+  for (sc in expected_scripts) {
+    p <- file.path(proj_path, "scripts", sc)
+    expect_true(file.exists(p), info = paste("Script instanciado existe:", sc))
+    # Debe tener cabecera de procedencia
+    first_lines <- readLines(p, n = 5, encoding = "UTF-8")
+    expect_true(any(grepl("PROVENANCE METADATA", first_lines)), info = paste("Tiene metadatos de procedencia:", sc))
+  }
+  
+  # Verificar run_step.R
+  run_step_file <- file.path(proj_path, "run_step.R")
+  expect_true(file.exists(run_step_file))
+  rs_lines <- readLines(run_step_file, encoding = "UTF-8")
+  for (step_id in c("'0'", "'1.1'", "'1.2'", "'1.3'", "'2'", "'3'", "'4'")) {
+    expect_true(any(grepl(step_id, rs_lines, fixed = TRUE)), info = paste("run_step soporta:", step_id))
+  }
+})
+
+test_that("Issue #41: .gitignore covers rasters, models and covariates directories", {
+  gi_lines <- readLines(".gitignore", encoding = "UTF-8")
+  expect_true(any(grepl("\\*\\.tif", gi_lines)), info = "Ignores *.tif")
+  expect_true(any(grepl("\\*\\.tiff", gi_lines)), info = "Ignores *.tiff")
+  expect_true(any(grepl("\\*\\.rds", gi_lines)), info = "Ignores *.rds")
+  expect_true(any(grepl("covariates", gi_lines)), info = "Ignores covariates")
+})
+
+test_that("Issue #41: 04_predict_and_cog.R validates country_code and project_code without inventing them", {
+  lines <- readLines("02_scripts/04_predict_and_cog.R", encoding = "UTF-8")
+  expect_true(any(grepl("country_code", lines, fixed = TRUE)))
+  expect_true(any(grepl("project_code", lines, fixed = TRUE)))
+  expect_true(any(grepl("ISO-3", lines, fixed = TRUE)))
+  expect_true(any(grepl("LAYOUT=COG", lines, fixed = TRUE)))
+})
+
+test_that("Issue #42: Spectroscopy is strictly banished from DSM documentation and workflows", {
+  readme_lines <- readLines("README.md", encoding = "UTF-8")
+  expect_true(any(grepl("OUT OF SCOPE", readme_lines, ignore.case = TRUE)))
+  expect_true(any(grepl("The 4 Canonical DSM Stages", readme_lines)))
+  
+  readme_es_lines <- readLines("README.es.md", encoding = "UTF-8")
+  expect_true(any(grepl("Las 4 Etapas Canónicas de DSM", readme_es_lines)))
+  
+  agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
+  expect_true(any(grepl("ABSOLUTE BAN on Spectroscopy", agents_lines)))
+})
+
 

@@ -109,6 +109,59 @@ record_decision(
 
 ---
 
+### D. Paso 2 (`02_extract_covariates.R`)
+
+#### Bloque: `# >>> ADAPT:covariate_extraction`
+* **Ubicación**: Tras la extracción puntual de covariables y filtrado de máscara espacial.
+* **Propósito**: Transformaciones de covariables (logaritmos, índices personalizados) o filtrado avanzado de perfiles.
+* **Entorno y Objetos Disponibles**:
+  | Objeto | Tipo | Descripción |
+  | :--- | :--- | :--- |
+  | `dat_final` | `tbl_df` / `data.frame` | Perfiles estandarizados con covariables extraídas completas. |
+  | `cov_stack` | `SpatRaster` | Pila de covariables ambientales cargada. |
+  | `target_prop` | `character` | Nombre de la variable objetivo (ej. `"SOC"`). |
+  | `user_cfg` | `list` | Configuración de usuario. |
+  | `record_decision` | `function` | Función de auditoría. |
+* **Invariantes Requeridos**:
+  - `dat_final` debe conservar la columna `profile_code`, `longitude`, `latitude`, la propiedad objetivo y las covariables extraídas.
+
+---
+
+### E. Paso 3 (`03_spatial_modelling.R`)
+
+#### Bloque: `# >>> ADAPT:spatial_modelling`
+* **Ubicación**: Tras el entrenamiento QRF y el cálculo de métricas de validación cruzada.
+* **Propósito**: Inserción de algoritmos alternativos, afinación de grilla personalizada o análisis diagnóstico de residuos espaciales.
+* **Entorno y Objetos Disponibles**:
+  | Objeto | Tipo | Descripción |
+  | :--- | :--- | :--- |
+  | `qrf_model` | `train` | Modelo `caret` entrenado con `ranger`. |
+  | `d_train` | `data.frame` | Matriz de datos de entrenamiento (objetivo + covariables seleccionadas). |
+  | `selected_features` | `character` | Nombres de las covariables seleccionadas por Boruta. |
+  | `target_prop` | `character` | Nombre de la variable objetivo. |
+  | `record_decision` | `function` | Función de auditoría. |
+* **Invariantes Requeridos**:
+  - El modelo entrenado debe ser compatible con la interfaz de predicción de cuantiles (`predict(model, ..., type = "quantiles")`).
+
+---
+
+### F. Paso 4 (`04_predict_and_cog.R`)
+
+#### Bloque: `# >>> ADAPT:prediction_and_cog`
+* **Ubicación**: Tras la exportación a verdadero COG y verificación de pirámides internas.
+* **Propósito**: Generación de máscaras de Área de Aplicabilidad (AOA), recorte por límites administrativos o exportaciones a formatos adicionales.
+* **Entorno y Objetos Disponibles**:
+  | Objeto | Tipo | Descripción |
+  | :--- | :--- | :--- |
+  | `path_mean_cog` | `character` | Ruta al GeoTIFF optimizado en la nube (COG) de la media predicha. |
+  | `path_sd_cog` | `character` | Ruta al COG de la desviación estándar (incertidumbre). |
+  | `user_cfg` | `list` | Configuración de usuario. |
+  | `record_decision` | `function` | Función de auditoría. |
+* **Invariantes Requeridos**:
+  - Los archivos GeoTIFF deben conservar compresión DEFLATE y estructura COG estándar OpenNSIS.
+
+---
+
 ## 4. Reglas Operativas para Asistentes de IA
 
 1. **Declarativo Primero**: Antes de sugerir un parche en código ADAPT, verifica si el requerimiento puede resolverse declarativamente en `config.json` (ej: `keep_columns`, `sand_sum`, `duplicate_key_strategy`, `selected_ptf`).

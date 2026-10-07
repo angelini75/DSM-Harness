@@ -5,6 +5,7 @@
 .RData
 .Rproj.user/
 .Ruserdata/
+Rplots.pdf
 
 # Temporary and heavy cache files
 terra_tmp/
@@ -24,11 +25,23 @@ scratch/
 01_data/profiles/*
 !01_data/profiles/.gitkeep
 !01_data/profiles/user_config.template.json
+01_data/covariates/*
+!01_data/covariates/.gitkeep
+!01_data/covariates/README.md
 config/user_*
 projects/*/data/*
 projects/*/outputs/*
 projects/*/reports/*
+projects/*/covariates/*
+projects/*/models/*
 !projects/**/.gitkeep
+
+# Global raster and binary models protection (prevent committing heavy outputs)
+*.tif
+*.tiff
+*.rds
+!tests/**/fixtures/*.rds
+!tests/**/fixtures/*.tif
 
 # OS specific files
 Thumbs.db
