@@ -18,6 +18,7 @@ Both AI assistants and human participants must adhere to this specification to a
 
 | Key | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
+| `language` | String | `"es"` | Preferred interface and reporting language: `"es"` (Spanish, default) or `"en"` (English). Controls CLI console messages, companion `.txt` reports, `decisions_log.csv` records, and parameterized HTML reports. |
 | `input_file` | String | `null` (auto-detect) | Path to profile dataset (`.xlsx`, `.xls`, `.csv`). E.g. `"01_data/profiles/my_data.xlsx"`. |
 | `skip_rows` | Integer | `0` | Number of metadata rows to skip before header row. |
 | `has_units_row` | Boolean | `false` | Set to `true` if the row immediately below header contains measurement units (e.g. `cm`, `%`, `g/kg`). |

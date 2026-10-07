@@ -29,13 +29,13 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(rmarkdown)
   library(knitr)
   library(ggplot2)
   library(terra)
   library(dplyr)
-})
+}))
 
 # 1. Configuración de rutas y proyecto -----------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -159,6 +159,23 @@ proj_dir_normalized <- if (!is.null(proj_active)) {
   root_dir
 }
 
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R") else NULL,
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R") else NULL,
+  file.path("02_scripts", "00_i18n.R"),
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (ic in i18n_candidates) {
+  if (!is.null(ic) && file.exists(ic)) {
+    source(ic)
+    break
+  }
+}
+
+lang <- if (exists("get_project_language")) get_project_language(user_cfg) else (if (!is.null(user_cfg$language)) tolower(user_cfg$language) else "es")
+is_en <- identical(lang, "en")
+
 render_params <- list(
   project = proj_name,
   project_dir = proj_dir_normalized,
@@ -167,7 +184,8 @@ render_params <- list(
   property = target_prop,
   d1 = depth_d1,
   d2 = depth_d2,
-  unit = target_unit
+  unit = target_unit,
+  lang = lang
 )
 
 res_render <- tryCatch({
@@ -181,21 +199,22 @@ res_render <- tryCatch({
     envir = new.env()
   )
 }, error = function(e) {
-  stop(sprintf("Error al renderizar el reporte R Markdown: %s", e$message))
+  stop(sprintf(if (is_en) "Error rendering R Markdown report: %s" else "Error al renderizar el reporte R Markdown: %s", e$message))
 })
 
 # Validación post-render: asegurar que el HTML no se haya generado vacío
 if (!file.exists(output_html) || file.size(output_html) == 0) {
-  stop(sprintf("El archivo de reporte HTML '%s' no se generó o está vacío.", output_html))
+  stop(sprintf(if (is_en) "HTML report file '%s' was not generated or is empty." else "El archivo de reporte HTML '%s' no se generó o está vacío.", output_html))
 }
 
 html_lines <- readLines(output_html, encoding = "UTF-8", warn = FALSE)
-if (n_rows_dat > 0 && any(grepl("Perfiles usados</span><b>0</b>", html_lines, fixed = TRUE))) {
-  stop(sprintf("El reporte HTML se generó sin perfiles ('Perfiles usados: 0') a pesar de existir %d filas en '%s'. Verifica las rutas y knit_root_dir.",
+zero_pattern <- if (is_en) "(Profiles used|Perfiles usados)</span><b>0</b>" else "Perfiles usados</span><b>0</b>"
+if (n_rows_dat > 0 && any(grepl(zero_pattern, html_lines))) {
+  stop(sprintf(if (is_en) "Generated HTML report indicates 0 profiles used ('Profiles used: 0') despite %d rows existing in '%s'. Check file paths and knit_root_dir." else "El reporte HTML se generó sin perfiles ('Perfiles usados: 0') a pesar de existir %d filas en '%s'. Verifica las rutas y knit_root_dir.",
                n_rows_dat, f_cov_check))
 }
 
-cat(sprintf("[OK] Reporte HTML generado: '%s' (%.1f KB)\n", output_html, file.size(output_html) / 1024))
+cat(sprintf(if (is_en) "[OK] HTML Report generated: '%s' (%.1f KB)\n" else "[OK] Reporte HTML generado: '%s' (%.1f KB)\n", output_html, file.size(output_html) / 1024))
 
 # >>> ADAPT:render_report
 # Punto de extension: adicion de formatos de salida (PDF, DOCX), subida a repositorio o metadatos extras.
@@ -205,28 +224,28 @@ cat(sprintf("[OK] Reporte HTML generado: '%s' (%.1f KB)\n", output_html, file.si
 # 6. Registrar en auditoria ----------------------------------------------------
 record_decision(
   step = 5.0,
-  criterion = "Reporte final de mapeo",
-  decision = sprintf("Reporte HTML generado: %s", basename(output_html)),
+  criterion = if (is_en) "Final mapping report" else "Reporte final de mapeo",
+  decision = if (is_en) sprintf("Generated HTML report: %s", basename(output_html)) else sprintf("Reporte HTML generado: %s", basename(output_html)),
   source = "script_default",
   affected_rows = n_rows_dat,
   affected_profiles = n_rows_dat,
-  details = sprintf("Tag: %s | Formato: HTML autocontenido", tag)
+  details = if (is_en) sprintf("Tag: %s | Format: Standalone HTML", tag) else sprintf("Tag: %s | Formato: HTML autocontenido", tag)
 )
 
 # 7. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_txt, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", rep_con)
-writeLines("DSM-HARNESS | REPORTE RESUMEN DEL INFORME FINAL DE MAPEO (PASO 5)", rep_con)
-writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+writeLines(if (is_en) "DSM-HARNESS | FINAL SOIL MAPPING REPORT SUMMARY (STEP 5)" else "DSM-HARNESS | REPORTE RESUMEN DEL INFORME FINAL DE MAPEO (PASO 5)", rep_con)
+writeLines(sprintf(if (is_en) "Execution date: %s | Run ID: %s" else "Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
 writeLines("================================================================================", rep_con)
-writeLines(sprintf("Variable mapeada:              %s", target_prop), rep_con)
-writeLines(sprintf("Intervalo de profundidad:      %d a %d cm", depth_d1, depth_d2), rep_con)
-writeLines(sprintf("Codigo de pais / proyecto:     %s / %s", country_code, project_code), rep_con)
-writeLines(sprintf("Etiqueta OpenNSIS (Tag):       %s", tag), rep_con)
-writeLines(sprintf("Archivo HTML generado:         %s", basename(output_html)), rep_con)
-writeLines(sprintf("Tamano del archivo HTML:       %.1f KB", file.size(output_html) / 1024), rep_con)
+writeLines(sprintf(if (is_en) "Mapped variable:               %s" else "Variable mapeada:              %s", target_prop), rep_con)
+writeLines(sprintf(if (is_en) "Depth interval:                %d to %d cm" else "Intervalo de profundidad:      %d a %d cm", depth_d1, depth_d2), rep_con)
+writeLines(sprintf(if (is_en) "Country / Project code:        %s / %s" else "Codigo de pais / proyecto:     %s / %s", country_code, project_code), rep_con)
+writeLines(sprintf(if (is_en) "OpenNSIS Tag:                  %s" else "Etiqueta OpenNSIS (Tag):       %s", tag), rep_con)
+writeLines(sprintf(if (is_en) "Generated HTML file:           %s" else "Archivo HTML generado:         %s", basename(output_html)), rep_con)
+writeLines(sprintf(if (is_en) "HTML file size:                %.1f KB" else "Tamano del archivo HTML:       %.1f KB", file.size(output_html) / 1024), rep_con)
 writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("ESTADO DE ARTEFACTOS EVALUADOS:", rep_con)
+writeLines(if (is_en) "EVALUATED ARTIFACTS STATUS:" else "ESTADO DE ARTEFACTOS EVALUADOS:", rep_con)
 
 f_mean_cog <- file.path(base_out_dir, paste0(tag, "-mean.tif"))
 f_sd_cog   <- file.path(base_out_dir, paste0(tag, "-sd.tif"))
@@ -234,30 +253,33 @@ f_model    <- file.path(base_out_dir, sprintf("ranger_model_%s.rds", target_prop
 f_boruta   <- file.path(base_rep_dir, sprintf("boruta_%s.png", target_prop))
 f_metrics  <- file.path(base_out_dir, sprintf("metrics_%s.json", target_prop))
 
-writeLines(sprintf("  Dataset de entrenamiento:    %s", if (file.exists(f_cov_check)) sprintf("PRESENTE (%d filas)", n_rows_dat) else "NO EVALUADO"), rep_con)
-writeLines(sprintf("  Modelo QRF (ranger):         %s", if (file.exists(f_model)) "PRESENTE" else "NO EVALUADO"), rep_con)
-writeLines(sprintf("  Metricas JSON:               %s", if (file.exists(f_metrics)) "PRESENTE" else "NO EVALUADO"), rep_con)
-writeLines(sprintf("  Grafico Boruta:              %s", if (file.exists(f_boruta)) "PRESENTE" else "NO EVALUADO"), rep_con)
-writeLines(sprintf("  Mapa Media OpenNSIS COG:     %s", if (file.exists(f_mean_cog)) basename(f_mean_cog) else "NO EVALUADO"), rep_con)
-writeLines(sprintf("  Mapa Incertidumbre OpenNSIS: %s", if (file.exists(f_sd_cog)) basename(f_sd_cog) else "NO EVALUADO"), rep_con)
+na_lbl <- if (is_en) "NOT EVALUATED" else "NO EVALUADO"
+pres_lbl <- if (is_en) "PRESENT" else "PRESENTE"
+
+writeLines(sprintf(if (is_en) "  Training dataset:            %s" else "  Dataset de entrenamiento:    %s", if (file.exists(f_cov_check)) sprintf("%s (%d %s)", pres_lbl, n_rows_dat, if (is_en) "rows" else "filas") else na_lbl), rep_con)
+writeLines(sprintf(if (is_en) "  QRF Model (ranger):          %s" else "  Modelo QRF (ranger):         %s", if (file.exists(f_model)) pres_lbl else na_lbl), rep_con)
+writeLines(sprintf(if (is_en) "  JSON Metrics:                %s" else "  Metricas JSON:               %s", if (file.exists(f_metrics)) pres_lbl else na_lbl), rep_con)
+writeLines(sprintf(if (is_en) "  Boruta Plot:                 %s" else "  Grafico Boruta:              %s", if (file.exists(f_boruta)) pres_lbl else na_lbl), rep_con)
+writeLines(sprintf(if (is_en) "  Mean OpenNSIS COG Map:       %s" else "  Mapa Media OpenNSIS COG:     %s", if (file.exists(f_mean_cog)) basename(f_mean_cog) else na_lbl), rep_con)
+writeLines(sprintf(if (is_en) "  Uncertainty OpenNSIS Map:    %s" else "  Mapa Incertidumbre OpenNSIS: %s", if (file.exists(f_sd_cog)) basename(f_sd_cog) else na_lbl), rep_con)
 writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("LINEA DE VALIDACION:", rep_con)
-writeLines("  La linea roja en el scatterplot es estrictamente la recta 1:1 (predicho = observado),", rep_con)
-writeLines("  NO una regresion empirica de los puntos.", rep_con)
-writeLines("  Validacion con muestra independiente: NO EVALUADO.", rep_con)
+writeLines(if (is_en) "VALIDATION LINE:" else "LINEA DE VALIDACION:", rep_con)
+writeLines(if (is_en) "  The red line in the scatterplot is strictly the 1:1 line (predicted = observed)," else "  La linea roja en el scatterplot es estrictamente la recta 1:1 (predicho = observado),", rep_con)
+writeLines(if (is_en) "  NOT an empirical regression of the points." else "  NO una regresion empirica de los puntos.", rep_con)
+writeLines(sprintf(if (is_en) "  Validation with independent sample: %s." else "  Validacion con muestra independiente: %s.", na_lbl), rep_con)
 writeLines("================================================================================", rep_con)
 close(rep_con)
 
-cat(sprintf("[OK] Resumen de reporte escrito en: '%s'\n", output_txt))
+cat(sprintf(if (is_en) "[OK] Report summary written to: '%s'\n" else "[OK] Resumen de reporte escrito en: '%s'\n", output_txt))
 
 # 8. Resumen en consola --------------------------------------------------------
 cat("\n==============================================================================\n")
-cat("  RESUMEN DE GENERACIÓN DE REPORTE FINAL (Paso 5)\n")
+cat(if (is_en) "  FINAL REPORT GENERATION SUMMARY (Step 5)\n" else "  RESUMEN DE GENERACIÓN DE REPORTE FINAL (Paso 5)\n")
 cat("==============================================================================\n")
-cat(sprintf("Variable mapeada:    %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2))
-cat(sprintf("País / Proyecto:     %s / %s\n", country_code, project_code))
-cat(sprintf("Tag OpenNSIS:        %s\n", tag))
-cat(sprintf("[OK] Reporte HTML:   %s\n", output_html))
-cat(sprintf("[OK] Resumen TXT:    %s\n", output_txt))
-if (decision_logged) cat(sprintf("[OK] Log decisiones: %s\n", decisions_log))
+cat(sprintf(if (is_en) "Mapped variable:     %s (%d-%d cm)\n" else "Variable mapeada:    %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2))
+cat(sprintf(if (is_en) "Country / Project:   %s / %s\n" else "País / Proyecto:     %s / %s\n", country_code, project_code))
+cat(sprintf(if (is_en) "OpenNSIS Tag:        %s\n" else "Tag OpenNSIS:        %s\n", tag))
+cat(sprintf(if (is_en) "[OK] HTML Report:    %s\n" else "[OK] Reporte HTML:   %s\n", output_html))
+cat(sprintf(if (is_en) "[OK] TXT Summary:    %s\n" else "[OK] Resumen TXT:    %s\n", output_txt))
+if (decision_logged) cat(sprintf(if (is_en) "[OK] Decisions log:  %s\n" else "[OK] Log decisiones: %s\n", decisions_log))
 cat("==============================================================================\n\n")

@@ -23,12 +23,12 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
   library(caret)
   library(ranger)
   library(Boruta)
-})
+}))
 
 # 1. Configuración de rutas y proyecto -----------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -62,12 +62,36 @@ if (!dir.exists(base_out_dir))  dir.create(base_out_dir, recursive = TRUE)
 input_csv     <- file.path(base_data_dir, "step2_covariates.csv")
 output_report <- file.path(base_rep_dir,  "step3_modelling_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 # 2. Inicialización de Trazabilidad y Log de Decisiones ------------------------
 run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config",
                             affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
@@ -95,10 +119,18 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 }
 
@@ -255,12 +287,21 @@ val_r2   <- calc_r2(obs_vals, pred_vals)
 val_ccc  <- calc_ccc(obs_vals, pred_vals)
 
 cat("\n------------------------------------------------------------------------------\n")
-cat(sprintf("MÉTRICAS DE VALIDACIÓN CRUZADA (Variable: %s):\n", target_prop))
-cat(sprintf("  R^2:   %.3f\n", val_r2))
-cat(sprintf("  RMSE:  %.3f\n", val_rmse))
-cat(sprintf("  CCC:   %.3f (Concordancia de Lin)\n", val_ccc))
-cat(sprintf("  MAE:   %.3f\n", val_mae))
-cat(sprintf("  Sesgo: %.3f\n", val_bias))
+if (is_en) {
+  cat(sprintf("CROSS-VALIDATION METRICS (Property: %s):\n", target_prop))
+  cat(sprintf("  R^2:   %.3f\n", val_r2))
+  cat(sprintf("  RMSE:  %.3f\n", val_rmse))
+  cat(sprintf("  CCC:   %.3f (Lin Concordance)\n", val_ccc))
+  cat(sprintf("  MAE:   %.3f\n", val_mae))
+  cat(sprintf("  Bias:  %.3f\n", val_bias))
+} else {
+  cat(sprintf("MÉTRICAS DE VALIDACIÓN CRUZADA (Variable: %s):\n", target_prop))
+  cat(sprintf("  R^2:   %.3f\n", val_r2))
+  cat(sprintf("  RMSE:  %.3f\n", val_rmse))
+  cat(sprintf("  CCC:   %.3f (Concordancia de Lin)\n", val_ccc))
+  cat(sprintf("  MAE:   %.3f\n", val_mae))
+  cat(sprintf("  Sesgo: %.3f\n", val_bias))
+}
 cat("------------------------------------------------------------------------------\n\n")
 
 record_decision(3.0, "Evaluación de modelo", sprintf("R^2=%.3f, RMSE=%.3f, CCC=%.3f", val_r2, val_rmse, val_ccc),
@@ -278,14 +319,14 @@ g_scatter <- ggplot(residuals_df, aes(x = Observed, y = Predicted)) +
   coord_fixed(xlim = val_range, ylim = val_range) +
   theme_minimal() +
   labs(
-    title = sprintf("Observado vs Predicho en CV - %s", target_prop),
+    title = if (is_en) sprintf("Observed vs Predicted in CV - %s", target_prop) else sprintf("Observado vs Predicho en CV - %s", target_prop),
     subtitle = sprintf("R^2 = %.3f | RMSE = %.3f | CCC = %.3f | n = %d", val_r2, val_rmse, val_ccc, n_train),
-    x = sprintf("%s Observado", target_prop),
-    y = sprintf("%s Predicho", target_prop)
+    x = if (is_en) sprintf("%s Observed", target_prop) else sprintf("%s Observado", target_prop),
+    y = if (is_en) sprintf("%s Predicted", target_prop) else sprintf("%s Predicho", target_prop)
   )
 
 ggsave(scatter_png, plot = g_scatter, width = 14, height = 14, units = "cm", dpi = 150)
-cat(sprintf("[OK] Gráfico 1:1 guardado en: '%s'\n", scatter_png))
+if (is_en) cat(sprintf("[OK] 1:1 scatter plot saved to: '%s'\n", scatter_png)) else cat(sprintf("[OK] Gráfico 1:1 guardado en: '%s'\n", scatter_png))
 
 # >>> ADAPT:spatial_modelling
 # Punto de extensión: inserción de algoritmos adicionales, hiperparámetros o análisis de residuos.
@@ -295,7 +336,7 @@ cat(sprintf("[OK] Gráfico 1:1 guardado en: '%s'\n", scatter_png))
 # 8. Guardar modelo entrenado --------------------------------------------------
 model_rds <- file.path(base_out_dir, sprintf("ranger_model_%s.rds", target_prop))
 saveRDS(qrf_model, model_rds)
-cat(sprintf("[OK] Modelo QRF guardado en: '%s'\n", model_rds))
+if (is_en) cat(sprintf("[OK] QRF model saved to: '%s'\n", model_rds)) else cat(sprintf("[OK] Modelo QRF guardado en: '%s'\n", model_rds))
 
 # Guardar métricas en JSON para consumo por Paso 5 y reporte automatizado
 metrics_json <- file.path(base_out_dir, sprintf("metrics_%s.json", target_prop))
@@ -314,49 +355,89 @@ metrics_data <- list(
 )
 if (requireNamespace("jsonlite", quietly = TRUE)) {
   jsonlite::write_json(metrics_data, metrics_json, auto_unbox = TRUE, pretty = TRUE)
-  cat(sprintf("[OK] Métricas JSON guardadas en: '%s'\n", metrics_json))
+  if (is_en) cat(sprintf("[OK] Metrics JSON saved to: '%s'\n", metrics_json)) else cat(sprintf("[OK] Métricas JSON guardadas en: '%s'\n", metrics_json))
 }
 
 # 9. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", rep_con)
-writeLines("DSM-HARNESS | REPORTE DE MODELADO ESPACIAL Y VALIDACION CRUZADA (PASO 3)", rep_con)
-writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
-writeLines("================================================================================", rep_con)
-writeLines(sprintf("Variable objetivo modelada:      %s", target_prop), rep_con)
-writeLines(sprintf("Total perfiles de entrenamiento: %d", n_train), rep_con)
-writeLines(sprintf("Covariables iniciales:           %d", length(cov_cols)), rep_con)
-writeLines(sprintf("Covariables seleccionadas:       %d", length(selected_features)), rep_con)
-writeLines("Covariables seleccionadas por Boruta:", rep_con)
-for (sf in selected_features) writeLines(sprintf("  - %s", sf), rep_con)
-writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("CONFIGURACION DE ENTRENAMIENTO Y AFINACION:", rep_con)
-writeLines(sprintf("  Algoritmo:                     Quantile Regression Forest (ranger)"), rep_con)
-writeLines(sprintf("  Esquema de validacion:         Validacion Cruzada Repetida (%d folds, %d repeticiones)", cv_folds, cv_repeats), rep_con)
-writeLines(sprintf("  Mejor mtry:                    %d", best_tune$mtry), rep_con)
-writeLines(sprintf("  Regla de division (splitrule): %s", best_tune$splitrule), rep_con)
-writeLines(sprintf("  min.node.size:                 %d", best_tune$min.node.size), rep_con)
-writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("METRICAS DE RENDIMIENTO PEDOMETRICO (EVALUACION CRUZADA):", rep_con)
-writeLines(sprintf("  R^2 (Coeficiente determinacion): %.4f", val_r2), rep_con)
-writeLines(sprintf("  RMSE (Error cuadratico medio):  %.4f", val_rmse), rep_con)
-writeLines(sprintf("  CCC (Concordancia de Lin):      %.4f", val_ccc), rep_con)
-writeLines(sprintf("  MAE (Error absoluto medio):     %.4f", val_mae), rep_con)
-writeLines(sprintf("  Sesgo medio (Bias):             %.4f", val_bias), rep_con)
+if (is_en) {
+  writeLines("DSM-HARNESS | SPATIAL MODELLING AND CROSS-VALIDATION REPORT (STEP 3)", rep_con)
+  writeLines(sprintf("Execution date: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Target property:                 %s", target_prop), rep_con)
+  writeLines(sprintf("Total training profiles:         %d", n_train), rep_con)
+  writeLines(sprintf("Initial covariates:              %d", length(cov_cols)), rep_con)
+  writeLines(sprintf("Selected covariates:             %d", length(selected_features)), rep_con)
+  writeLines("Covariates selected by Boruta:", rep_con)
+  for (sf in selected_features) writeLines(sprintf("  - %s", sf), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("TRAINING AND TUNING CONFIGURATION:", rep_con)
+  writeLines("  Algorithm:                     Quantile Regression Forest (ranger)", rep_con)
+  writeLines(sprintf("  Validation scheme:             Repeated Cross-Validation (%d folds, %d repeats)", cv_folds, cv_repeats), rep_con)
+  writeLines(sprintf("  Best mtry:                     %d", best_tune$mtry), rep_con)
+  writeLines(sprintf("  Split rule:                    %s", best_tune$splitrule), rep_con)
+  writeLines(sprintf("  min.node.size:                 %d", best_tune$min.node.size), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("PEDOMETRIC PERFORMANCE METRICS (CROSS-VALIDATION):", rep_con)
+  writeLines(sprintf("  R^2 (Determination coefficient): %.4f", val_r2), rep_con)
+  writeLines(sprintf("  RMSE (Root mean square error):   %.4f", val_rmse), rep_con)
+  writeLines(sprintf("  CCC (Lin concordance):           %.4f", val_ccc), rep_con)
+  writeLines(sprintf("  MAE (Mean absolute error):       %.4f", val_mae), rep_con)
+  writeLines(sprintf("  Mean bias:                       %.4f", val_bias), rep_con)
+} else {
+  writeLines("DSM-HARNESS | REPORTE DE MODELADO ESPACIAL Y VALIDACION CRUZADA (PASO 3)", rep_con)
+  writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Variable objetivo modelada:      %s", target_prop), rep_con)
+  writeLines(sprintf("Total perfiles de entrenamiento: %d", n_train), rep_con)
+  writeLines(sprintf("Covariables iniciales:           %d", length(cov_cols)), rep_con)
+  writeLines(sprintf("Covariables seleccionadas:       %d", length(selected_features)), rep_con)
+  writeLines("Covariables seleccionadas por Boruta:", rep_con)
+  for (sf in selected_features) writeLines(sprintf("  - %s", sf), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("CONFIGURACION DE ENTRENAMIENTO Y AFINACION:", rep_con)
+  writeLines("  Algoritmo:                     Quantile Regression Forest (ranger)", rep_con)
+  writeLines(sprintf("  Esquema de validacion:         Validacion Cruzada Repetida (%d folds, %d repeticiones)", cv_folds, cv_repeats), rep_con)
+  writeLines(sprintf("  Mejor mtry:                    %d", best_tune$mtry), rep_con)
+  writeLines(sprintf("  Regla de division (splitrule): %s", best_tune$splitrule), rep_con)
+  writeLines(sprintf("  min.node.size:                 %d", best_tune$min.node.size), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("METRICAS DE RENDIMIENTO PEDOMETRICO (EVALUACION CRUZADA):", rep_con)
+  writeLines(sprintf("  R^2 (Coeficiente determinacion): %.4f", val_r2), rep_con)
+  writeLines(sprintf("  RMSE (Error cuadratico medio):  %.4f", val_rmse), rep_con)
+  writeLines(sprintf("  CCC (Concordancia de Lin):      %.4f", val_ccc), rep_con)
+  writeLines(sprintf("  MAE (Error absoluto medio):     %.4f", val_mae), rep_con)
+  writeLines(sprintf("  Sesgo medio (Bias):             %.4f", val_bias), rep_con)
+}
 writeLines("================================================================================", rep_con)
 close(rep_con)
-cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
+if (is_en) cat(sprintf("[OK] Report written to: '%s'\n", output_report)) else cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
 
 # 10. Resumen en consola -------------------------------------------------------
 cat("\n==============================================================================\n")
-cat("  RESUMEN DE MODELADO ESPACIAL (Paso 3)\n")
-cat("==============================================================================\n")
-cat(sprintf("Variable modelada:      %s\n", target_prop))
-cat(sprintf("Perfiles evaluados:     %d\n", n_train))
-cat(sprintf("Covariables elegidas:   %d de %d\n", length(selected_features), length(cov_cols)))
-cat(sprintf("R^2: %.3f | RMSE: %.3f | CCC: %.3f\n", val_r2, val_rmse, val_ccc))
-cat(sprintf("[OK] Modelo guardado:   %s\n", model_rds))
-cat(sprintf("[OK] Reporte guardado:  %s\n", output_report))
-cat(sprintf("[OK] Gráficos:          %s y %s\n", basename(boruta_png), basename(scatter_png)))
-if (decision_logged) cat(sprintf("[OK] Log de decisiones: %s\n", decisions_log))
-cat("==============================================================================\n\n")
+if (is_en) {
+  cat("  SPATIAL MODELLING SUMMARY (Step 3)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Modelled property:   %s\n", target_prop))
+  cat(sprintf("Evaluated profiles:  %d\n", n_train))
+  cat(sprintf("Selected covariates: %d of %d\n", length(selected_features), length(cov_cols)))
+  cat(sprintf("R^2: %.3f | RMSE: %.3f | CCC: %.3f\n", val_r2, val_rmse, val_ccc))
+  cat(sprintf("[OK] Model saved:    %s\n", model_rds))
+  cat(sprintf("[OK] Report saved:   %s\n", output_report))
+  cat(sprintf("[OK] Plots:          %s and %s\n", basename(boruta_png), basename(scatter_png)))
+  if (decision_logged) cat(sprintf("[OK] Decisions log:  %s\n", decisions_log))
+  cat("==============================================================================\n\n")
+} else {
+  cat("  RESUMEN DE MODELADO ESPACIAL (Paso 3)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Variable modelada:      %s\n", target_prop))
+  cat(sprintf("Perfiles evaluados:     %d\n", n_train))
+  cat(sprintf("Covariables elegidas:   %d de %d\n", length(selected_features), length(cov_cols)))
+  cat(sprintf("R^2: %.3f | RMSE: %.3f | CCC: %.3f\n", val_r2, val_rmse, val_ccc))
+  cat(sprintf("[OK] Modelo guardado:   %s\n", model_rds))
+  cat(sprintf("[OK] Reporte guardado:  %s\n", output_report))
+  cat(sprintf("[OK] Gráficos:          %s y %s\n", basename(boruta_png), basename(scatter_png)))
+  if (decision_logged) cat(sprintf("[OK] Log de decisiones: %s\n", decisions_log))
+  cat("==============================================================================\n\n")
+}

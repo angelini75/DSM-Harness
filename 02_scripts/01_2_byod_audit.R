@@ -23,10 +23,10 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
   library(sf)
-})
+}))
 
 # 1. Configuración de rutas y parámetros ---------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -57,10 +57,34 @@ if (!exists("input_csv") || is.null(input_csv) || !nzchar(input_csv)) {
 output_csv    <- file.path(base_data_dir, "step1_2_spatial.csv")
 output_report <- file.path(base_rep_dir, "step1_2_spatial_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config", affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   log_entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = SCRIPT_RUN_ID,
@@ -93,13 +117,21 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 } else {
-  cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
+  if (is_en) cat(sprintf("[NOTICE] No config file found at '%s'. Using default auto-detection.\n", config_file)) else cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
 }
 
 if (!file.exists(input_csv)) {
@@ -285,70 +317,133 @@ unique_locs <- dat_valid %>% distinct(longitude, latitude) %>% nrow()
 # 5. Generación del Reporte Espacial en Texto UTF-8 -----------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.2: AUDITORIA ESPACIAL Y GEOGRAFICA", report_con)
-writeLines("================================================================================", report_con)
-writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
-writeLines(paste("Archivo analizado:", input_csv), report_con)
-writeLines(paste("Diagnostico general:", coord_diagnosis), report_con)
-writeLines(paste("Sistema de referencia (CRS):", crs_used), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("METRICAS DE REGISTROS Y LOCALIZACIONES (100% CALCULADAS):", report_con)
-writeLines(sprintf("  Total registros iniciales:          %d", n_total), report_con)
-writeLines(sprintf("  Registros con coordenadas validas:  %d (%.1f%%)", nrow(dat_valid), (nrow(dat_valid) / n_total) * 100), report_con)
-writeLines(sprintf("  Registros con coordenadas nulas/NA: %d", missing_coords_count), report_con)
-writeLines(sprintf("  Registros en (0, 0):                %d", zero_coords_count), report_con)
-writeLines(sprintf("  Sitios / ubicaciones unicas:        %d", unique_locs), report_con)
-if ("profile_code" %in% names(dat)) {
-  writeLines(sprintf("  Perfiles unicos identificados:      %d", n_profiles), report_con)
-  if (length(orphan_profiles_coords) > 0) {
-    writeLines(sprintf("  Perfiles sin coordenadas validas:   %d (ejemplos: %s)", 
-                       length(orphan_profiles_coords), paste(head(orphan_profiles_coords, 5), collapse = ", ")), report_con)
+if (is_en) {
+  writeLines("  DSM-HARNESS | STEP 1.2 REPORT: SPATIAL AND GEOGRAPHIC AUDIT", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Date:                ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Analyzed file:       ", input_csv), report_con)
+  writeLines(paste("General diagnosis:   ", if (exists("translate_decision_text")) translate_decision_text(coord_diagnosis, "en") else coord_diagnosis), report_con)
+  writeLines(paste("CRS:                 ", if (exists("translate_decision_text")) translate_decision_text(crs_used, "en") else crs_used), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("RECORD AND LOCATION METRICS (100% CALCULATED):", report_con)
+  writeLines(sprintf("  Total initial records:              %d", n_total), report_con)
+  writeLines(sprintf("  Records with valid coordinates:     %d (%.1f%%)", nrow(dat_valid), (nrow(dat_valid) / n_total) * 100), report_con)
+  writeLines(sprintf("  Records with null/NA coordinates:   %d", missing_coords_count), report_con)
+  writeLines(sprintf("  Records at (0, 0):                  %d", zero_coords_count), report_con)
+  writeLines(sprintf("  Unique sites / locations:           %d", unique_locs), report_con)
+  if ("profile_code" %in% names(dat)) {
+    writeLines(sprintf("  Unique profiles identified:         %d", n_profiles), report_con)
+    if (length(orphan_profiles_coords) > 0) {
+      writeLines(sprintf("  Profiles without valid coordinates: %d (samples: %s)", 
+                         length(orphan_profiles_coords), paste(head(orphan_profiles_coords, 5), collapse = ", ")), report_con)
+    }
   }
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-if (is_projected_coords && is.null(source_crs)) {
-  writeLines("RANGOS DE COORDENADAS METRICAS (PROYECTADAS SIN CRS):", report_con)
-  writeLines(sprintf("  X (Este):  [%.1f, %.1f] (Amplitud: %.1f m)", 
-                     min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
-  writeLines(sprintf("  Y (Norte): [%.1f, %.1f] (Amplitud: %.1f m)", 
-                     min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
-  writeLines("  NOTA: Coordenadas en rango métrico proyectado sin CRS asignado. Gráfico 2D disponible en Plots.", report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  if (is_projected_coords && is.null(source_crs)) {
+    writeLines("METRIC COORDINATE RANGES (PROJECTED WITHOUT CRS):", report_con)
+    writeLines(sprintf("  X (East):  [%.1f, %.1f] (Span: %.1f m)", 
+                       min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
+    writeLines(sprintf("  Y (North): [%.1f, %.1f] (Span: %.1f m)", 
+                       min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
+    writeLines("  NOTE: Metric projected coordinates without assigned CRS. 2D scatter plot available in Plots.", report_con)
+  } else {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    writeLines("WGS84 COORDINATE RANGES (HUMAN VERIFICATION REQUIRED):", report_con)
+    writeLines(sprintf("  Longitude: [%.4f, %.4f] (Span: %.4f degrees)", 
+                       min_lon, max_lon, diff(c(min_lon, max_lon))), report_con)
+    writeLines(sprintf("  Latitude:  [%.4f, %.4f] (Span: %.4f degrees)", 
+                       min_lat, max_lat, diff(c(min_lat, max_lat))), report_con)
+    writeLines("  SPATIAL CONTROL NOTE: Check that this range falls inside your territory or study area.", report_con)
+    writeLines("  If points fall in the ocean or overseas, the source EPSG is incorrect.", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("SPATIAL OUTLIER AUDIT AND DISPERSION:", report_con)
+  writeLines(sprintf("  Applied method:                   1D IQR per axis (threshold: Q1 - 3*IQR or Q3 + 3*IQR)"))
+  writeLines(sprintf("  Evaluated coordinate space:       %s", if (coord_space_iqr == "metricas_proyectadas") "projected metric" else "geographic WGS84"), report_con)
+  writeLines(sprintf("  Candidates detected by IQR 3x:    %d unique profiles (%d records/rows)", outlier_profiles, outlier_count), report_con)
+  out_act_en <- if (exists("translate_decision_text")) translate_decision_text(outlier_action_applied, "en") else outlier_action_applied
+  writeLines(sprintf("  Outlier treatment:                %s", out_act_en), report_con)
+  writeLines("  METHODOLOGICAL LIMITATION NOTE:", report_con)
+  writeLines("  Univariate IQR per axis only detects extreme values at outer boundaries of sampled extent.", report_con)
+  writeLines("  It DOES NOT detect points inside bounding box. Interactive map / scatter plot visual inspection", report_con)
+  writeLines("  in RStudio is required before making a decision.", report_con)
+  
+  if (outlier_count > 0 && "profile_code" %in% names(dat_valid)) {
+    out_sample <- dat_valid %>% filter(flag_spatial_outlier) %>% distinct(profile_code, .keep_all = TRUE) %>% head(10)
+    writeLines("\nCANDIDATE OUTLIER POINT SAMPLES:", report_con)
+    for (i in seq_len(nrow(out_sample))) {
+      writeLines(sprintf("  - Profile: %-15s | Lon: %8.4f | Lat: %8.4f", 
+                         out_sample$profile_code[i], out_sample$longitude[i], out_sample$latitude[i]), report_con)
+    }
+  }
 } else {
-  min_lon <- min(dat_valid$longitude, na.rm = TRUE)
-  max_lon <- max(dat_valid$longitude, na.rm = TRUE)
-  min_lat <- min(dat_valid$latitude, na.rm = TRUE)
-  max_lat <- max(dat_valid$latitude, na.rm = TRUE)
-  writeLines("RANGOS DE COORDENADAS WGS84 (CONFIRMACION HUMANA REQUERIDA):", report_con)
-  writeLines(sprintf("  Longitud: [%.4f, %.4f] (Amplitud: %.4f grados)", 
-                     min_lon, max_lon, diff(c(min_lon, max_lon))), report_con)
-  writeLines(sprintf("  Latitud:  [%.4f, %.4f] (Amplitud: %.4f grados)", 
-                     min_lat, max_lat, diff(c(min_lat, max_lat))), report_con)
-  writeLines("  NOTA DE CONTROL ESPACIAL: Verificar que este rango concuerde con los limites", report_con)
-  writeLines("  de tu pais o zona de estudio. Si los puntos caen en el oceano o fuera del pais,", report_con)
-  writeLines("  el codigo EPSG de origen es incorrecto.", report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE OUTLIERS ESPACIALES Y DISPERSION:", report_con)
-writeLines(sprintf("  Metodo aplicado:                  1D IQR por eje (umbral: Q1 - 3*IQR o Q3 + 3*IQR)"), report_con)
-writeLines(sprintf("  Espacio de coordenadas evaluado:  %s", coord_space_iqr), report_con)
-writeLines(sprintf("  Candidatos detectados por IQR 3x: %d perfiles unicos (%d registros/filas)", outlier_profiles, outlier_count), report_con)
-writeLines(sprintf("  Tratamiento de outliers:          %s", outlier_action_applied), report_con)
-writeLines("  NOTA Y LIMITACION METODOLOGICA:", report_con)
-writeLines("  El filtro IQR univariado por eje detecta exclusivamente valores extremos en los", report_con)
-writeLines("  margenes exteriores del area muestreada en el espacio de coordenadas evaluado.", report_con)
-writeLines("  NO detecta errores de coordenadas o puntos aislados que se encuentren dentro de", report_con)
-writeLines("  la caja envolvente (bounding box). Es indispensable inspeccionar el mapa interactivo", report_con)
-writeLines("  o grafico de dispersion generado en RStudio antes de tomar una decision.", report_con)
-
-if (outlier_count > 0 && "profile_code" %in% names(dat_valid)) {
-  out_sample <- dat_valid %>% filter(flag_spatial_outlier) %>% distinct(profile_code, .keep_all = TRUE) %>% head(10)
-  writeLines("\nEJEMPLO DE PUNTOS CANDIDATOS A OUTLIER:", report_con)
-  for (i in seq_len(nrow(out_sample))) {
-    writeLines(sprintf("  - Perfil: %-15s | Lon: %8.4f | Lat: %8.4f", 
-                       out_sample$profile_code[i], out_sample$longitude[i], out_sample$latitude[i]), report_con)
+  writeLines("  DSM-HARNESS | REPORTE PASO 1.2: AUDITORIA ESPACIAL Y GEOGRAFICA", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Archivo analizado:", input_csv), report_con)
+  writeLines(paste("Diagnostico general:", coord_diagnosis), report_con)
+  writeLines(paste("Sistema de referencia (CRS):", crs_used), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("METRICAS DE REGISTROS Y LOCALIZACIONES (100% CALCULADAS):", report_con)
+  writeLines(sprintf("  Total registros iniciales:          %d", n_total), report_con)
+  writeLines(sprintf("  Registros con coordenadas validas:  %d (%.1f%%)", nrow(dat_valid), (nrow(dat_valid) / n_total) * 100), report_con)
+  writeLines(sprintf("  Registros con coordenadas nulas/NA: %d", missing_coords_count), report_con)
+  writeLines(sprintf("  Registros en (0, 0):                %d", zero_coords_count), report_con)
+  writeLines(sprintf("  Sitios / ubicaciones unicas:        %d", unique_locs), report_con)
+  if ("profile_code" %in% names(dat)) {
+    writeLines(sprintf("  Perfiles unicos identificados:      %d", n_profiles), report_con)
+    if (length(orphan_profiles_coords) > 0) {
+      writeLines(sprintf("  Perfiles sin coordenadas validas:   %d (ejemplos: %s)", 
+                         length(orphan_profiles_coords), paste(head(orphan_profiles_coords, 5), collapse = ", ")), report_con)
+    }
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  if (is_projected_coords && is.null(source_crs)) {
+    writeLines("RANGOS DE COORDENADAS METRICAS (PROYECTADAS SIN CRS):", report_con)
+    writeLines(sprintf("  X (Este):  [%.1f, %.1f] (Amplitud: %.1f m)", 
+                       min(dat_valid$longitude), max(dat_valid$longitude), diff(range(dat_valid$longitude))), report_con)
+    writeLines(sprintf("  Y (Norte): [%.1f, %.1f] (Amplitud: %.1f m)", 
+                       min(dat_valid$latitude), max(dat_valid$latitude), diff(range(dat_valid$latitude))), report_con)
+    writeLines("  NOTA: Coordenadas en rango métrico proyectado sin CRS asignado. Gráfico 2D disponible en Plots.", report_con)
+  } else {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    writeLines("RANGOS DE COORDENADAS WGS84 (CONFIRMACION HUMANA REQUERIDA):", report_con)
+    writeLines(sprintf("  Longitud: [%.4f, %.4f] (Amplitud: %.4f grados)", 
+                       min_lon, max_lon, diff(c(min_lon, max_lon))), report_con)
+    writeLines(sprintf("  Latitud:  [%.4f, %.4f] (Amplitud: %.4f grados)", 
+                       min_lat, max_lat, diff(c(min_lat, max_lat))), report_con)
+    writeLines("  NOTA DE CONTROL ESPACIAL: Verificar que este rango concuerde con los limites", report_con)
+    writeLines("  de tu pais o zona de estudio. Si los puntos caen en el oceano o fuera del pais,", report_con)
+    writeLines("  el codigo EPSG de origen es incorrecto.", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE OUTLIERS ESPACIALES Y DISPERSION:", report_con)
+  writeLines(sprintf("  Metodo aplicado:                  1D IQR por eje (umbral: Q1 - 3*IQR o Q3 + 3*IQR)"))
+  writeLines(sprintf("  Espacio de coordenadas evaluado:  %s", coord_space_iqr), report_con)
+  writeLines(sprintf("  Candidatos detectados por IQR 3x: %d perfiles unicos (%d registros/filas)", outlier_profiles, outlier_count), report_con)
+  writeLines(sprintf("  Tratamiento de outliers:          %s", outlier_action_applied), report_con)
+  writeLines("  NOTA Y LIMITACION METODOLOGICA:", report_con)
+  writeLines("  El filtro IQR univariado por eje detecta exclusivamente valores extremos en los", report_con)
+  writeLines("  margenes exteriores del area muestreada en el espacio de coordenadas evaluado.", report_con)
+  writeLines("  NO detecta errores de coordenadas o puntos aislados que se encuentren dentro de", report_con)
+  writeLines("  la caja envolvente (bounding box). Es indispensable inspeccionar el mapa interactivo", report_con)
+  writeLines("  o grafico de dispersion generado en RStudio antes de tomar una decision.", report_con)
+  
+  if (outlier_count > 0 && "profile_code" %in% names(dat_valid)) {
+    out_sample <- dat_valid %>% filter(flag_spatial_outlier) %>% distinct(profile_code, .keep_all = TRUE) %>% head(10)
+    writeLines("\nEJEMPLO DE PUNTOS CANDIDATOS A OUTLIER:", report_con)
+    for (i in seq_len(nrow(out_sample))) {
+      writeLines(sprintf("  - Perfil: %-15s | Lon: %8.4f | Lat: %8.4f", 
+                         out_sample$profile_code[i], out_sample$longitude[i], out_sample$latitude[i]), report_con)
+    }
   }
 }
-
 writeLines("================================================================================", report_con)
 close(report_con)
 
@@ -356,88 +451,140 @@ close(report_con)
 readr::write_csv(dat_valid, output_csv)
 
 # 7. Diagnóstico Visual Interactivo (Mapview o ggplot2) -------------------------
+lbl_normal <- if (is_en) "Normal" else "Normal"
+lbl_outlier <- if (is_en) "Outlier Candidate" else "Candidato Outlier"
+lbl_status <- if (is_en) "Status" else "Estado"
+
 if (!is_projected_coords || !is.null(source_crs)) {
-  cat("[*] Generando visualización espacial diagnóstica ...\n")
+  if (is_en) cat("[*] Generating spatial diagnostic visualization ...\n") else cat("[*] Generando visualización espacial diagnóstica ...\n")
   sf_map <- sf::st_as_sf(dat_valid, coords = c("longitude", "latitude"), crs = 4326)
   
   if (requireNamespace("mapview", quietly = TRUE)) {
     tryCatch({
       m <- mapview::mapview(sf_map, zcol = if ("flag_spatial_outlier" %in% names(sf_map)) "flag_spatial_outlier" else NULL,
-                            layer.name = "Perfiles de Suelo",
+                            layer.name = if (is_en) "Soil Profiles" else "Perfiles de Suelo",
                             col.regions = c("#2A788EFF", "#D84315"),
                             legend = TRUE)
       print(m)
-      cat("[OK] Mapa interactivo desplegado en el panel 'Viewer' de RStudio.\n")
+      if (is_en) cat("[OK] Interactive map displayed in RStudio 'Viewer' panel.\n") else cat("[OK] Mapa interactivo desplegado en el panel 'Viewer' de RStudio.\n")
     }, error = function(e) {
-      cat("[AVISO] mapview no pudo desplegarse; generando gráfico con ggplot2.\n")
+      if (is_en) cat("[NOTICE] mapview could not display; falling back to ggplot2.\n") else cat("[AVISO] mapview no pudo desplegarse; generando gráfico con ggplot2.\n")
     })
   } else {
     p <- ggplot(dat_valid, aes(x = longitude, y = latitude, color = flag_spatial_outlier)) +
       geom_point(alpha = 0.7, size = 2) +
       scale_color_manual(values = c("FALSE" = "#2A788EFF", "TRUE" = "#D84315"),
-                         labels = c("Normal", "Candidato Outlier"), name = "Estado") +
+                         labels = c(lbl_normal, lbl_outlier), name = lbl_status) +
       theme_minimal() +
-      labs(title = "Distribución Espacial de Perfiles",
-           subtitle = sprintf("Total perfiles válidos: %d | Candidatos a outlier (IQR 3x): %d", nrow(dat_valid), outlier_count),
-           x = "Longitud (WGS84)", y = "Latitud (WGS84)")
+      labs(title = if (is_en) "Spatial Distribution of Profiles" else "Distribución Espacial de Perfiles",
+           subtitle = if (is_en) sprintf("Total valid profiles: %d | Outlier candidates (IQR 3x): %d", nrow(dat_valid), outlier_count) else sprintf("Total perfiles válidos: %d | Candidatos a outlier (IQR 3x): %d", nrow(dat_valid), outlier_count),
+           x = if (is_en) "Longitude (WGS84)" else "Longitud (WGS84)", y = if (is_en) "Latitude (WGS84)" else "Latitud (WGS84)")
     print(p)
-    cat("[OK] Gráfico espacial generado en el panel 'Plots' de RStudio.\n")
+    if (is_en) cat("[OK] Spatial plot generated in RStudio 'Plots' panel.\n") else cat("[OK] Gráfico espacial generado en el panel 'Plots' de RStudio.\n")
   }
 } else {
   # Coordenadas proyectadas sin EPSG especificado: generar dispersión plana en ggplot2 (Issue #28)
-  cat("[*] Coordenadas métricas sin EPSG especificado. Generando gráfico de dispersión bidimensional ...\n")
+  if (is_en) cat("[*] Metric coordinates without specified EPSG. Generating planar 2D scatter plot ...\n") else cat("[*] Coordenadas métricas sin EPSG especificado. Generando gráfico de dispersión bidimensional ...\n")
   p <- ggplot(dat_valid, aes(x = longitude, y = latitude, color = flag_spatial_outlier)) +
     geom_point(alpha = 0.7, size = 2) +
     scale_color_manual(values = c("FALSE" = "#2A788EFF", "TRUE" = "#D84315"),
-                       labels = c("Normal", "Candidato Outlier"), name = "Estado") +
+                       labels = c(lbl_normal, lbl_outlier), name = lbl_status) +
     theme_minimal() +
-    labs(title = "Distribución de Coordenadas Métricas (Sin CRS Especificado)",
-         subtitle = sprintf("Dispersión plana en sistema de origen no especificado (sin georreferenciar). Total: %d | Outliers IQR 3x: %d",
-                            nrow(dat_valid), outlier_count),
-         x = "Coordenada X (Este)", y = "Coordenada Y (Norte)")
+    labs(title = if (is_en) "Metric Coordinate Distribution (No CRS Specified)" else "Distribución de Coordenadas Métricas (Sin CRS Especificado)",
+         subtitle = if (is_en) sprintf("Planar scatter in unspecified source system. Total: %d | Outliers IQR 3x: %d", nrow(dat_valid), outlier_count) else sprintf("Dispersión plana en sistema de origen no especificado (sin georreferenciar). Total: %d | Outliers IQR 3x: %d", nrow(dat_valid), outlier_count),
+         x = if (is_en) "X Coordinate (East)" else "Coordenada X (Este)", y = if (is_en) "Y Coordinate (North)" else "Coordenada Y (Norte)")
   print(p)
-  cat("[OK] Gráfico diagnóstico de dispersión generado en el panel 'Plots' de RStudio.\n")
-  cat("     -> NOTA: Este gráfico muestra la dispersión relativa de los puntos en sus coordenadas métricas originales.\n")
-  cat("     -> Para desplegar mapa interactivo sobre capas base (mapview), declara 'source_crs' en 'config.json'.\n")
+  if (is_en) {
+    cat("[OK] Diagnostic scatter plot generated in RStudio 'Plots' panel.\n")
+    cat("     -> NOTE: This plot shows relative point dispersion in raw metric coordinates.\n")
+    cat("     -> To display interactive basemap (mapview), set 'source_crs' in 'config.json'.\n")
+  } else {
+    cat("[OK] Gráfico diagnóstico de dispersión generado en el panel 'Plots' de RStudio.\n")
+    cat("     -> NOTA: Este gráfico muestra la dispersión relativa de los puntos en sus coordenadas métricas originales.\n")
+    cat("     -> Para desplegar mapa interactivo sobre capas base (mapview), declara 'source_crs' en 'config.json'.\n")
+  }
 }
 
 # 8. Resumen en consola --------------------------------------------------------
 cat("\n==============================================================================\n")
-cat("  RESUMEN DE AUDITORÍA ESPACIAL (Paso 1.2)\n")
-cat("==============================================================================\n")
-cat(sprintf("Registros válidos analizados:          %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
-cat(sprintf("Sistema de referencia:                 %s\n", crs_used))
-if (!is_projected_coords || !is.null(source_crs)) {
-  min_lon <- min(dat_valid$longitude, na.rm = TRUE)
-  max_lon <- max(dat_valid$longitude, na.rm = TRUE)
-  min_lat <- min(dat_valid$latitude, na.rm = TRUE)
-  max_lat <- max(dat_valid$latitude, na.rm = TRUE)
-  cat(sprintf("Rango resultante en grados (WGS84):    Lon [%.4f, %.4f] | Lat [%.4f, %.4f]\n", min_lon, max_lon, min_lat, max_lat))
-}
-cat(sprintf("Posibles outliers espaciales (IQR 3x): %d perfiles únicos (%d registros/horizontes)\n", outlier_profiles, outlier_count))
-cat(sprintf("Espacio evaluado para IQR:             %s\n", coord_space_iqr))
-cat(sprintf("Acción aplicada:                       %s\n", outlier_action_applied))
-cat(sprintf("[OK] Dataset espacial guardado en:     %s\n", output_csv))
-cat(sprintf("[OK] Reporte espacial guardado en:     %s\n", output_report))
-if (decision_logged) {
-  cat(sprintf("[OK] Registro de decisiones en:        %s\n", decisions_log))
-}
-cat("==============================================================================\n\n")
+if (is_en) {
+  cat("  SPATIAL AUDIT SUMMARY (Step 1.2)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Valid records analyzed:               %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
+  crs_en <- if (exists("translate_decision_text")) translate_decision_text(crs_used, "en") else crs_used
+  cat(sprintf("Reference system:                     %s\n", crs_en))
+  if (!is_projected_coords || !is.null(source_crs)) {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    cat(sprintf("Resulting degree range (WGS84):       Lon [%.4f, %.4f] | Lat [%.4f, %.4f]\n", min_lon, max_lon, min_lat, max_lat))
+  }
+  cat(sprintf("Potential spatial outliers (IQR 3x):  %d unique profiles (%d records/horizons)\n", outlier_profiles, outlier_count))
+  cat(sprintf("Evaluated coordinate space for IQR:   %s\n", if (coord_space_iqr == "metricas_proyectadas") "projected metric" else "geographic WGS84"))
+  out_act_en <- if (exists("translate_decision_text")) translate_decision_text(outlier_action_applied, "en") else outlier_action_applied
+  cat(sprintf("Applied action:                       %s\n", out_act_en))
+  cat(sprintf("[OK] Spatial dataset saved to:        %s\n", output_csv))
+  cat(sprintf("[OK] Spatial report saved to:         %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Decisions log at:                %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
 
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-if (is_projected_coords && is.null(source_crs)) {
-  cat("1. Revisa el gráfico de dispersión de coordenadas en el panel 'Plots' de RStudio.\n")
-  cat("2. En el chat con la IA, indica qué sistema proyectado/EPSG corresponde a estas coordenadas,\n")
-  cat("   y si la dispersión de puntos concuerda con tu área de estudio antes de pasar al Paso 1.3.\n")
+  cat("------------------------------------------------------------------------------\n")
+  cat("STUDENT INSTRUCTIONS:\n")
+  if (is_projected_coords && is.null(source_crs)) {
+    cat("1. Review the coordinate scatter plot in RStudio 'Plots' panel.\n")
+    cat("2. In the AI chat, indicate which projected system / EPSG corresponds to these coordinates,\n")
+    cat("   and verify if dispersion matches your study area before moving to Step 1.3.\n")
+  } else {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    cat(sprintf("1. Review resulting geographic range: Longitude [%.4f, %.4f] | Latitude [%.4f, %.4f].\n", min_lon, max_lon, min_lat, max_lat))
+    cat("   Verify in the RStudio map if points fall inside your country / study area\n")
+    cat("   (an incorrect EPSG may place points in the ocean or on another continent).\n")
+    cat("2. In the AI chat, confirm whether the geographic location is plausible before moving to Step 1.3.\n")
+  }
+  cat("------------------------------------------------------------------------------\n\n")
 } else {
-  min_lon <- min(dat_valid$longitude, na.rm = TRUE)
-  max_lon <- max(dat_valid$longitude, na.rm = TRUE)
-  min_lat <- min(dat_valid$latitude, na.rm = TRUE)
-  max_lat <- max(dat_valid$latitude, na.rm = TRUE)
-  cat(sprintf("1. Revisa el rango geografico resultante: Longitud [%.4f, %.4f] | Latitud [%.4f, %.4f].\n", min_lon, max_lon, min_lat, max_lat))
-  cat("   Verifica en el mapa de RStudio si los puntos caen dentro de tu pais o zona de estudio\n")
-  cat("   (un EPSG incorrecto puede situar los puntos en el oceano o en otro continente).\n")
-  cat("2. En el chat con la IA, confirma si la ubicacion geografica es plausible antes de avanzar al Paso 1.3.\n")
+  cat("  RESUMEN DE AUDITORÍA ESPACIAL (Paso 1.2)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Registros válidos analizados:          %d / %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid) / n_total) * 100))
+  cat(sprintf("Sistema de referencia:                 %s\n", crs_used))
+  if (!is_projected_coords || !is.null(source_crs)) {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    cat(sprintf("Rango resultante en grados (WGS84):    Lon [%.4f, %.4f] | Lat [%.4f, %.4f]\n", min_lon, max_lon, min_lat, max_lat))
+  }
+  cat(sprintf("Posibles outliers espaciales (IQR 3x): %d perfiles únicos (%d registros/horizontes)\n", outlier_profiles, outlier_count))
+  cat(sprintf("Espacio evaluado para IQR:             %s\n", coord_space_iqr))
+  cat(sprintf("Acción aplicada:                       %s\n", outlier_action_applied))
+  cat(sprintf("[OK] Dataset espacial guardado en:     %s\n", output_csv))
+  cat(sprintf("[OK] Reporte espacial guardado en:     %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Registro de decisiones en:        %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
+
+  cat("------------------------------------------------------------------------------\n")
+  cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
+  if (is_projected_coords && is.null(source_crs)) {
+    cat("1. Revisa el gráfico de dispersión de coordenadas en el panel 'Plots' de RStudio.\n")
+    cat("2. En el chat con la IA, indica qué sistema proyectado/EPSG corresponde a estas coordenadas,\n")
+    cat("   y si la dispersión de puntos concuerda con tu área de estudio antes de pasar al Paso 1.3.\n")
+  } else {
+    min_lon <- min(dat_valid$longitude, na.rm = TRUE)
+    max_lon <- max(dat_valid$longitude, na.rm = TRUE)
+    min_lat <- min(dat_valid$latitude, na.rm = TRUE)
+    max_lat <- max(dat_valid$latitude, na.rm = TRUE)
+    cat(sprintf("1. Revisa el rango geografico resultante: Longitud [%.4f, %.4f] | Latitud [%.4f, %.4f].\n", min_lon, max_lon, min_lat, max_lat))
+    cat("   Verifica en el mapa de RStudio si los puntos caen dentro de tu pais o zona de estudio\n")
+    cat("   (un EPSG incorrecto puede situar los puntos en el oceano o en otro continente).\n")
+    cat("2. En el chat con la IA, confirma si la ubicacion geografica es plausible antes de avanzar al Paso 1.3.\n")
+  }
+  cat("------------------------------------------------------------------------------\n\n")
 }
-cat("------------------------------------------------------------------------------\n\n")

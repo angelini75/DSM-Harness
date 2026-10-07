@@ -1,5 +1,6 @@
 {
   "_comment": "DSM-Harness: Plantilla de configuración de usuario (ver docs/CONFIG_SCHEMA.md)",
+  "language": "es",
   "input_file": "01_data/profiles/ejemplo_perfiles.xlsx",
   "skip_rows": 0,
   "has_units_row": false,

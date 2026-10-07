@@ -24,9 +24,9 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
-})
+}))
 
 # 1. Configuración de rutas y parámetros ---------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -57,10 +57,34 @@ if (!exists("input_csv") || is.null(input_csv) || !nzchar(input_csv)) {
 output_csv    <- file.path(base_data_dir, "cleaned_profiles.csv")
 output_report <- file.path(base_rep_dir, "step1_3_pedological_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config", affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   log_entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = SCRIPT_RUN_ID,
@@ -93,13 +117,21 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 } else {
-  cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
+  if (is_en) cat(sprintf("[NOTICE] No config file found at '%s'. Using default auto-detection.\n", config_file)) else cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
 }
 
 if (!file.exists(input_csv)) {
@@ -549,81 +581,162 @@ n_excluded_missing_om <- if (has_bd) sum(!is.na(dat$BD) & !dat$flag_bd_anomaly &
 # 5. Generar Reporte de Texto Edafológico UTF-8 ---------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.3: PROFUNDIDADES Y COHERENCIA EDAFOLOGICA", report_con)
-writeLines("================================================================================", report_con)
-writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
-writeLines(paste("Archivo analizado:", input_csv), report_con)
-writeLines(paste("Total registros evaluados:", nrow(dat)), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE DUPLICADOS Y ARTEFACTOS DE UNION:", report_con)
-writeLines(sprintf("  Filas exactamente duplicadas:               %d (artefactos de union)", exact_dup_count), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE LIMITES VERTICALES Y ESPESORES:", report_con)
-writeLines(sprintf("  Limites invertidos detectados (corregidos): %d", inv_depths_count), report_con)
-writeLines(sprintf("  Horizontes con espesor cero:                %d", zero_thick_count), report_con)
-writeLines(sprintf("  Horizontes con profundidades negativas:     %d", neg_depths_count), report_con)
-writeLines(sprintf("  Horizontes con profundidades NA:            %d", na_depths_count), report_con)
-writeLines(sprintf("  Solapes verticales brutos detectados:       %d", overlaps_raw_count), report_con)
-writeLines(sprintf("  Solapes reales tras deduplicacion:          %d", overlaps_clean_count), report_con)
-if (overlaps_raw_count > overlaps_clean_count) {
-  writeLines(sprintf("  -> NOTA: %d solapes fueron artefactos producidos por filas duplicadas.", 
-                     overlaps_raw_count - overlaps_clean_count), report_con)
-}
-writeLines(sprintf("  Discontinuidades / huecos verticales (gaps): %d", gaps_count), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE COHERENCIA DE TEXTURA:", report_con)
-if (has_texture) {
-  writeLines(sprintf("  Horizontes evaluados con textura:           %d", sum(!is.na(dat$texture_sum))), report_con)
-  writeLines(sprintf("  Rango de suma (Clay+Sand+Silt):             [%.1f, %.1f] %% (Mediana: %.1f %%)", tex_min, tex_max, tex_med), report_con)
-  writeLines(sprintf("  Textura balanceada (95 - 105 %%):             %d horizontes", tex_normal_count), report_con)
-  writeLines(sprintf("  Desbalance moderado (90-95 %% o 105-110 %%):   %d horizontes", tex_mod_count), report_con)
-  writeLines(sprintf("  Desbalance severo (< 90 %% o > 110 %%):        %d horizontes", tex_severe_count), report_con)
-  writeLines(sprintf("  Valores imposibles (<= 0 %% o > 150 %%):       %d horizontes", tex_extreme_count), report_con)
+if (is_en) {
+  writeLines("  DSM-HARNESS | STEP 1.3 REPORT: DEPTHS AND PEDOLOGICAL COHERENCE", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Date:                   ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Analyzed file:          ", input_csv), report_con)
+  writeLines(paste("Total evaluated records:", nrow(dat)), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("DUPLICATES AND JOIN ARTIFACTS AUDIT:", report_con)
+  writeLines(sprintf("  Exactly duplicate rows:                     %d (join artifacts)", exact_dup_count), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("VERTICAL LIMITS AND THICKNESS AUDIT:", report_con)
+  writeLines(sprintf("  Inverted limits detected (corrected):       %d", inv_depths_count), report_con)
+  writeLines(sprintf("  Zero-thickness horizons:                    %d", zero_thick_count), report_con)
+  writeLines(sprintf("  Negative depth horizons:                    %d", neg_depths_count), report_con)
+  writeLines(sprintf("  NA depth horizons:                          %d", na_depths_count), report_con)
+  writeLines(sprintf("  Gross vertical overlaps detected:           %d", overlaps_raw_count), report_con)
+  writeLines(sprintf("  Net vertical overlaps after deduplication:  %d", overlaps_clean_count), report_con)
+  if (overlaps_raw_count > overlaps_clean_count) {
+    writeLines(sprintf("  -> NOTE: %d overlaps were artifacts caused by duplicate rows.", 
+                       overlaps_raw_count - overlaps_clean_count), report_con)
+  }
+  writeLines(sprintf("  Vertical gaps / discontinuities:            %d", gaps_count), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("TEXTURE COHERENCE AUDIT:", report_con)
+  if (has_texture) {
+    writeLines(sprintf("  Horizons evaluated with texture:            %d", sum(!is.na(dat$texture_sum))), report_con)
+    writeLines(sprintf("  Sum range (Clay+Sand+Silt):                 [%.1f, %.1f] %% (Median: %.1f %%)", tex_min, tex_max, tex_med), report_con)
+    writeLines(sprintf("  Balanced texture (95 - 105 %%):               %d horizons", tex_normal_count), report_con)
+    writeLines(sprintf("  Moderate imbalance (90-95 %% or 105-110 %%):   %d horizons", tex_mod_count), report_con)
+    writeLines(sprintf("  Severe imbalance (< 90 %% or > 110 %%):        %d horizons", tex_severe_count), report_con)
+    writeLines(sprintf("  Impossible values (<= 0 %% or > 150 %%):       %d horizons", tex_extreme_count), report_con)
+  } else {
+    writeLines("  Texture variables (Clay, Sand, Silt) absent in dataset: NOT EVALUATED", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("CHEMICAL PROPERTIES AUDIT (pH and SOC):", report_con)
+  if (has_ph) {
+    writeLines(sprintf("  pH in water: Range [%.2f, %.2f] | Anomalous values (< 2.5 or > 11.5): %d", 
+                       min(dat$pH_H2O, na.rm = TRUE), max(dat$pH_H2O, na.rm = TRUE), ph_impossible_count), report_con)
+  } else {
+    writeLines("  pH_H2O: NOT EVALUATED (variable absent)", report_con)
+  }
+  if (has_soc) {
+    writeLines(sprintf("  SOC: Range [%.2f, %.2f] | Negative values: %d | Values > 30 %%: %d",
+                       min(dat$SOC, na.rm = TRUE), max(dat$SOC, na.rm = TRUE), soc_neg_count, soc_high_count), report_con)
+  } else {
+    writeLines("  SOC: NOT EVALUATED (variable absent)", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("BULK DENSITY (BD), CONTRAST AND PTF CALIBRATION:", report_con)
+  ptf_st_en <- if (exists("translate_decision_text")) translate_decision_text(ptf_status, "en") else ptf_status
+  writeLines(sprintf("  BD estimation status: %s", ptf_st_en), report_con)
+  if (has_bd || estimate_bd_req) {
+    writeLines("\nBULK DENSITY (BD) BALANCE AND COVERAGE:", report_con)
+    writeLines(sprintf("  Total evaluated rows:                          %d", nrow(dat)), report_con)
+    writeLines(sprintf("  Valid measured BD (BD_source = 'measured'):    %d (%.1f%%)",
+                       n_bd_measured, (n_bd_measured / nrow(dat)) * 100), report_con)
+    writeLines(sprintf("  PTF estimated BD  (BD_source = 'estimated'):   %d (%.1f%%)",
+                       n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100), report_con)
+    writeLines(sprintf("  Missing BD data   (BD_source = 'missing'):     %d (%.1f%%)",
+                       n_bd_missing, (n_bd_missing / nrow(dat)) * 100), report_con)
+    
+    writeLines("\nCALIBRATION DETAIL AND EXCLUSIONS:", report_con)
+    writeLines(sprintf("  Raw analyzed measurements:                     %d", n_bd_raw_non_na), report_con)
+    writeLines(sprintf("  Excluded due to anomalous value (<= 0 or > 2.65): %d", n_excluded_anomaly), report_con)
+    writeLines(sprintf("  Excluded due to missing OM/SOC predictor:      %d", n_excluded_missing_om), report_con)
+    writeLines(sprintf("  Total observations used in contrast:           %d (Local fit threshold: %d)",
+                       n_val_total, bd_fit_min_n), report_con)
+  }
+  if (nrow(ptf_eval_table) > 0) {
+    writeLines("\nCOMPARATIVE TABLE OF PTFS EVALUATED AGAINST MEASURED DATA:", report_con)
+    writeLines(sprintf("  %-32s | %-6s | %-6s | %-12s | %-12s", "PTF / Model", "n val", "R2", "RMSE (g/cm3)", "Bias (g/cm3)"), report_con)
+    writeLines("  ---------------------------------------------------------------------------------------", report_con)
+    for (i in seq_len(nrow(ptf_eval_table))) {
+      writeLines(sprintf("  %-32s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
+                         ptf_eval_table$PTF[i], ptf_eval_table$n_val[i],
+                         ptf_eval_table$R2[i], ptf_eval_table$RMSE[i], ptf_eval_table$Bias[i]), report_con)
+    }
+  }
 } else {
-  writeLines("  Variables de textura (Clay, Sand, Silt) no presentes en el dataset: NO EVALUADO", report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE PROPIEDADES QUIMICAS (pH y SOC):", report_con)
-if (has_ph) {
-  writeLines(sprintf("  pH en agua: Rango [%.2f, %.2f] | Valores anomalos (< 2.5 o > 11.5): %d", 
-                     min(dat$pH_H2O, na.rm = TRUE), max(dat$pH_H2O, na.rm = TRUE), ph_impossible_count), report_con)
-} else {
-  writeLines("  pH_H2O: NO EVALUADO (variable no presente)", report_con)
-}
-if (has_soc) {
-  writeLines(sprintf("  SOC: Rango [%.2f, %.2f] | Valores negativos: %d | Valores > 30 %%: %d",
-                     min(dat$SOC, na.rm = TRUE), max(dat$SOC, na.rm = TRUE), soc_neg_count, soc_high_count), report_con)
-} else {
-  writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACION DE PTFS:", report_con)
-writeLines(sprintf("  Estado de estimacion BD: %s", ptf_status), report_con)
-if (has_bd || estimate_bd_req) {
-  writeLines("\nBALANCE Y COBERTURA DE DENSIDAD APARENTE (BD):", report_con)
-  writeLines(sprintf("  Filas totales evaluadas:                       %d", nrow(dat)), report_con)
-  writeLines(sprintf("  BD con medicion valida (BD_source = 'measured'):  %d (%.1f%%)",
-                     n_bd_measured, (n_bd_measured / nrow(dat)) * 100), report_con)
-  writeLines(sprintf("  BD estimada por PTF   (BD_source = 'estimated'): %d (%.1f%%)",
-                     n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100), report_con)
-  writeLines(sprintf("  Sin dato de BD        (BD_source = 'missing'):   %d (%.1f%%)",
-                     n_bd_missing, (n_bd_missing / nrow(dat)) * 100), report_con)
-  
-  writeLines("\nDETALLE DE CALIBRACION Y EXCLUSIONES:", report_con)
-  writeLines(sprintf("  Mediciones analizadas brutas:                  %d", n_bd_raw_non_na), report_con)
-  writeLines(sprintf("  Excluidas por valor anomalo (<= 0 o > 2.65):   %d", n_excluded_anomaly), report_con)
-  writeLines(sprintf("  Excluidas por falta de OM/SOC predictor:       %d", n_excluded_missing_om), report_con)
-  writeLines(sprintf("  Total observaciones utilizadas en contraste:   %d (Umbral ajuste local: %d)",
-                     n_val_total, bd_fit_min_n), report_con)
-}
-if (nrow(ptf_eval_table) > 0) {
-  writeLines("\nTABLA COMPARATIVA DE PTFS EVALUADAS CONTRA DATOS MEDIDOS:", report_con)
-  writeLines(sprintf("  %-32s | %-6s | %-6s | %-12s | %-12s", "PTF / Modelo", "n val", "R2", "RMSE (g/cm3)", "Sesgo (g/cm3)"), report_con)
-  writeLines("  ---------------------------------------------------------------------------------------", report_con)
-  for (i in seq_len(nrow(ptf_eval_table))) {
-    writeLines(sprintf("  %-32s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
-                       ptf_eval_table$PTF[i], ptf_eval_table$n_val[i],
-                       ptf_eval_table$R2[i], ptf_eval_table$RMSE[i], ptf_eval_table$Bias[i]), report_con)
+  writeLines("  DSM-HARNESS | REPORTE PASO 1.3: PROFUNDIDADES Y COHERENCIA EDAFOLOGICA", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Archivo analizado:", input_csv), report_con)
+  writeLines(paste("Total registros evaluados:", nrow(dat)), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE DUPLICADOS Y ARTEFACTOS DE UNION:", report_con)
+  writeLines(sprintf("  Filas exactamente duplicadas:               %d (artefactos de union)", exact_dup_count), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE LIMITES VERTICALES Y ESPESORES:", report_con)
+  writeLines(sprintf("  Limites invertidos detectados (corregidos): %d", inv_depths_count), report_con)
+  writeLines(sprintf("  Horizontes con espesor cero:                %d", zero_thick_count), report_con)
+  writeLines(sprintf("  Horizontes con profundidades negativas:     %d", neg_depths_count), report_con)
+  writeLines(sprintf("  Horizontes con profundidades NA:            %d", na_depths_count), report_con)
+  writeLines(sprintf("  Solapes verticales brutos detectados:       %d", overlaps_raw_count), report_con)
+  writeLines(sprintf("  Solapes reales tras deduplicacion:          %d", overlaps_clean_count), report_con)
+  if (overlaps_raw_count > overlaps_clean_count) {
+    writeLines(sprintf("  -> NOTA: %d solapes fueron artefactos producidos por filas duplicadas.", 
+                       overlaps_raw_count - overlaps_clean_count), report_con)
+  }
+  writeLines(sprintf("  Discontinuidades / huecos verticales (gaps): %d", gaps_count), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE COHERENCIA DE TEXTURA:", report_con)
+  if (has_texture) {
+    writeLines(sprintf("  Horizontes evaluados con textura:           %d", sum(!is.na(dat$texture_sum))), report_con)
+    writeLines(sprintf("  Rango de suma (Clay+Sand+Silt):             [%.1f, %.1f] %% (Mediana: %.1f %%)", tex_min, tex_max, tex_med), report_con)
+    writeLines(sprintf("  Textura balanceada (95 - 105 %%):             %d horizontes", tex_normal_count), report_con)
+    writeLines(sprintf("  Desbalance moderado (90-95 %% o 105-110 %%):   %d horizontes", tex_mod_count), report_con)
+    writeLines(sprintf("  Desbalance severo (< 90 %% o > 110 %%):        %d horizontes", tex_severe_count), report_con)
+    writeLines(sprintf("  Valores imposibles (<= 0 %% o > 150 %%):       %d horizontes", tex_extreme_count), report_con)
+  } else {
+    writeLines("  Variables de textura (Clay, Sand, Silt) no presentes en el dataset: NO EVALUADO", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE PROPIEDADES QUIMICAS (pH y SOC):", report_con)
+  if (has_ph) {
+    writeLines(sprintf("  pH en agua: Rango [%.2f, %.2f] | Valores anomalos (< 2.5 o > 11.5): %d", 
+                       min(dat$pH_H2O, na.rm = TRUE), max(dat$pH_H2O, na.rm = TRUE), ph_impossible_count), report_con)
+  } else {
+    writeLines("  pH_H2O: NO EVALUADO (variable no presente)", report_con)
+  }
+  if (has_soc) {
+    writeLines(sprintf("  SOC: Rango [%.2f, %.2f] | Valores negativos: %d | Valores > 30 %%: %d",
+                       min(dat$SOC, na.rm = TRUE), max(dat$SOC, na.rm = TRUE), soc_neg_count, soc_high_count), report_con)
+  } else {
+    writeLines("  SOC: NO EVALUADO (variable no presente)", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("DENSIDAD APARENTE (BD), CONTRASTE Y CALIBRACION DE PTFS:", report_con)
+  writeLines(sprintf("  Estado de estimacion BD: %s", ptf_status), report_con)
+  if (has_bd || estimate_bd_req) {
+    writeLines("\nBALANCE Y COBERTURA DE DENSIDAD APARENTE (BD):", report_con)
+    writeLines(sprintf("  Filas totales evaluadas:                       %d", nrow(dat)), report_con)
+    writeLines(sprintf("  BD con medicion valida (BD_source = 'measured'):  %d (%.1f%%)",
+                       n_bd_measured, (n_bd_measured / nrow(dat)) * 100), report_con)
+    writeLines(sprintf("  BD estimada por PTF   (BD_source = 'estimated'): %d (%.1f%%)",
+                       n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100), report_con)
+    writeLines(sprintf("  Sin dato de BD        (BD_source = 'missing'):   %d (%.1f%%)",
+                       n_bd_missing, (n_bd_missing / nrow(dat)) * 100), report_con)
+    
+    writeLines("\nDETALLE DE CALIBRACION Y EXCLUSIONES:", report_con)
+    writeLines(sprintf("  Mediciones analizadas brutas:                  %d", n_bd_raw_non_na), report_con)
+    writeLines(sprintf("  Excluidas por valor anomalo (<= 0 o > 2.65):   %d", n_excluded_anomaly), report_con)
+    writeLines(sprintf("  Excluidas por falta de OM/SOC predictor:       %d", n_excluded_missing_om), report_con)
+    writeLines(sprintf("  Total observaciones utilizadas en contraste:   %d (Umbral ajuste local: %d)",
+                       n_val_total, bd_fit_min_n), report_con)
+  }
+  if (nrow(ptf_eval_table) > 0) {
+    writeLines("\nTABLA COMPARATIVA DE PTFS EVALUADAS CONTRA DATOS MEDIDOS:", report_con)
+    writeLines(sprintf("  %-32s | %-6s | %-6s | %-12s | %-12s", "PTF / Modelo", "n val", "R2", "RMSE (g/cm3)", "Sesgo (g/cm3)"), report_con)
+    writeLines("  ---------------------------------------------------------------------------------------", report_con)
+    for (i in seq_len(nrow(ptf_eval_table))) {
+      writeLines(sprintf("  %-32s | %-6d | %-6.3f | %-12.3f | %-+12.3f",
+                         ptf_eval_table$PTF[i], ptf_eval_table$n_val[i],
+                         ptf_eval_table$R2[i], ptf_eval_table$RMSE[i], ptf_eval_table$Bias[i]), report_con)
+    }
   }
 }
 writeLines("================================================================================", report_con)
@@ -634,35 +747,72 @@ readr::write_csv(dat, output_csv)
 
 # 7. Resumen en consola --------------------------------------------------------
 cat("\n==============================================================================\n")
-cat("  RESUMEN DE AUDITORÍA EDAFOLÓGICA (Paso 1.3)\n")
-cat("==============================================================================\n")
-cat(sprintf("Registros totales evaluados:          %d\n", nrow(dat)))
-cat(sprintf("Filas duplicadas de unión:            %d\n", exact_dup_count))
-cat(sprintf("Límites invertidos corregidos:        %d\n", inv_depths_count))
-cat(sprintf("Solapes verticales brutos / netos:    %d / %d\n", overlaps_raw_count, overlaps_clean_count))
-if (has_texture) {
-  cat(sprintf("Balance textural (95-105%%):           %d horizontes (Desbalance severo: %d)\n", tex_normal_count, tex_severe_count))
-}
-cat(sprintf("Densidad Aparente - Medida válida:    %d (%.1f%%)\n", n_bd_measured, (n_bd_measured / nrow(dat)) * 100))
-cat(sprintf("Densidad Aparente - Estimada (PTF):   %d (%.1f%%)\n", n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100))
-cat(sprintf("Densidad Aparente - Faltante:         %d (%.1f%%)\n", n_bd_missing, (n_bd_missing / nrow(dat)) * 100))
-cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
-if (nrow(ptf_eval_table) > 0) {
-  cat("Contraste y evaluación de PTFs:\n")
-  for (i in seq_len(nrow(ptf_eval_table))) {
-    cat(sprintf("  - %-30s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
-                ptf_eval_table$PTF[i], ptf_eval_table$RMSE[i], ptf_eval_table$R2[i], ptf_eval_table$n_val[i]))
+if (is_en) {
+  cat("  PEDOLOGICAL AUDIT SUMMARY (Step 1.3)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Total evaluated records:              %d\n", nrow(dat)))
+  cat(sprintf("Join duplicate rows:                  %d\n", exact_dup_count))
+  cat(sprintf("Corrected inverted limits:            %d\n", inv_depths_count))
+  cat(sprintf("Vertical overlaps gross / net:        %d / %d\n", overlaps_raw_count, overlaps_clean_count))
+  if (has_texture) {
+    cat(sprintf("Texture balance (95-105%%):            %d horizons (Severe imbalance: %d)\n", tex_normal_count, tex_severe_count))
   }
-}
-cat(sprintf("[OK] Dataset limpio guardado en:      %s\n", output_csv))
-cat(sprintf("[OK] Reporte edafológico guardado en: %s\n", output_report))
-if (decision_logged) {
-  cat(sprintf("[OK] Registro de decisiones en:       %s\n", decisions_log))
-}
-cat("==============================================================================\n\n")
+  cat(sprintf("Bulk Density - Valid measured:        %d (%.1f%%)\n", n_bd_measured, (n_bd_measured / nrow(dat)) * 100))
+  cat(sprintf("Bulk Density - Estimated (PTF):       %d (%.1f%%)\n", n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100))
+  cat(sprintf("Bulk Density - Missing:               %d (%.1f%%)\n", n_bd_missing, (n_bd_missing / nrow(dat)) * 100))
+  ptf_st_en <- if (exists("translate_decision_text")) translate_decision_text(ptf_status, "en") else ptf_status
+  cat(sprintf("Bulk Density Status:                  %s\n", ptf_st_en))
+  if (nrow(ptf_eval_table) > 0) {
+    cat("PTF evaluation and contrast:\n")
+    for (i in seq_len(nrow(ptf_eval_table))) {
+      cat(sprintf("  - %-30s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
+                  ptf_eval_table$PTF[i], ptf_eval_table$RMSE[i], ptf_eval_table$R2[i], ptf_eval_table$n_val[i]))
+    }
+  }
+  cat(sprintf("[OK] Clean dataset saved to:          %s\n", output_csv))
+  cat(sprintf("[OK] Pedological report saved to:     %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Decisions log at:                %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
 
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa el reporte edafológico guardado en 'reports/step1_3_pedological_report.txt'.\n")
-cat("2. En el chat con la IA, comenta los resultados de texturas, solapes y BD.\n")
-cat("------------------------------------------------------------------------------\n\n")
+  cat("------------------------------------------------------------------------------\n")
+  cat("STUDENT INSTRUCTIONS:\n")
+  cat("1. Review the pedological report saved to 'reports/step1_3_pedological_report.txt'.\n")
+  cat("2. In the AI chat, discuss texture, overlap, and BD results.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+} else {
+  cat("  RESUMEN DE AUDITORÍA EDAFOLÓGICA (Paso 1.3)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Registros totales evaluados:          %d\n", nrow(dat)))
+  cat(sprintf("Filas duplicadas de unión:            %d\n", exact_dup_count))
+  cat(sprintf("Límites invertidos corregidos:        %d\n", inv_depths_count))
+  cat(sprintf("Solapes verticales brutos / netos:    %d / %d\n", overlaps_raw_count, overlaps_clean_count))
+  if (has_texture) {
+    cat(sprintf("Balance textural (95-105%%):           %d horizontes (Desbalance severo: %d)\n", tex_normal_count, tex_severe_count))
+  }
+  cat(sprintf("Densidad Aparente - Medida válida:    %d (%.1f%%)\n", n_bd_measured, (n_bd_measured / nrow(dat)) * 100))
+  cat(sprintf("Densidad Aparente - Estimada (PTF):   %d (%.1f%%)\n", n_bd_estimated, (n_bd_estimated / nrow(dat)) * 100))
+  cat(sprintf("Densidad Aparente - Faltante:         %d (%.1f%%)\n", n_bd_missing, (n_bd_missing / nrow(dat)) * 100))
+  cat(sprintf("Estado Densidad Aparente:             %s\n", ptf_status))
+  if (nrow(ptf_eval_table) > 0) {
+    cat("Contraste y evaluación de PTFs:\n")
+    for (i in seq_len(nrow(ptf_eval_table))) {
+      cat(sprintf("  - %-30s: RMSE = %.3f g/cm3 | R2 = %.3f (n=%d)\n",
+                  ptf_eval_table$PTF[i], ptf_eval_table$RMSE[i], ptf_eval_table$R2[i], ptf_eval_table$n_val[i]))
+    }
+  }
+  cat(sprintf("[OK] Dataset limpio guardado en:      %s\n", output_csv))
+  cat(sprintf("[OK] Reporte edafológico guardado en: %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Registro de decisiones en:       %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
+
+  cat("------------------------------------------------------------------------------\n")
+  cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
+  cat("1. Revisa el reporte edafológico guardado en 'reports/step1_3_pedological_report.txt'.\n")
+  cat("2. En el chat con la IA, comenta los resultados de texturas, solapes y BD.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+}
+

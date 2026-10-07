@@ -31,8 +31,14 @@ tags: [dsm-harness, soil-mapping, opennsis, fao]
      4. **Rescate de Errores (Token Saver)**: Copiar solo las últimas 2-4 líneas de código y el error en rojo. La IA entregará el snippet mínimo de reemplazo en 1 línea de diagnóstico.
      5. **Paso 0**: Instanciar proyecto ejecutando `source("02_scripts/00_new_project.R")`, colocar el dataset en `projects/<nombre>/data/` y correr `source("projects/<nombre>/run_step.R"); run_step("0")`.
 
-1. **Multilingual Policy & Scope Directive**:
+1. **Multilingual Policy & Scope Directive (#49)**:
    - Internal contracts in English. Assistant interaction, code comments, and pedological explanations MUST always be in the **user's preferred language** (default: **Spanish**).
+   - **English User Protocol**: If the participant initiates interaction in English or explicitly requests English:
+     - All AI assistant responses, guidance, table headers, observation instructions, and questions MUST be in **English**.
+     - Set `"language": "en"` in `projects/<name>/config.json`.
+     - In Step 0 / Step 1.1, formulate the mandatory completeness inquiry in English:
+       > *"Are these all the columns/properties you expected, or are there more? Is anything missing, or would you like to adjust any mapping?"*
+     - All R scripts will dynamically detect `"language": "en"` and emit console logs, companion `.txt` reports, `decisions_log.csv` entries, and Step 5 HTML reports in **English**.
    - **ABSOLUTE BAN on Spectroscopy (DRS) (#42)**: Soil spectroscopy is strictly OUT OF SCOPE for DSM-Harness. AI assistants must NEVER propose, suggest, or include spectroscopy as a stage, even if mentioned by the user or present in raw files. The workflow proceeds directly: Profiles (Etapa 1) -> Covariables (Etapa 2) -> Modeling (Etapa 3) -> Prediction & OpenNSIS COG (Etapa 4) -> Final Report (Etapa 5).
 
 2. **Visual-First & Evidence-Only Reporting**:

@@ -689,12 +689,12 @@ test_that("Issue #45: Step 5 parameterized R Markdown report template and runner
   
   # 2. Check required sections in Rmd template
   rmd_lines <- readLines("02_scripts/05_variable_report.Rmd", encoding = "UTF-8")
-  expect_true(any(grepl("## 1\\. Sitios de observación", rmd_lines)))
-  expect_true(any(grepl("## 2\\. Distribución de los valores", rmd_lines)))
-  expect_true(any(grepl("## 3\\. Modelo y desempeño", rmd_lines)))
-  expect_true(any(grepl("## 4\\. Validación", rmd_lines)))
-  expect_true(any(grepl("## 5\\. Mapas finales", rmd_lines)))
-  expect_true(any(grepl("## Observaciones y límites", rmd_lines)))
+  expect_true(any(grepl("Sitios de observación", rmd_lines)))
+  expect_true(any(grepl("Distribución de los valores", rmd_lines)))
+  expect_true(any(grepl("Modelo y desempeño", rmd_lines)))
+  expect_true(any(grepl("Validación", rmd_lines)))
+  expect_true(any(grepl("Mapas finales", rmd_lines)))
+  expect_true(any(grepl("Observaciones y límites", rmd_lines)))
   
   # 3. Explicit note: red line is 1:1, NOT a regression
   expect_true(any(grepl("La línea roja es la recta 1:1 \\(predicho = observado\\), no una regresión de los puntos", rmd_lines)))
@@ -803,6 +803,161 @@ test_that("Issue #48: Agent neutrality, no CRS qualitative bias, no unbacked pro
   panel_lines <- readLines("agents/dsm-panel.md", encoding = "UTF-8")
   expect_true(any(grepl("PROHIBICIÓN DE ESCALAS ANALÍTICAS SIN RESPALDO Y JUICIOS DE AJUSTE (#48)", panel_lines, fixed = TRUE)))
   expect_true(any(grepl("código del proyecto nacional", panel_lines, fixed = TRUE)))
+})
+
+test_that("Issue #49: [i18n] Bilingual English and Spanish workflow, reports, logs, and HTML rendering", {
+  source("02_scripts/00_i18n.R", local = FALSE)
+  
+  # 1. Unit tests for 00_i18n.R
+  expect_equal(get_project_language(list(language = "en")), "en")
+  expect_equal(get_project_language(list(language = "es")), "es")
+  expect_equal(get_project_language(list()), "es")
+  expect_equal(get_project_language(NULL), "es")
+  
+  expect_equal(i18n_not_evaluated("es"), "NO EVALUADO")
+  expect_equal(i18n_not_evaluated("en"), "NOT EVALUATED")
+  expect_equal(i18n_present("en"), "PRESENT")
+  expect_equal(i18n_missing("en"), "MISSING")
+  
+  expect_equal(translate_decision_text("Reporte final de mapeo", "en"), "Final mapping report")
+  expect_equal(translate_decision_text("Auditoría de variables BYOD", "en"), "BYOD variable audit")
+  expect_equal(translate_decision_text("Auditoría espacial de coordenadas", "en"), "Spatial coordinate audit")
+  expect_equal(translate_decision_text("Auditoría pedológica y vertical", "en"), "Pedological and vertical audit")
+  expect_equal(translate_decision_text("Extracción de covariables", "en"), "Covariate extraction")
+  expect_equal(translate_decision_text("Modelado espacial QRF", "en"), "Spatial QRF modeling")
+  expect_equal(translate_decision_text("Exportación COG OpenNSIS", "en"), "OpenNSIS COG export")
+  
+  enum_err_en <- format_config_enum_error("my_key", "bad_val", c("a", "b"), "en")
+  expect_true(grepl("\\[CONFIG ERROR\\] Invalid value 'bad_val' for 'my_key'", enum_err_en))
+  
+  enum_err_es <- format_config_enum_error("my_key", "bad_val", c("a", "b"), "es")
+  expect_true(grepl("\\[ERROR CONFIG\\] Valor no válido 'bad_val' para 'my_key'", enum_err_es))
+  
+  # 2. Test isolated project in English
+  en_proj <- "test_i18n_en_proj"
+  proj_path <- file.path("projects", en_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- en_proj
+  project_language <<- "en"
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  # Verify project files
+  expect_true(file.exists(file.path(proj_path, "scripts", "00_i18n.R")))
+  expect_true(file.exists(file.path(proj_path, "scripts", "05_variable_report.Rmd")))
+  
+  cfg_read <- jsonlite::fromJSON(file.path(proj_path, "config.json"), simplifyVector = FALSE)
+  expect_equal(cfg_read$language, "en")
+  
+  run_step_lines <- readLines(file.path(proj_path, "run_step.R"), encoding = "UTF-8")
+  expect_true(any(grepl("Step runner for:", run_step_lines)))
+  expect_true(any(grepl("Available commands:", run_step_lines)))
+  
+  # 3. Test Step 0 in English
+  df_synth <- data.frame(
+    id_perfil = paste0("P", 1:30),
+    x_coord = runif(30, -60, -58),
+    y_coord = runif(30, -35, -33),
+    prof_desde = 0,
+    prof_hasta = 30,
+    carbono_org = runif(30, 0.5, 3.5),
+    ph_suelo = runif(30, 5.5, 7.5),
+    arcilla_pct = runif(30, 15, 35)
+  )
+  write.csv(df_synth, file.path(proj_path, "data", "perfiles.csv"), row.names = FALSE)
+  
+  cfg_read$input_file <- file.path(proj_path, "data", "perfiles.csv")
+  jsonlite::write_json(cfg_read, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  PROJECT_DIR <<- proj_path
+  CURRENT_PROJECT_DIR <<- proj_path
+  PROJECT_NAME <<- en_proj
+  input_file <<- file.path(proj_path, "data", "perfiles.csv")
+  output_report <<- file.path(proj_path, "reports", "data_inspection_report.txt")
+  
+  source(file.path(proj_path, "scripts", "00_inspect_data.R"), local = new.env())
+  
+  step0_rep <- file.path(proj_path, "reports", "data_inspection_report.txt")
+  expect_true(file.exists(step0_rep))
+  step0_lines <- readLines(step0_rep, encoding = "UTF-8")
+  expect_true(any(grepl("DSM-HARNESS: COMPACT STRUCTURAL INSPECTION REPORT (BYOD)", step0_lines, fixed = TRUE)))
+  expect_true(any(grepl("Date and time:", step0_lines, fixed = TRUE)))
+  expect_true(any(grepl("END OF COMPACT INSPECTION REPORT", step0_lines, fixed = TRUE)))
+  expect_false(any(grepl("REPORTE COMPACTO DE INSPECCION ESTRUCTURAL", step0_lines, fixed = TRUE)))
+  
+  # 4. Test Step 1.1 in English
+  cfg_read$column_mapping <- list(
+    profile_code = "id_perfil",
+    longitude = "x_coord",
+    latitude = "y_coord",
+    upper = "prof_desde",
+    lower = "prof_hasta",
+    SOC = "carbono_org",
+    pH_H2O = "ph_suelo"
+  )
+  cfg_read$keep_columns <- c("arcilla_pct")
+  jsonlite::write_json(cfg_read, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  source(file.path(proj_path, "scripts", "01_1_byod_audit.R"), local = new.env())
+  
+  step11_rep <- file.path(proj_path, "reports", "step1_1_variables_report.txt")
+  expect_true(file.exists(step11_rep))
+  step11_lines <- readLines(step11_rep, encoding = "UTF-8")
+  expect_true(any(grepl("DSM-HARNESS | STEP 1.1 REPORT: VARIABLE MAPPING AND SELECTION", step11_lines, fixed = TRUE)))
+  expect_true(any(grepl("Unique profile count:", step11_lines, fixed = TRUE)))
+  expect_true(any(grepl("Additional columns preserved (keep_columns):", step11_lines, fixed = TRUE)))
+  expect_false(any(grepl("REPORTE PASO 1.1: MAPEO Y SELECCION DE VARIABLES", step11_lines, fixed = TRUE)))
+  
+  # 5. Test Step 5 in English
+  synth_cov <- data.frame(
+    profile_code = paste0("P", 1:30),
+    longitude = runif(30, 21.0, 22.0),
+    latitude = runif(30, 41.0, 42.0),
+    pH_H2O = rnorm(30, mean = 6.5, sd = 0.8),
+    cov1 = runif(30, 100, 200),
+    cov2 = runif(30, 0, 50)
+  )
+  write.csv(synth_cov, file.path(proj_path, "data", "step2_covariates.csv"), row.names = FALSE)
+  
+  cfg_read$target_property <- "pH_H2O"
+  cfg_read$target_depth_upper <- 0
+  cfg_read$target_depth_lower <- 30
+  cfg_read$country_code <- "MKD"
+  cfg_read$project_code <- "NACIONAL"
+  cfg_read$target_unit <- "pH units"
+  jsonlite::write_json(cfg_read, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  source(file.path(proj_path, "scripts", "05_render_report.R"), local = new.env())
+  
+  step5_rep <- file.path(proj_path, "reports", "step5_report_summary.txt")
+  expect_true(file.exists(step5_rep))
+  step5_lines <- readLines(step5_rep, encoding = "UTF-8")
+  expect_true(any(grepl("DSM-HARNESS | FINAL SOIL MAPPING REPORT SUMMARY (STEP 5)", step5_lines, fixed = TRUE)))
+  expect_true(any(grepl("Mapped variable:", step5_lines, fixed = TRUE)))
+  expect_true(any(grepl("Generated HTML file:", step5_lines, fixed = TRUE)))
+  expect_false(any(grepl("REPORTE RESUMEN DEL INFORME FINAL DE MAPEO", step5_lines, fixed = TRUE)))
+  
+  html_file <- file.path(proj_path, "reports", "report_MKD-NACIONAL-pH_H2O-0-30.html")
+  expect_true(file.exists(html_file))
+  html_lines <- readLines(html_file, encoding = "UTF-8")
+  expect_true(any(grepl("1\\. Observation Sites", html_lines)))
+  expect_true(any(grepl("2\\. Value Distribution", html_lines)))
+  expect_true(any(grepl("3\\. Model &amp; Performance", html_lines)))
+  expect_true(any(grepl("4\\. Validation", html_lines)))
+  expect_true(any(grepl("5\\. Final Maps", html_lines)))
+  expect_true(any(grepl("Observations &amp; Caveats", html_lines)))
+  expect_true(any(grepl("The red line is the 1:1 line", html_lines)))
+  expect_false(any(grepl("Sitios de observación", html_lines)))
+  expect_false(any(grepl("Distribución de los valores", html_lines)))
+  
+  # 6. Verify decisions_log.csv in English
+  log_file <- file.path(proj_path, "decisions_log.csv")
+  expect_true(file.exists(log_file))
+  log_df <- read.csv(log_file, stringsAsFactors = FALSE)
+  expect_true(any(log_df$criterion == "Final mapping report"))
+  expect_true(any(log_df$criterion == "Preserve additional columns"))
+  expect_false(any(log_df$criterion == "Reporte final de mapeo"))
+  expect_false(any(log_df$criterion == "Conservación de columnas adicionales"))
 })
 
 

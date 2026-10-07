@@ -23,10 +23,10 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
   library(readxl)
-})
+}))
 
 # 1. Configuración de rutas y validación de esquema ----------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -55,10 +55,34 @@ mapping_csv   <- file.path(base_data_dir, "mapping_confirmed.csv")
 output_csv    <- file.path(base_data_dir, "step1_1_variables.csv")
 output_report <- file.path(base_rep_dir, "step1_1_variables_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 SCRIPT_RUN_ID <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config", affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   log_entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = SCRIPT_RUN_ID,
@@ -87,7 +111,7 @@ record_decision <- function(step, criterion, decision, source = "user_config", a
 
 # Validación formal de user_config.json contra docs/CONFIG_SCHEMA.md
 known_config_keys <- c(
-  "_comment", "input_file", "skip_rows", "has_units_row", "site_sheet", "site_key",
+  "_comment", "language", "input_file", "skip_rows", "has_units_row", "site_sheet", "site_key",
   "horiz_sheet", "join_key", "horizon_sheets", "duplicate_action", "duplicate_key_strategy",
   "allow_missing_essentials", "sand_sum", "keep_columns", "column_mapping",
   "om_to_soc_factor", "source_crs", "outlier_action", "spatial_outlier_action", "outlier_ids",
@@ -102,58 +126,85 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
       
       cfg_keys <- setdiff(names(user_cfg), known_config_keys)
       if (length(cfg_keys) > 0) {
-        cat(sprintf("\n[AVISO CONFIG]: Se detectaron claves no reconocidas en '%s':\n  [%s]\n",
-                    config_file, paste(cfg_keys, collapse = ", ")))
-        cat("  -> Consulta 'docs/CONFIG_SCHEMA.md' para ver el esquema canónico admitido.\n\n")
+        if (is_en) {
+          cat(sprintf("\n[CONFIG NOTICE]: Unrecognized keys detected in '%s':\n  [%s]\n",
+                      config_file, paste(cfg_keys, collapse = ", ")))
+          cat("  -> Check 'docs/CONFIG_SCHEMA.md' for supported canonical schema.\n\n")
+        } else {
+          cat(sprintf("\n[AVISO CONFIG]: Se detectaron claves no reconocidas en '%s':\n  [%s]\n",
+                      config_file, paste(cfg_keys, collapse = ", ")))
+          cat("  -> Consulta 'docs/CONFIG_SCHEMA.md' para ver el esquema canónico admitido.\n\n")
+        }
       }
       
       applied_keys <- intersect(names(user_cfg), known_config_keys)
-      cat(sprintf("[*] Parámetros aplicados: [%s]\n", paste(applied_keys, collapse = ", ")))
+      if (is_en) {
+        cat(sprintf("[*] Applied parameters: [%s]\n", paste(applied_keys, collapse = ", ")))
+      } else {
+        cat(sprintf("[*] Parámetros aplicados: [%s]\n", paste(applied_keys, collapse = ", ")))
+      }
       
       # Validación estricta de enumeraciones (Issue #47)
       if (!is.null(user_cfg$duplicate_key_strategy)) {
         val_dks <- as.character(user_cfg$duplicate_key_strategy)
         allowed_dks <- c("fail", "average", "keep_first")
         if (!(val_dks %in% allowed_dks)) {
-          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_key_strategy': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
-                       val_dks, paste(allowed_dks, collapse = ", ")))
+          err_msg <- if (exists("format_config_enum_error")) format_config_enum_error("duplicate_key_strategy", val_dks, allowed_dks, lang) else {
+            if (is_en) sprintf("[CONFIG ERROR]: Invalid value for 'duplicate_key_strategy': '%s'.\n  Valid values according to 'docs/CONFIG_SCHEMA.md': [%s].", val_dks, paste(allowed_dks, collapse = ", ")) else sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_key_strategy': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].", val_dks, paste(allowed_dks, collapse = ", "))
+          }
+          stop(err_msg)
         }
       }
       if (!is.null(user_cfg$duplicate_action)) {
         val_da <- as.character(user_cfg$duplicate_action)
         allowed_da <- c("preserve_and_flag", "average", "keep_first")
         if (!(val_da %in% allowed_da)) {
-          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
-                       val_da, paste(allowed_da, collapse = ", ")))
+          err_msg <- if (exists("format_config_enum_error")) format_config_enum_error("duplicate_action", val_da, allowed_da, lang) else {
+            if (is_en) sprintf("[CONFIG ERROR]: Invalid value for 'duplicate_action': '%s'.\n  Valid values according to 'docs/CONFIG_SCHEMA.md': [%s].", val_da, paste(allowed_da, collapse = ", ")) else sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].", val_da, paste(allowed_da, collapse = ", "))
+          }
+          stop(err_msg)
         }
       }
       if (!is.null(user_cfg$outlier_action)) {
         val_oa <- as.character(user_cfg$outlier_action)
         allowed_oa <- c("flag", "exclude", "keep")
         if (!(val_oa %in% allowed_oa)) {
-          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
-                       val_oa, paste(allowed_oa, collapse = ", ")))
+          err_msg <- if (exists("format_config_enum_error")) format_config_enum_error("outlier_action", val_oa, allowed_oa, lang) else {
+            if (is_en) sprintf("[CONFIG ERROR]: Invalid value for 'outlier_action': '%s'.\n  Valid values according to 'docs/CONFIG_SCHEMA.md': [%s].", val_oa, paste(allowed_oa, collapse = ", ")) else sprintf("[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].", val_oa, paste(allowed_oa, collapse = ", "))
+          }
+          stop(err_msg)
         }
       }
       if (!is.null(user_cfg$spatial_outlier_action)) {
         val_soa <- as.character(user_cfg$spatial_outlier_action)
         allowed_soa <- c("flag", "exclude", "keep")
         if (!(val_soa %in% allowed_soa)) {
-          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'spatial_outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
-                       val_soa, paste(allowed_soa, collapse = ", ")))
+          err_msg <- if (exists("format_config_enum_error")) format_config_enum_error("spatial_outlier_action", val_soa, allowed_soa, lang) else {
+            if (is_en) sprintf("[CONFIG ERROR]: Invalid value for 'spatial_outlier_action': '%s'.\n  Valid values according to 'docs/CONFIG_SCHEMA.md': [%s].", val_soa, paste(allowed_soa, collapse = ", ")) else sprintf("[ERROR CONFIG]: Valor no válido para 'spatial_outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].", val_soa, paste(allowed_soa, collapse = ", "))
+          }
+          stop(err_msg)
         }
       }
     }
   }, error = function(e) {
-    if (grepl("\\[ERROR CONFIG\\]", e$message)) stop(e$message)
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (grepl("\\[ERROR CONFIG\\]|\\[CONFIG ERROR\\]", e$message)) stop(e$message)
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 } else {
-  cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
+  if (is_en) cat(sprintf("[NOTICE] No config file found at '%s'. Using default auto-detection.\n", config_file)) else cat(sprintf("[AVISO] No se encontró archivo de configuración en '%s'. Usando autodetección predeterminada.\n", config_file))
 }
 
 # Determinar archivo de entrada
@@ -714,63 +765,126 @@ cols_descartadas <- setdiff(cols_raw, union(mapping$Original, extra_cols_added))
 # 6. Generar Reporte de Texto UTF-8 100% Verídico ------------------------------
 report_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.1: MAPEO Y SELECCION DE VARIABLES", report_con)
-writeLines("================================================================================", report_con)
-writeLines(paste("Fecha y hora:        ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
-writeLines(paste("Archivo de entrada:  ", input_file), report_con)
-writeLines(paste("Estructura de carga: ", join_info), report_con)
-writeLines(paste("Dimensiones iniciales:", nrow(dat_raw), "filas x", ncol(dat_raw), "columnas"), report_con)
-writeLines(paste("Dimensiones filtradas:", nrow(dat_step1), "filas x", ncol(dat_step1), "variables DSM"), report_con)
-if ("profile_code" %in% names(dat_step1)) {
-  writeLines(paste("Numero de perfiles unicos:", n_profiles), report_con)
-} else {
-  writeLines("Numero de perfiles unicos: NO EVALUADO (falta mapear 'profile_code')", report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("AUDITORIA DE CLAVES Y RELACIONES:", report_con)
-writeLines(sprintf("  Claves duplicadas en hoja de sitios:       %d", dup_site_count), report_con)
-if (evaluated_duplicates) {
-  writeLines(sprintf("  Claves duplicadas/replicas en horizontes:  %d", dup_key_count), report_con)
-  writeLines(sprintf("  Tratamiento de duplicados aplicado:        %s", duplicate_handling_applied), report_con)
-} else {
-  writeLines("  Claves duplicadas/replicas en horizontes:  NO EVALUADO (sin clave de horizonte)", report_con)
-  writeLines("  Tratamiento de duplicados aplicado:        NO APLICA", report_con)
-}
-writeLines(sprintf("  Filas exactamente duplicadas post-union:   %d", exact_dup_rows), report_con)
-if (!is.na(orphan_horizons)) {
-  writeLines(sprintf("  Horizontes huerfanos (sin perfil en sitios): %d", orphan_horizons), report_con)
-  writeLines(sprintf("  Sitios sin horizontes registrados:          %d", orphan_sites), report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("VARIABLES FUNDAMENTALES EVALUADAS:", report_con)
-for (ev in essential_vars) {
-  status_ev <- if (ev %in% names(dat_step1)) sprintf("PRESENTE (mapeada desde '%s')", rename_vector[ev]) else "FALTANTE"
-  writeLines(sprintf("  %-15s : %s", ev, status_ev), report_con)
-}
-status_coord <- if (has_coords) "PRESENTE" else "FALTANTE"
-writeLines(sprintf("  %-15s : %s", "coordenadas", status_coord), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("ESTADO DE PROPIEDADES COMPLEMENTARIAS:", report_con)
-writeLines(paste("  Derivacion de SOC desde OM:", soc_conversion_note), report_con)
-if (sand_sum_applied) {
-  writeLines(sprintf("  Suma de fracciones de arena: APLICADA (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
-}
-if (length(extra_cols_added) > 0) {
-  writeLines(sprintf("  Columnas adicionales preservadas (keep_columns): %s", paste(extra_cols_added, collapse = ", ")), report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("TABLA DE CORRESPONDENCIA DE VARIABLES:", report_con)
-for (i in seq_len(nrow(mapping))) {
-  writeLines(sprintf("  %-35s ---> %s", mapping$Original[i], mapping$Estandar_DSM[i]), report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines(sprintf("VARIABLES DESCARTADAS (%d en total):", length(cols_descartadas)), report_con)
-if (length(cols_descartadas) > 0) {
-  for (cd in cols_descartadas) {
-    writeLines(sprintf("  - %s", cd), report_con)
+if (is_en) {
+  writeLines("  DSM-HARNESS | STEP 1.1 REPORT: VARIABLE MAPPING AND SELECTION", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Date and time:        ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Input file:           ", input_file), report_con)
+  writeLines(paste("Loading structure:    ", join_info), report_con)
+  writeLines(paste("Initial dimensions:   ", nrow(dat_raw), "rows x", ncol(dat_raw), "columns"), report_con)
+  writeLines(paste("Filtered dimensions:  ", nrow(dat_step1), "rows x", ncol(dat_step1), "DSM variables"), report_con)
+  if ("profile_code" %in% names(dat_step1)) {
+    writeLines(paste("Unique profile count: ", n_profiles), report_con)
+  } else {
+    writeLines("Unique profile count: NOT EVALUATED ('profile_code' unmapped)", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("KEY AND RELATION AUDIT:", report_con)
+  writeLines(sprintf("  Duplicate keys in site table:              %d", dup_site_count), report_con)
+  if (evaluated_duplicates) {
+    writeLines(sprintf("  Duplicate keys/replicates in horizons:     %d", dup_key_count), report_con)
+    dup_hand_en <- if (exists("translate_decision_text")) translate_decision_text(duplicate_handling_applied, "en") else duplicate_handling_applied
+    writeLines(sprintf("  Duplicate handling applied:                %s", dup_hand_en), report_con)
+  } else {
+    writeLines("  Duplicate keys/replicates in horizons:     NOT EVALUATED (no horizon key)", report_con)
+    writeLines("  Duplicate handling applied:                NOT APPLICABLE", report_con)
+  }
+  writeLines(sprintf("  Exactly duplicate rows post-join:          %d", exact_dup_rows), report_con)
+  if (!is.na(orphan_horizons)) {
+    writeLines(sprintf("  Orphan horizons (no profile in sites):     %d", orphan_horizons), report_con)
+    writeLines(sprintf("  Sites without registered horizons:         %d", orphan_sites), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("EVALUATED ESSENTIAL VARIABLES:", report_con)
+  for (ev in essential_vars) {
+    status_ev <- if (ev %in% names(dat_step1)) sprintf("PRESENT (mapped from '%s')", rename_vector[ev]) else "MISSING"
+    writeLines(sprintf("  %-15s : %s", ev, status_ev), report_con)
+  }
+  status_coord <- if (has_coords) "PRESENT" else "MISSING"
+  writeLines(sprintf("  %-15s : %s", "coordinates", status_coord), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("COMPLEMENTARY PROPERTIES STATUS:", report_con)
+  soc_note_en <- if (exists("translate_decision_text")) translate_decision_text(soc_conversion_note, "en") else soc_conversion_note
+  writeLines(paste("  SOC derivation from OM:", soc_note_en), report_con)
+  if (sand_sum_applied) {
+    writeLines(sprintf("  Sum of sand fractions: APPLIED (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
+  }
+  if (length(extra_cols_added) > 0) {
+    writeLines(sprintf("  Additional columns preserved (keep_columns): %s", paste(extra_cols_added, collapse = ", ")), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("VARIABLE CORRESPONDENCE TABLE:", report_con)
+  for (i in seq_len(nrow(mapping))) {
+    writeLines(sprintf("  %-35s ---> %s", mapping$Original[i], mapping$Estandar_DSM[i]), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines(sprintf("DISCARDED VARIABLES (%d total):", length(cols_descartadas)), report_con)
+  if (length(cols_descartadas) > 0) {
+    for (cd in cols_descartadas) {
+      writeLines(sprintf("  - %s", cd), report_con)
+    }
+  } else {
+    writeLines("  (No variables were discarded)", report_con)
   }
 } else {
-  writeLines("  (Ninguna variable fue descartada)", report_con)
+  writeLines("  DSM-HARNESS | REPORTE PASO 1.1: MAPEO Y SELECCION DE VARIABLES", report_con)
+  writeLines("================================================================================", report_con)
+  writeLines(paste("Fecha y hora:        ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
+  writeLines(paste("Archivo de entrada:  ", input_file), report_con)
+  writeLines(paste("Estructura de carga: ", join_info), report_con)
+  writeLines(paste("Dimensiones iniciales:", nrow(dat_raw), "filas x", ncol(dat_raw), "columnas"), report_con)
+  writeLines(paste("Dimensiones filtradas:", nrow(dat_step1), "filas x", ncol(dat_step1), "variables DSM"), report_con)
+  if ("profile_code" %in% names(dat_step1)) {
+    writeLines(paste("Numero de perfiles unicos:", n_profiles), report_con)
+  } else {
+    writeLines("Numero de perfiles unicos: NO EVALUADO (falta mapear 'profile_code')", report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("AUDITORIA DE CLAVES Y RELACIONES:", report_con)
+  writeLines(sprintf("  Claves duplicadas en hoja de sitios:       %d", dup_site_count), report_con)
+  if (evaluated_duplicates) {
+    writeLines(sprintf("  Claves duplicadas/replicas en horizontes:  %d", dup_key_count), report_con)
+    writeLines(sprintf("  Tratamiento de duplicados aplicado:        %s", duplicate_handling_applied), report_con)
+  } else {
+    writeLines("  Claves duplicadas/replicas en horizontes:  NO EVALUADO (sin clave de horizonte)", report_con)
+    writeLines("  Tratamiento de duplicados aplicado:        NO APLICA", report_con)
+  }
+  writeLines(sprintf("  Filas exactamente duplicadas post-union:   %d", exact_dup_rows), report_con)
+  if (!is.na(orphan_horizons)) {
+    writeLines(sprintf("  Horizontes huerfanos (sin perfil en sitios): %d", orphan_horizons), report_con)
+    writeLines(sprintf("  Sitios sin horizontes registrados:          %d", orphan_sites), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("VARIABLES FUNDAMENTALES EVALUADAS:", report_con)
+  for (ev in essential_vars) {
+    status_ev <- if (ev %in% names(dat_step1)) sprintf("PRESENTE (mapeada desde '%s')", rename_vector[ev]) else "FALTANTE"
+    writeLines(sprintf("  %-15s : %s", ev, status_ev), report_con)
+  }
+  status_coord <- if (has_coords) "PRESENTE" else "FALTANTE"
+  writeLines(sprintf("  %-15s : %s", "coordenadas", status_coord), report_con)
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("ESTADO DE PROPIEDADES COMPLEMENTARIAS:", report_con)
+  writeLines(paste("  Derivacion de SOC desde OM:", soc_conversion_note), report_con)
+  if (sand_sum_applied) {
+    writeLines(sprintf("  Suma de fracciones de arena: APLICADA (%s -> Sand)", paste(user_cfg$sand_sum, collapse = " + ")), report_con)
+  }
+  if (length(extra_cols_added) > 0) {
+    writeLines(sprintf("  Columnas adicionales preservadas (keep_columns): %s", paste(extra_cols_added, collapse = ", ")), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines("TABLA DE CORRESPONDENCIA DE VARIABLES:", report_con)
+  for (i in seq_len(nrow(mapping))) {
+    writeLines(sprintf("  %-35s ---> %s", mapping$Original[i], mapping$Estandar_DSM[i]), report_con)
+  }
+  writeLines("--------------------------------------------------------------------------------", report_con)
+  writeLines(sprintf("VARIABLES DESCARTADAS (%d en total):", length(cols_descartadas)), report_con)
+  if (length(cols_descartadas) > 0) {
+    for (cd in cols_descartadas) {
+      writeLines(sprintf("  - %s", cd), report_con)
+    }
+  } else {
+    writeLines("  (Ninguna variable fue descartada)", report_con)
+  }
 }
 writeLines("================================================================================", report_con)
 close(report_con)
@@ -780,40 +894,81 @@ readr::write_csv(dat_step1, output_csv)
 
 # 8. Resumen en consola e instrucción ------------------------------------------
 cat("\n==============================================================================\n")
-cat("  TABLA DE MAPEO DE VARIABLES (Paso 1.1)\n")
-cat("==============================================================================\n")
-for (i in seq_len(nrow(mapping))) {
-  cat(sprintf("  %-35s ---> %s\n", mapping$Original[i], mapping$Estandar_DSM[i]))
-}
-cat("------------------------------------------------------------------------------\n")
-if ("profile_code" %in% names(dat_step1)) {
-  cat(sprintf("Perfiles únicos identificados:         %d\n", n_profiles))
-}
-if (length(extra_cols_added) > 0) {
-  cat(sprintf("Columnas adicionales preservadas:      %d [%s]\n", length(extra_cols_added), paste(extra_cols_added, collapse = ", ")))
-}
-if (dup_site_count > 0) {
-  cat(sprintf("Claves duplicadas en hoja de sitios:   %d\n", dup_site_count))
-}
-if (evaluated_duplicates) {
-  cat(sprintf("Claves duplicadas/réplicas horizontes: %d | Acción: %s\n", dup_key_count, duplicate_handling_applied))
-}
-if (exact_dup_rows > 0) {
-  cat(sprintf("Filas duplicadas tras la unión:        %d\n", exact_dup_rows))
-}
-cat(sprintf("Variables descartadas: %d (detalladas en el reporte)\n", length(cols_descartadas)))
-cat(sprintf("[OK] Dataset intermedio guardado en: %s (%d filas x %d columnas)\n", output_csv, nrow(dat_step1), ncol(dat_step1)))
-cat(sprintf("[OK] Reporte descriptivo guardado en: %s\n", output_report))
-if (decision_logged) {
-  cat(sprintf("[OK] Registro de decisiones actualizado en: %s\n", decisions_log))
-} else {
-  cat(sprintf("[*] Registro de decisiones sin cambios en esta corrida (%s)\n", decisions_log))
-}
-cat("==============================================================================\n\n")
+if (is_en) {
+  cat("  VARIABLE MAPPING TABLE (Step 1.1)\n")
+  cat("==============================================================================\n")
+  for (i in seq_len(nrow(mapping))) {
+    cat(sprintf("  %-35s ---> %s\n", mapping$Original[i], mapping$Estandar_DSM[i]))
+  }
+  cat("------------------------------------------------------------------------------\n")
+  if ("profile_code" %in% names(dat_step1)) {
+    cat(sprintf("Unique profiles identified:            %d\n", n_profiles))
+  }
+  if (length(extra_cols_added) > 0) {
+    cat(sprintf("Additional columns preserved:          %d [%s]\n", length(extra_cols_added), paste(extra_cols_added, collapse = ", ")))
+  }
+  if (dup_site_count > 0) {
+    cat(sprintf("Duplicate keys in site table:          %d\n", dup_site_count))
+  }
+  if (evaluated_duplicates) {
+    dup_hand_en <- if (exists("translate_decision_text")) translate_decision_text(duplicate_handling_applied, "en") else duplicate_handling_applied
+    cat(sprintf("Duplicate keys/replicates in horizons: %d | Action: %s\n", dup_key_count, dup_hand_en))
+  }
+  if (exact_dup_rows > 0) {
+    cat(sprintf("Duplicate rows post-join:              %d\n", exact_dup_rows))
+  }
+  cat(sprintf("Discarded variables: %d (detailed in report)\n", length(cols_descartadas)))
+  cat(sprintf("[OK] Intermediate dataset saved to: %s (%d rows x %d columns)\n", output_csv, nrow(dat_step1), ncol(dat_step1)))
+  cat(sprintf("[OK] Descriptive report saved to: %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Decisions log updated at: %s\n", decisions_log))
+  } else {
+    cat(sprintf("[*] Decisions log unchanged in this run (%s)\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
 
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa la tabla mostrada arriba y las alertas de variables en consola.\n")
-cat("2. En el chat con la IA, confirma si el mapeo es correcto y acuerda cómo\n")
-cat("   tratar réplicas o conversiones antes de pasar al Paso 1.2.\n")
-cat("------------------------------------------------------------------------------\n\n")
+  cat("------------------------------------------------------------------------------\n")
+  cat("STUDENT INSTRUCTIONS:\n")
+  cat("1. Review the table displayed above and console variable alerts.\n")
+  cat("2. In the AI chat, confirm if mapping is correct and agree on how\n")
+  cat("   to treat duplicates or conversions before proceeding to Step 1.2.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+} else {
+  cat("  TABLA DE MAPEO DE VARIABLES (Paso 1.1)\n")
+  cat("==============================================================================\n")
+  for (i in seq_len(nrow(mapping))) {
+    cat(sprintf("  %-35s ---> %s\n", mapping$Original[i], mapping$Estandar_DSM[i]))
+  }
+  cat("------------------------------------------------------------------------------\n")
+  if ("profile_code" %in% names(dat_step1)) {
+    cat(sprintf("Perfiles únicos identificados:         %d\n", n_profiles))
+  }
+  if (length(extra_cols_added) > 0) {
+    cat(sprintf("Columnas adicionales preservadas:      %d [%s]\n", length(extra_cols_added), paste(extra_cols_added, collapse = ", ")))
+  }
+  if (dup_site_count > 0) {
+    cat(sprintf("Claves duplicadas en hoja de sitios:   %d\n", dup_site_count))
+  }
+  if (evaluated_duplicates) {
+    cat(sprintf("Claves duplicadas/réplicas horizontes: %d | Acción: %s\n", dup_key_count, duplicate_handling_applied))
+  }
+  if (exact_dup_rows > 0) {
+    cat(sprintf("Filas duplicadas tras la unión:        %d\n", exact_dup_rows))
+  }
+  cat(sprintf("Variables descartadas: %d (detalladas en el reporte)\n", length(cols_descartadas)))
+  cat(sprintf("[OK] Dataset intermedio guardado en: %s (%d filas x %d columnas)\n", output_csv, nrow(dat_step1), ncol(dat_step1)))
+  cat(sprintf("[OK] Reporte descriptivo guardado en: %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Registro de decisiones actualizado en: %s\n", decisions_log))
+  } else {
+    cat(sprintf("[*] Registro de decisiones sin cambios en esta corrida (%s)\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
+
+  cat("------------------------------------------------------------------------------\n")
+  cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
+  cat("1. Revisa la tabla mostrada arriba y las alertas de variables en consola.\n")
+  cat("2. En el chat con la IA, confirma si el mapeo es correcto y acuerda cómo\n")
+  cat("   tratar réplicas o conversiones antes de pasar al Paso 1.2.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+}

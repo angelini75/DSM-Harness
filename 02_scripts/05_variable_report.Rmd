@@ -14,6 +14,7 @@ params:
   d2: 30
   unit: ""
   project_dir: ""
+  lang: "es"
 ---
 
 ```{r setup, include=FALSE}
@@ -39,8 +40,16 @@ p <- if (!is.null(params$project_dir) && nzchar(params$project_dir) && dir.exist
   "."
 }
 
+cfg_f <- file.path(p, "config.json")
+proj_cfg <- if (file.exists(cfg_f) && requireNamespace("jsonlite", quietly = TRUE)) {
+  tryCatch(jsonlite::fromJSON(cfg_f, simplifyVector = FALSE), error = function(e) NULL)
+} else {
+  NULL
+}
+
+is_en <- identical(params$lang, "en") || (!is.null(proj_cfg$language) && identical(tolower(proj_cfg$language), "en"))
 tag <- sprintf("%s-%s-%s-%s-%s", params$cc, params$proj, params$property, params$d1, params$d2)
-na_txt <- "NO EVALUADO"
+na_txt <- if (is_en) "NOT EVALUATED" else "NO EVALUADO"
 fmt <- function(x, d = 3) ifelse(is.na(x), na_txt, formatC(x, format = "f", digits = d))
 
 # 2. Carga de datos de covariables y perfiles ---------------------------------
@@ -68,25 +77,28 @@ ccc_func <- function(o, e) {
 
 # Comprobar si existe archivo JSON de métricas pre-guardado
 f_metrics_json <- file.path(p, "outputs", sprintf("metrics_%s.json", params$property))
+bias_name <- if (is_en) "Bias" else "Sesgo"
 if (file.exists(f_metrics_json) && requireNamespace("jsonlite", quietly = TRUE)) {
   m_parsed <- jsonlite::fromJSON(f_metrics_json)
+  val_bias <- if (!is.null(m_parsed$Bias)) m_parsed$Bias else (if (!is.null(m_parsed$Sesgo)) m_parsed$Sesgo else NA_real_)
   m <- c(
     R2 = if (!is.null(m_parsed$R2)) m_parsed$R2 else NA_real_,
     RMSE = if (!is.null(m_parsed$RMSE)) m_parsed$RMSE else NA_real_,
     MAE = if (!is.null(m_parsed$MAE)) m_parsed$MAE else NA_real_,
-    CCC = if (!is.null(m_parsed$CCC)) m_parsed$CCC else NA_real_,
-    Sesgo = if (!is.null(m_parsed$Bias)) m_parsed$Bias else (if (!is.null(m_parsed$Sesgo)) m_parsed$Sesgo else NA_real_)
+    CCC = if (!is.null(m_parsed$CCC)) m_parsed$CCC else NA_real_
   )
+  m[[bias_name]] <- val_bias
 } else if (!is.null(cvp) && nrow(cvp) > 0) {
   m <- c(
     R2 = 1 - sum((cvp$obs - cvp$pred)^2) / sum((cvp$obs - mean(cvp$obs))^2),
     RMSE = sqrt(mean((cvp$obs - cvp$pred)^2)),
     MAE = mean(abs(cvp$obs - cvp$pred)),
-    CCC = ccc_func(cvp$obs, cvp$pred),
-    Sesgo = mean(cvp$pred - cvp$obs)
+    CCC = ccc_func(cvp$obs, cvp$pred)
   )
+  m[[bias_name]] <- mean(cvp$pred - cvp$obs)
 } else {
-  m <- c(R2 = NA_real_, RMSE = NA_real_, MAE = NA_real_, CCC = NA_real_, Sesgo = NA_real_)
+  m <- c(R2 = NA_real_, RMSE = NA_real_, MAE = NA_real_, CCC = NA_real_)
+  m[[bias_name]] <- NA_real_
 }
 
 # 4. Carga de rasters predichos ------------------------------------------------
@@ -126,32 +138,33 @@ img{max-width:100%}
 </style><div class="page">')
 ```
 
-<div class="top"><div class="meta">DSM-Harness · Reporte de mapeo · `r format(Sys.time(), "%Y-%m-%d")`</div>
+<div class="top"><div class="meta">DSM-Harness · `r if (is_en) "Soil Mapping Report" else "Reporte de mapeo"` · `r format(Sys.time(), "%Y-%m-%d")`</div>
 <h1>`r params$property` · `r params$d1`–`r params$d2` cm</h1>
-`r rows(data.frame(a = c("País / proyecto", "Perfiles usados", "Salida"), b = c(paste(params$cc, params$proj, sep = " · "), nrow(dat), tag)))`
+`r rows(data.frame(a = if (is_en) c("Country / project", "Profiles used", "Output") else c("País / proyecto", "Perfiles usados", "Salida"), b = c(paste(params$cc, params$proj, sep = " · "), nrow(dat), tag)))`
 </div>
 
-## 1. Sitios de observación
+## `r if (is_en) "1. Observation Sites" else "1. Sitios de observación"`
 
 ```{r sites, fig.width=7, fig.height=4.6}
 if (nrow(dat) > 0 && all(c("longitude", "latitude") %in% names(dat))) {
   ggplot(dat, aes(longitude, latitude)) +
     geom_point(alpha = .45, size = .8, colour = "#8A5A2B") +
     coord_quickmap() +
-    labs(x = "Longitud", y = "Latitud") + th
+    labs(x = if (is_en) "Longitude" else "Longitud", y = if (is_en) "Latitude" else "Latitud") + th
 } else {
-  cat("<p class=\"note\">Coordenadas no disponibles o dataset vacío: NO EVALUADO.</p>")
+  cat(sprintf('<p class="note">%s: %s.</p>', if (is_en) "Coordinates unavailable or empty dataset" else "Coordenadas no disponibles o dataset vacío", na_txt))
 }
 ```
 
 ```{r sites_meta, results="asis"}
 if (nrow(dat) > 0 && length(y) > 0 && all(c("longitude", "latitude") %in% names(dat))) {
+  to_sep <- if (is_en) " to " else " a "
   cat(rows(data.frame(
-    a = c("Perfiles con la variable", "Rango longitud", "Rango latitud"),
+    a = if (is_en) c("Profiles with property", "Longitude range", "Latitude range") else c("Perfiles con la variable", "Rango longitud", "Rango latitud"),
     b = c(
       sum(!is.na(y)),
-      paste(round(range(dat$longitude, na.rm = TRUE), 2), collapse = " a "),
-      paste(round(range(dat$latitude, na.rm = TRUE), 2), collapse = " a ")
+      paste(round(range(dat$longitude, na.rm = TRUE), 2), collapse = to_sep),
+      paste(round(range(dat$latitude, na.rm = TRUE), 2), collapse = to_sep)
     )
   )))
 } else {
@@ -159,18 +172,18 @@ if (nrow(dat) > 0 && length(y) > 0 && all(c("longitude", "latitude") %in% names(
 }
 ```
 
-<p class="note">Descripción de la distribución espacial: solo la observada en el mapa y en los reportes; lo demás, NO EVALUADO.</p>
+<p class="note">`r if (is_en) "Spatial distribution description: strictly observed in map and reports; otherwise, NOT EVALUATED." else "Descripción de la distribución espacial: solo la observada en el mapa y en los reportes; lo demás, NO EVALUADO."`</p>
 
-## 2. Distribución de los valores
+## `r if (is_en) "2. Value Distribution" else "2. Distribución de los valores"`
 
 ```{r hist, fig.width=7, fig.height=3.6}
 if (length(y) > 0 && any(!is.na(y))) {
   lbl_x <- if (nzchar(params$unit)) paste(params$property, paste0("(", params$unit, ")")) else params$property
   ggplot(dat, aes(.data[[params$property]])) +
     geom_histogram(bins = 30, fill = "#C98B4B", colour = "#FBFAF6") +
-    labs(x = lbl_x, y = "Perfiles") + th
+    labs(x = lbl_x, y = if (is_en) "Profiles" else "Perfiles") + th
 } else {
-  cat("<p class=\"note\">Variable no presente en datos: NO EVALUADO.</p>")
+  cat(sprintf('<p class="note">%s: %s.</p>', if (is_en) "Property not present in data" else "Variable no presente en datos", na_txt))
 }
 ```
 
@@ -178,7 +191,7 @@ if (length(y) > 0 && any(!is.na(y))) {
 if (length(y) > 0 && any(!is.na(y))) {
   y_v <- y[!is.na(y)]
   cat(rows(data.frame(
-    a = c("Mínimo", "P25", "Mediana", "Media", "P75", "Máximo", "Desv. estándar"),
+    a = if (is_en) c("Minimum", "Q25", "Median", "Mean", "Q75", "Maximum", "Std. deviation") else c("Mínimo", "P25", "Mediana", "Media", "P75", "Máximo", "Desv. estándar"),
     b = fmt(c(min(y_v), quantile(y_v, .25), median(y_v), mean(y_v), quantile(y_v, .75), max(y_v), sd(y_v)), 2)
   )))
 } else {
@@ -186,7 +199,7 @@ if (length(y) > 0 && any(!is.na(y))) {
 }
 ```
 
-## 3. Modelo y desempeño
+## `r if (is_en) "3. Model & Performance" else "3. Modelo y desempeño"`
 
 <div class="tiles">`r paste(mapply(tile, names(m), fmt(m)), collapse = "")`</div>
 
@@ -194,11 +207,11 @@ if (length(y) > 0 && any(!is.na(y))) {
 if (!is.null(bt)) {
   init_covs <- if (nrow(dat) > 0) max(0, ncol(dat) - 5) else 0
   cat(rows(data.frame(
-    a = c("Algoritmo", "mtry", "Regla de división", "min.node.size", "Covariables iniciales"),
+    a = if (is_en) c("Algorithm", "mtry", "Split rule", "min.node.size", "Initial covariates") else c("Algoritmo", "mtry", "Regla de división", "min.node.size", "Covariables iniciales"),
     b = c("Quantile Regression Forest (ranger)", bt$mtry, bt$splitrule, bt$min.node.size, init_covs)
   )))
 } else {
-  cat(sprintf('<p class="note">Parámetros de afinación del modelo: %s</p>', na_txt))
+  cat(sprintf('<p class="note">%s: %s</p>', if (is_en) "Model tuning parameters" else "Parámetros de afinación del modelo", na_txt))
 }
 ```
 
@@ -207,11 +220,11 @@ f_boruta <- file.path(p, "reports", sprintf("boruta_%s.png", params$property))
 if (file.exists(f_boruta) && requireNamespace("base64enc", quietly = TRUE)) {
   cat(sprintf('<div style="margin-top:16px;"><img src="data:image/png;base64,%s" style="max-width:100%%;border:1px solid #D9D6CC;" /></div>', base64enc::base64encode(f_boruta)))
 } else {
-  cat(sprintf('<p class="note">Gráfico de selección Boruta: %s</p>', na_txt))
+  cat(sprintf('<p class="note">%s: %s</p>', if (is_en) "Boruta selection plot" else "Gráfico de selección Boruta", na_txt))
 }
 ```
 
-## 4. Validación
+## `r if (is_en) "4. Validation" else "4. Validación"`
 
 ```{r scatter, fig.width=5.5, fig.height=5.5}
 if (!is.null(cvp) && nrow(cvp) > 0) {
@@ -219,15 +232,15 @@ if (!is.null(cvp) && nrow(cvp) > 0) {
     geom_point(alpha = .35, size = .8, colour = "#2F6F6B") +
     geom_abline(slope = 1, intercept = 0, colour = "#C0392B", linewidth = 0.8) +
     coord_equal() +
-    labs(x = "Observado", y = "Predicho (validación cruzada)") + th
+    labs(x = if (is_en) "Observed" else "Observado", y = if (is_en) "Predicted (cross-validation)" else "Predicho (validación cruzada)") + th
 } else {
-  cat("<p class=\"note\">Predicciones de validación cruzada: NO EVALUADO.</p>")
+  cat(sprintf('<p class="note">%s: %s.</p>', if (is_en) "Cross-validation predictions" else "Predicciones de validación cruzada", na_txt))
 }
 ```
 
-<p class="note">La línea roja es la recta 1:1 (predicho = observado), no una regresión de los puntos. Validación independiente: NO EVALUADA salvo que se haya hecho.</p>
+<p class="note">`r if (is_en) "The red line is the 1:1 line (predicted = observed), not a fitted regression. Independent validation: NOT EVALUATED unless performed." else "La línea roja es la recta 1:1 (predicho = observado), no una regresión de los puntos. Validación independiente: NO EVALUADA salvo que se haya hecho."`</p>
 
-## 5. Mapas finales
+## `r if (is_en) "5. Final Maps" else "5. Mapas finales"`
 
 ```{r maps, fig.width=9, fig.height=4.4}
 if (!is.null(r_mean) && !is.null(r_sd)) {
@@ -243,12 +256,12 @@ if (!is.null(r_mean) && !is.null(r_sd)) {
       labs(title = ttl, x = NULL, y = NULL) + th
   }
   gridExtra::grid.arrange(
-    mp(r_mean, c("#F3E3C3", "#C98B4B", "#6B3F1D"), "Predicción media"),
-    mp(r_sd, c("#DCEBE8", "#4E918B", "#173F3C"), "Incertidumbre (SD)"),
+    mp(r_mean, c("#F3E3C3", "#C98B4B", "#6B3F1D"), if (is_en) "Mean prediction" else "Predicción media"),
+    mp(r_sd, c("#DCEBE8", "#4E918B", "#173F3C"), if (is_en) "Uncertainty (SD)" else "Incertidumbre (SD)"),
     ncol = 2
   )
 } else {
-  cat("<p class=\"note\">Mapas raster no disponibles o no generados todavía (ejecuta el Paso 4 primero): NO EVALUADO.</p>")
+  cat(sprintf('<p class="note">%s: %s.</p>', if (is_en) "Raster maps unavailable or not yet generated (run Step 4 first)" else "Mapas raster no disponibles o no generados todavía (ejecuta el Paso 4 primero)", na_txt))
 }
 ```
 
@@ -258,31 +271,32 @@ if (!is.null(r_mean) && !is.null(r_sd)) {
   crs_label <- if (!is.null(crs_desc) && !is.null(crs_desc$code) && nzchar(as.character(crs_desc$code))) {
     paste("EPSG:", crs_desc$code)
   } else {
-    tryCatch(crs(r_mean, proj = TRUE), error = function(e) "NO EVALUADO")
+    tryCatch(crs(r_mean, proj = TRUE), error = function(e) na_txt)
   }
   
+  to_sep <- if (is_en) " to " else " a "
   rng_mean <- tryCatch(round(unlist(global(r_mean, "range", na.rm = TRUE)), 2), error = function(e) c(NA, NA))
   rng_sd   <- tryCatch(round(unlist(global(r_sd, "range", na.rm = TRUE)), 2), error = function(e) c(NA, NA))
   
   cat(rows(data.frame(
-    a = c("Archivo media", "Archivo SD", "Resolución", "CRS", "Rango media", "Rango SD"),
+    a = if (is_en) c("Mean raster file", "SD raster file", "Resolution", "CRS", "Mean range", "SD range") else c("Archivo media", "Archivo SD", "Resolución", "CRS", "Rango media", "Rango SD"),
     b = c(
       basename(f_mean),
       basename(f_sd),
       paste(signif(res(r_mean), 3), collapse = " × "),
       crs_label,
-      paste(rng_mean, collapse = " a "),
-      paste(rng_sd, collapse = " a ")
+      paste(rng_mean, collapse = to_sep),
+      paste(rng_sd, collapse = to_sep)
     )
   )))
 } else {
-  cat(sprintf('<p class="note">Metadatos cartográficos: %s</p>', na_txt))
+  cat(sprintf('<p class="note">%s: %s</p>', if (is_en) "Cartographic metadata" else "Metadatos cartográficos", na_txt))
 }
 ```
 
-## Observaciones y límites
+## `r if (is_en) "Observations & Caveats" else "Observaciones y límites"`
 
-<p class="note">Decisiones del usuario: ver <code>decisions_log.csv</code>. Pendientes y todo lo no calculado: NO EVALUADO.</p>
+<p class="note">`r if (is_en) "User decisions: see <code>decisions_log.csv</code>. Pending and uncalculated: NOT EVALUATED." else "Decisiones del usuario: ver <code>decisions_log.csv</code>. Pendientes y todo lo no calculado: NO EVALUADO."`</p>
 
 ```{r decisions_table, results="asis"}
 f_log <- file.path(p, "decisions_log.csv")
@@ -290,12 +304,18 @@ if (file.exists(f_log)) {
   dlog <- tryCatch(read.csv(f_log, stringsAsFactors = FALSE), error = function(e) NULL)
   if (!is.null(dlog) && nrow(dlog) > 0) {
     cat('<div style="overflow-x:auto;"><table class="log-table">')
-    cat('<thead><tr><th>Paso</th><th>Criterio</th><th>Decisión</th><th>Filas</th><th>Detalles</th></tr></thead><tbody>')
+    if (is_en) {
+      cat('<thead><tr><th>Step</th><th>Criterion</th><th>Decision</th><th>Rows</th><th>Details</th></tr></thead><tbody>')
+    } else {
+      cat('<thead><tr><th>Paso</th><th>Criterio</th><th>Decisión</th><th>Filas</th><th>Detalles</th></tr></thead><tbody>')
+    }
     for (i in seq_len(nrow(dlog))) {
+      crit_val <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(dlog$criterion[i]), "en") else as.character(dlog$criterion[i])
+      dec_val  <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(dlog$user_decision[i]), "en") else as.character(dlog$user_decision[i])
       cat(sprintf('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                   htmltools::htmlEscape(as.character(dlog$step[i])),
-                  htmltools::htmlEscape(as.character(dlog$criterion[i])),
-                  htmltools::htmlEscape(as.character(dlog$user_decision[i])),
+                  htmltools::htmlEscape(crit_val),
+                  htmltools::htmlEscape(dec_val),
                   htmltools::htmlEscape(as.character(dlog$affected_rows[i])),
                   htmltools::htmlEscape(as.character(dlog$details[i]))))
     }

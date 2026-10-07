@@ -23,11 +23,11 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
   library(terra)
   library(sf)
-})
+}))
 
 # 1. Configuración de rutas y proyecto -----------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -65,12 +65,36 @@ input_csv     <- file.path(base_data_dir, "cleaned_profiles.csv")
 output_csv    <- file.path(base_data_dir, "step2_covariates.csv")
 output_report <- file.path(base_rep_dir,  "step2_covariates_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 # 2. Inicialización de Trazabilidad y Log de Decisiones ------------------------
 run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config",
                             affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
@@ -98,10 +122,18 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 }
 
@@ -249,40 +281,77 @@ cat(sprintf("[OK] Dataset con covariables guardado en: '%s'\n", output_csv))
 # 10. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")
 writeLines("================================================================================", rep_con)
-writeLines("DSM-HARNESS | REPORTE DE EXTRACCION DE COVARIABLES AMBIENTALES (PASO 2)", rep_con)
-writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
-writeLines("================================================================================", rep_con)
-writeLines(sprintf("Variable objetivo:               %s", target_prop), rep_con)
-writeLines(sprintf("Profundidad estandarizada:       %d-%d cm", depth_d1, depth_d2), rep_con)
-writeLines(sprintf("Soporte minimo de espesor:       %.0f cm", min_support), rep_con)
-writeLines(sprintf("Perfiles iniciales auditados:    %d", n_initial_profiles), rep_con)
-if ("flag_spatial_outlier" %in% names(dat_raw) && !include_outliers) {
-  writeLines(sprintf("Perfiles descartados por outlier: %d", outlier_profiles_dropped), rep_con)
-}
-writeLines(sprintf("Perfiles con soporte suficiente: %d", n_std_profiles), rep_con)
-writeLines(sprintf("Perfiles fuera de mascara raster:%d", n_dropped_mask), rep_con)
-writeLines(sprintf("Perfiles finales con covariable: %d", nrow(dat_final)), rep_con)
-writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines(sprintf("Numero de covariables extraidas: %d", length(cov_names)), rep_con)
-writeLines(sprintf("CRS de las covariables:          %s", crs(cov_stack, describe = TRUE)$name), rep_con)
-writeLines("Covariables ambientales disponibles:", rep_con)
-for (cn in cov_names) {
-  writeLines(sprintf("  - %s", cn), rep_con)
+if (is_en) {
+  writeLines("DSM-HARNESS | ENVIRONMENTAL COVARIATE EXTRACTION REPORT (STEP 2)", rep_con)
+  writeLines(sprintf("Execution date: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Target property:                 %s", target_prop), rep_con)
+  writeLines(sprintf("Standardized depth:              %d-%d cm", depth_d1, depth_d2), rep_con)
+  writeLines(sprintf("Minimum thickness support:       %.0f cm", min_support), rep_con)
+  writeLines(sprintf("Audited initial profiles:        %d", n_initial_profiles), rep_con)
+  if ("flag_spatial_outlier" %in% names(dat_raw) && !include_outliers) {
+    writeLines(sprintf("Profiles dropped by outlier:     %d", outlier_profiles_dropped), rep_con)
+  }
+  writeLines(sprintf("Profiles with sufficient support:%d", n_std_profiles), rep_con)
+  writeLines(sprintf("Profiles outside raster mask:    %d", n_dropped_mask), rep_con)
+  writeLines(sprintf("Final profiles with covariates:  %d", nrow(dat_final)), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines(sprintf("Number of extracted covariates:  %d", length(cov_names)), rep_con)
+  writeLines(sprintf("Covariates CRS:                  %s", crs(cov_stack, describe = TRUE)$name), rep_con)
+  writeLines("Available environmental covariates:", rep_con)
+  for (cn in cov_names) {
+    writeLines(sprintf("  - %s", cn), rep_con)
+  }
+} else {
+  writeLines("DSM-HARNESS | REPORTE DE EXTRACCION DE COVARIABLES AMBIENTALES (PASO 2)", rep_con)
+  writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Variable objetivo:               %s", target_prop), rep_con)
+  writeLines(sprintf("Profundidad estandarizada:       %d-%d cm", depth_d1, depth_d2), rep_con)
+  writeLines(sprintf("Soporte minimo de espesor:       %.0f cm", min_support), rep_con)
+  writeLines(sprintf("Perfiles iniciales auditados:    %d", n_initial_profiles), rep_con)
+  if ("flag_spatial_outlier" %in% names(dat_raw) && !include_outliers) {
+    writeLines(sprintf("Perfiles descartados por outlier: %d", outlier_profiles_dropped), rep_con)
+  }
+  writeLines(sprintf("Perfiles con soporte suficiente: %d", n_std_profiles), rep_con)
+  writeLines(sprintf("Perfiles fuera de mascara raster:%d", n_dropped_mask), rep_con)
+  writeLines(sprintf("Perfiles finales con covariable: %d", nrow(dat_final)), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines(sprintf("Numero de covariables extraidas: %d", length(cov_names)), rep_con)
+  writeLines(sprintf("CRS de las covariables:          %s", crs(cov_stack, describe = TRUE)$name), rep_con)
+  writeLines("Covariables ambientales disponibles:", rep_con)
+  for (cn in cov_names) {
+    writeLines(sprintf("  - %s", cn), rep_con)
+  }
 }
 writeLines("================================================================================", rep_con)
 close(rep_con)
-cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
+if (is_en) cat(sprintf("[OK] Report written to: '%s'\n", output_report)) else cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
 
 # 11. Resumen en consola -------------------------------------------------------
 cat("\n==============================================================================\n")
-cat("  RESUMEN DE EXTRACCIÓN DE COVARIABLES (Paso 2)\n")
-cat("==============================================================================\n")
-cat(sprintf("Variable objetivo:          %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
-cat(sprintf("Perfiles útiles para modelar:%d (de %d iniciales)\n", nrow(dat_final), n_initial_profiles))
-cat(sprintf("Covariables incorporadas:   %d capas\n", length(cov_names)))
-cat(sprintf("[OK] Dataset guardado:      %s\n", output_csv))
-cat(sprintf("[OK] Reporte guardado:      %s\n", output_report))
-if (decision_logged) {
-  cat(sprintf("[OK] Log de decisiones:     %s\n", decisions_log))
+if (is_en) {
+  cat("  COVARIATE EXTRACTION SUMMARY (Step 2)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Target property:            %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("Profiles ready for modeling:%d (of %d initial)\n", nrow(dat_final), n_initial_profiles))
+  cat(sprintf("Included covariates:        %d layers\n", length(cov_names)))
+  cat(sprintf("[OK] Dataset saved:         %s\n", output_csv))
+  cat(sprintf("[OK] Report saved:          %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Decisions log:         %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
+} else {
+  cat("  RESUMEN DE EXTRACCIÓN DE COVARIABLES (Paso 2)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Variable objetivo:          %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("Perfiles útiles para modelar:%d (de %d iniciales)\n", nrow(dat_final), n_initial_profiles))
+  cat(sprintf("Covariables incorporadas:   %d capas\n", length(cov_names)))
+  cat(sprintf("[OK] Dataset guardado:      %s\n", output_csv))
+  cat(sprintf("[OK] Reporte guardado:      %s\n", output_report))
+  if (decision_logged) {
+    cat(sprintf("[OK] Log de decisiones:     %s\n", decisions_log))
+  }
+  cat("==============================================================================\n\n")
 }
-cat("==============================================================================\n\n")

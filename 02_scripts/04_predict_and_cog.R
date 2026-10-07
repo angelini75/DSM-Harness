@@ -25,13 +25,13 @@ TEMPLATE_VERSION <- "2.0.0"
 
 rm(list = setdiff(ls(), c("input_file", "input_csv", "TEMPLATE_VERSION", "PROJECT_DIR", "CURRENT_PROJECT_DIR", "PROJECT_NAME", "run_step")))
 
-suppressPackageStartupMessages({
+suppressWarnings(suppressPackageStartupMessages({
   library(tidyverse)
   library(terra)
   library(sf)
   library(ranger)
   library(caret)
-})
+}))
 
 # 1. Configuración de rutas y proyecto -----------------------------------------
 proj_active <- if (exists("PROJECT_DIR") && !is.null(PROJECT_DIR) && nzchar(as.character(PROJECT_DIR))) {
@@ -67,12 +67,36 @@ if (!dir.exists(tile_tmp_dir))  dir.create(tile_tmp_dir, recursive = TRUE)
 
 output_report <- file.path(base_rep_dir, "step4_prediction_report.txt")
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 # 2. Inicialización de Trazabilidad y Log de Decisiones ------------------------
 run_id <- format(Sys.time(), "%Y%m%d_%H%M%S")
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 record_decision <- function(step, criterion, decision, source = "user_config",
                             affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
@@ -100,10 +124,18 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 }
 
@@ -115,16 +147,26 @@ depth_d2    <- if (!is.null(user_cfg$target_depth_lower)) as.integer(user_cfg$ta
 country_code <- if (!is.null(user_cfg$country_code) && nzchar(as.character(user_cfg$country_code))) {
   toupper(as.character(user_cfg$country_code))
 } else {
-  cat("\n[AVISO OPENNSIS]: 'country_code' no está declarado en config.json.\n")
-  cat("  -> Se utilizará 'PAIS' como código provisional. Declara el código ISO-3 de tu país en 'config.json'.\n")
+  if (is_en) {
+    cat("\n[OPENNSIS NOTICE]: 'country_code' is not declared in config.json.\n")
+    cat("  -> 'PAIS' will be used as placeholder code. Please declare your country's ISO-3 code in 'config.json'.\n")
+  } else {
+    cat("\n[AVISO OPENNSIS]: 'country_code' no está declarado en config.json.\n")
+    cat("  -> Se utilizará 'PAIS' como código provisional. Declara el código ISO-3 de tu país en 'config.json'.\n")
+  }
   "PAIS"
 }
 
 project_code <- if (!is.null(user_cfg$project_code) && nzchar(as.character(user_cfg$project_code))) {
   toupper(as.character(user_cfg$project_code))
 } else {
-  cat("\n[AVISO OPENNSIS]: 'project_code' no está declarado en config.json.\n")
-  cat("  -> Se utilizará 'PROJ' como código provisional. Declara el identificador de tu proyecto en 'config.json'. NUNCA inventes nombres de proyecto.\n")
+  if (is_en) {
+    cat("\n[OPENNSIS NOTICE]: 'project_code' is not declared in config.json.\n")
+    cat("  -> 'PROJ' will be used as placeholder code. Please declare your project identifier in 'config.json'. NEVER invent project names.\n")
+  } else {
+    cat("\n[AVISO OPENNSIS]: 'project_code' no está declarado en config.json.\n")
+    cat("  -> Se utilizará 'PROJ' como código provisional. Declara el identificador de tu proyecto en 'config.json'. NUNCA inventes nombres de proyecto.\n")
+  }
   "PROJ"
 }
 
@@ -135,8 +177,13 @@ name_sd_cog   <- sprintf("%s-%s-%s-%d-%d-sd.tif",   country_code, project_code, 
 path_mean_cog <- file.path(base_out_dir, name_mean_cog)
 path_sd_cog   <- file.path(base_out_dir, name_sd_cog)
 
-cat(sprintf("[*] Nombres de archivo OpenNSIS configurados:\n  - Media:         %s\n  - Incertidumbre: %s\n",
-            name_mean_cog, name_sd_cog))
+if (is_en) {
+  cat(sprintf("[*] Configured OpenNSIS file names:\n  - Mean:        %s\n  - Uncertainty: %s\n",
+              name_mean_cog, name_sd_cog))
+} else {
+  cat(sprintf("[*] Nombres de archivo OpenNSIS configurados:\n  - Media:         %s\n  - Incertidumbre: %s\n",
+              name_mean_cog, name_sd_cog))
+}
 
 # 5. Cargar modelo calibrado (QRF) ---------------------------------------------
 model_files <- list.files(base_out_dir, pattern = sprintf("ranger_model_.*%s.*\\.rds$", target_prop), full.names = TRUE)
@@ -148,16 +195,28 @@ if (length(model_files) == 0 && dir.exists("03_outputs/module3/models")) {
 }
 
 if (length(model_files) == 0) {
-  stop("[ERROR CRÍTICO] No se encontró ningún modelo entrenado (.rds). Ejecuta primero el Paso 3 (run_step('3')).")
+  if (is_en) {
+    stop("[CRITICAL ERROR] No trained model (.rds) was found. Run Step 3 first (run_step('3')).")
+  } else {
+    stop("[ERROR CRÍTICO] No se encontró ningún modelo entrenado (.rds). Ejecuta primero el Paso 3 (run_step('3')).")
+  }
 }
 
 model_path <- model_files[1]
-cat(sprintf("[*] Cargando modelo entrenado desde: '%s' ...\n", model_path))
+if (is_en) {
+  cat(sprintf("[*] Loading trained model from: '%s' ...\n", model_path))
+} else {
+  cat(sprintf("[*] Cargando modelo entrenado desde: '%s' ...\n", model_path))
+}
 trained_caret <- readRDS(model_path)
 ranger_model  <- trained_caret$finalModel
 selected_covs <- ranger_model$forest$independent.variable.names
 
-cat(sprintf("[OK] Modelo cargado. Covariables requeridas: %d capas.\n", length(selected_covs)))
+if (is_en) {
+  cat(sprintf("[OK] Model loaded. Required covariates: %d layers.\n", length(selected_covs)))
+} else {
+  cat(sprintf("[OK] Modelo cargado. Covariables requeridas: %d capas.\n", length(selected_covs)))
+}
 
 # 6. Cargar pila de covariables espaciales --------------------------------------
 cov_path_cfg <- if (!is.null(user_cfg$covariates_path)) as.character(user_cfg$covariates_path) else NULL
@@ -173,25 +232,47 @@ avail_covs <- if (!is.null(cov_path_cfg) && file.exists(cov_path_cfg)) {
 }
 
 if (length(avail_covs) == 0) {
-  stop("[ERROR CRÍTICO] No se encontraron archivos ráster de covariables (.tif).")
+  if (is_en) {
+    stop("[CRITICAL ERROR] No covariate raster files (.tif) were found.")
+  } else {
+    stop("[ERROR CRÍTICO] No se encontraron archivos ráster de covariables (.tif).")
+  }
 }
 
-cat("[*] Cargando pila espacial de covariables ...\n")
+if (is_en) {
+  cat("[*] Loading spatial covariate stack ...\n")
+} else {
+  cat("[*] Cargando pila espacial de covariables ...\n")
+}
 cov_stack <- terra::rast(avail_covs)
 
 missing_covs <- setdiff(selected_covs, names(cov_stack))
 if (length(missing_covs) > 0) {
-  stop(sprintf("[ERROR CRÍTICO] Faltan covariables en el ráster requeridas por el modelo: [%s]",
-               paste(missing_covs, collapse = ", ")))
+  if (is_en) {
+    stop(sprintf("[CRITICAL ERROR] Raster covariates required by model are missing: [%s]",
+                 paste(missing_covs, collapse = ", ")))
+  } else {
+    stop(sprintf("[ERROR CRÍTICO] Faltan covariables en el ráster requeridas por el modelo: [%s]",
+                 paste(missing_covs, collapse = ", ")))
+  }
 }
 
 cov_subset <- cov_stack[[selected_covs]]
 grid_cells <- ncell(cov_subset)
-cat(sprintf("[OK] Grilla espacial lista: %d columnas x %d filas (%s celdas totales).\n",
-            ncol(cov_subset), nrow(cov_subset), format(grid_cells, big.mark = ".")))
+if (is_en) {
+  cat(sprintf("[OK] Spatial grid ready: %d columns x %d rows (%s total cells).\n",
+              ncol(cov_subset), nrow(cov_subset), format(grid_cells, big.mark = ",")))
+} else {
+  cat(sprintf("[OK] Grilla espacial lista: %d columnas x %d filas (%s celdas totales).\n",
+              ncol(cov_subset), nrow(cov_subset), format(grid_cells, big.mark = ".")))
+}
 
 # 7. Predicción Espacial Tiled / Bloques (Protección de Memoria RAM) ------------
-cat("[*] Configurando predicción espacial por mosaicos ...\n")
+if (is_en) {
+  cat("[*] Setting up tiled spatial prediction ...\n")
+} else {
+  cat("[*] Configurando predicción espacial por mosaicos ...\n")
+}
 pfun <- function(...) {
   predict(...)$predictions |> t()
 }
@@ -206,13 +287,21 @@ tile_files <- terra::makeTiles(r_ref, t_grid, overwrite = TRUE,
                               filename = file.path(tile_tmp_dir, "tile_.tif"))
 
 n_tiles <- length(tile_files)
-cat(sprintf("[*] Grilla dividida en %d bloque(s) para predicción eficiente ...\n", n_tiles))
+if (is_en) {
+  cat(sprintf("[*] Grid divided into %d tile(s) for efficient memory prediction ...\n", n_tiles))
+} else {
+  cat(sprintf("[*] Grilla dividida en %d bloque(s) para predicción eficiente ...\n", n_tiles))
+}
 
 mean_tile_paths <- character(n_tiles)
 sd_tile_paths   <- character(n_tiles)
 
 for (j in seq_along(tile_files)) {
-  cat(sprintf("  -> Procesando bloque %d de %d ...\n", j, n_tiles))
+  if (is_en) {
+    cat(sprintf("  -> Processing tile %d of %d ...\n", j, n_tiles))
+  } else {
+    cat(sprintf("  -> Procesando bloque %d de %d ...\n", j, n_tiles))
+  }
   t_crop <- terra::rast(tile_files[j])
   cov_tile <- terra::crop(cov_subset, t_crop)
   
@@ -250,7 +339,11 @@ for (j in seq_along(tile_files)) {
 }
 
 # Unir mosaicos en rásters consolidados
-cat("[*] Ensamblando bloques espaciales en rásters finales ...\n")
+if (is_en) {
+  cat("[*] Assembling spatial tiles into final rasters ...\n")
+} else {
+  cat("[*] Ensamblando bloques espaciales en rásters finales ...\n")
+}
 if (n_tiles > 1) {
   mean_list <- lapply(mean_tile_paths, terra::rast)
   sd_list   <- lapply(sd_tile_paths, terra::rast)
@@ -272,7 +365,11 @@ terra::writeRaster(pred_mean_raw, tmp_mean_tif, overwrite = TRUE, datatype = "FL
 terra::writeRaster(pred_sd_raw,   tmp_sd_tif,   overwrite = TRUE, datatype = "FLT4S", NAflag = -9999)
 
 # 8. Exportación a Cloud-Optimized GeoTIFF (COG Estricto con Overviews) --------
-cat("[*] Generando Cloud-Optimized GeoTIFF (COG estándar FAO/OpenNSIS) con pirámides internas ...\n")
+if (is_en) {
+  cat("[*] Generating Cloud-Optimized GeoTIFF (FAO/OpenNSIS standard COG) with internal pyramids ...\n")
+} else {
+  cat("[*] Generando Cloud-Optimized GeoTIFF (COG estándar FAO/OpenNSIS) con pirámides internas ...\n")
+}
 
 cog_translate_opts <- c(
   "-of", "COG",
@@ -285,11 +382,19 @@ cog_translate_opts <- c(
 
 # Convertir media a verdadero COG
 sf::gdal_utils("translate", tmp_mean_tif, path_mean_cog, options = cog_translate_opts)
-cat(sprintf("[OK] COG Media exportado:         '%s'\n", path_mean_cog))
+if (is_en) {
+  cat(sprintf("[OK] Mean COG exported:        '%s'\n", path_mean_cog))
+} else {
+  cat(sprintf("[OK] COG Media exportado:         '%s'\n", path_mean_cog))
+}
 
 # Convertir desvío a verdadero COG
 sf::gdal_utils("translate", tmp_sd_tif, path_sd_cog, options = cog_translate_opts)
-cat(sprintf("[OK] COG Incertidumbre exportado: '%s'\n", path_sd_cog))
+if (is_en) {
+  cat(sprintf("[OK] Uncertainty COG exported: '%s'\n", path_sd_cog))
+} else {
+  cat(sprintf("[OK] COG Incertidumbre exportado: '%s'\n", path_sd_cog))
+}
 
 # Limpieza de archivos temporales
 unlink(tile_tmp_dir, recursive = TRUE)
@@ -298,8 +403,16 @@ unlink(tile_tmp_dir, recursive = TRUE)
 desc_mean <- terra::describe(path_mean_cog)
 is_true_cog <- any(grepl("LAYOUT=COG", desc_mean)) || any(grepl("Overviews", desc_mean))
 
-cog_audit_status <- if (is_true_cog) "CONFORME (True COG con Overviews y LAYOUT=COG)" else "GEOTIFF CON COMPRESIÓN DEFLATE"
-cat(sprintf("[*] Verificación técnica de salida: %s\n", cog_audit_status))
+cog_audit_status <- if (is_en) {
+  if (is_true_cog) "CONFORMANT (True COG with Overviews and LAYOUT=COG)" else "GEOTIFF WITH DEFLATE COMPRESSION"
+} else {
+  if (is_true_cog) "CONFORME (True COG con Overviews y LAYOUT=COG)" else "GEOTIFF CON COMPRESIÓN DEFLATE"
+}
+if (is_en) {
+  cat(sprintf("[*] Output technical verification: %s\n", cog_audit_status))
+} else {
+  cat(sprintf("[*] Verificación técnica de salida: %s\n", cog_audit_status))
+}
 
 record_decision(4.0, "Exportación COG OpenNSIS", cog_audit_status,
                 source = if (!is.null(user_cfg$country_code)) "user_config" else "script_default",
@@ -312,53 +425,103 @@ record_decision(4.0, "Exportación COG OpenNSIS", cog_audit_status,
 # <<< ADAPT:prediction_and_cog
 
 # 10. Despliegue de Diagnósticos Gráficos en RStudio ----------------------------
-cat("[*] Desplegando mapas predictivos en pestaña Plots de RStudio ...\n")
+if (is_en) {
+  cat("[*] Displaying predictive maps in RStudio Plots tab ...\n")
+} else {
+  cat("[*] Desplegando mapas predictivos en pestaña Plots de RStudio ...\n")
+}
 par(mfrow = c(1, 2), mar = c(3, 3, 3, 5))
-plot(terra::rast(path_mean_cog), main = sprintf("Media Predicha: %s (%d-%d cm)", target_prop, depth_d1, depth_d2),
+plot(terra::rast(path_mean_cog), 
+     main = if (is_en) sprintf("Predicted Mean: %s (%d-%d cm)", target_prop, depth_d1, depth_d2)
+            else sprintf("Media Predicha: %s (%d-%d cm)", target_prop, depth_d1, depth_d2),
      col = hcl.colors(100, "Viridis"))
-plot(terra::rast(path_sd_cog), main = sprintf("Incertidumbre (SD): %s (%d-%d cm)", target_prop, depth_d1, depth_d2),
+plot(terra::rast(path_sd_cog), 
+     main = if (is_en) sprintf("Uncertainty (SD): %s (%d-%d cm)", target_prop, depth_d1, depth_d2)
+            else sprintf("Incertidumbre (SD): %s (%d-%d cm)", target_prop, depth_d1, depth_d2),
      col = hcl.colors(100, "Inferno"))
 par(mfrow = c(1, 1))
 
 # 11. Generar reporte complementario .txt --------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")
-writeLines("================================================================================", rep_con)
-writeLines("DSM-HARNESS | REPORTE DE PREDICCION ESPACIAL Y OPENNSIS COG (PASO 4)", rep_con)
-writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
-writeLines("================================================================================", rep_con)
-writeLines(sprintf("Variable objetivo:               %s", target_prop), rep_con)
-writeLines(sprintf("Profundidad estandarizada:       %d-%d cm", depth_d1, depth_d2), rep_con)
-writeLines(sprintf("Codigo de pais OpenNSIS (<CC>):  %s", country_code), rep_con)
-writeLines(sprintf("Codigo de proyecto (<PROJ>):     %s", project_code), rep_con)
-writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("ARCHIVOS GENERADOS BAJO ESTANDAR OPENNSIS:", rep_con)
-writeLines(sprintf("  Mapa de Media:         %s", name_mean_cog), rep_con)
-writeLines(sprintf("  Mapa de Incertidumbre: %s", name_sd_cog), rep_con)
-writeLines(sprintf("  Ruta fisica:           %s", base_out_dir), rep_con)
-writeLines("--------------------------------------------------------------------------------", rep_con)
-writeLines("VERIFICACION TECNICA DEL RASTER:", rep_con)
-writeLines(sprintf("  Estado COG:            %s", cog_audit_status), rep_con)
-writeLines(sprintf("  Compresion GDAL:       DEFLATE (Predictor 2)"), rep_con)
-writeLines(sprintf("  Tamano de bloque:      512 x 512 pixeles"), rep_con)
-writeLines(sprintf("  Valor NoData:          -9999"), rep_con)
-writeLines(sprintf("  Dimensiones espaciales:%d cols x %d rows", ncol(pred_mean_raw), nrow(pred_mean_raw)), rep_con)
-writeLines("================================================================================", rep_con)
+if (is_en) {
+  writeLines("================================================================================", rep_con)
+  writeLines("DSM-HARNESS | SPATIAL PREDICTION AND OPENNSIS COG REPORT (STEP 4)", rep_con)
+  writeLines(sprintf("Execution date: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Target property:                 %s", target_prop), rep_con)
+  writeLines(sprintf("Standardized depth:              %d-%d cm", depth_d1, depth_d2), rep_con)
+  writeLines(sprintf("OpenNSIS Country Code (<CC>):    %s", country_code), rep_con)
+  writeLines(sprintf("Project Code (<PROJ>):           %s", project_code), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("FILES GENERATED UNDER OPENNSIS STANDARD:", rep_con)
+  writeLines(sprintf("  Mean Map:              %s", name_mean_cog), rep_con)
+  writeLines(sprintf("  Uncertainty Map:       %s", name_sd_cog), rep_con)
+  writeLines(sprintf("  Physical path:         %s", base_out_dir), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("RASTER TECHNICAL VERIFICATION:", rep_con)
+  writeLines(sprintf("  COG Status:            %s", cog_audit_status), rep_con)
+  writeLines(sprintf("  GDAL Compression:      DEFLATE (Predictor 2)"), rep_con)
+  writeLines(sprintf("  Block size:            512 x 512 pixels"), rep_con)
+  writeLines(sprintf("  NoData Value:          -9999"), rep_con)
+  writeLines(sprintf("  Spatial dimensions:    %d cols x %d rows", ncol(pred_mean_raw), nrow(pred_mean_raw)), rep_con)
+  writeLines("================================================================================", rep_con)
+} else {
+  writeLines("================================================================================", rep_con)
+  writeLines("DSM-HARNESS | REPORTE DE PREDICCION ESPACIAL Y OPENNSIS COG (PASO 4)", rep_con)
+  writeLines(sprintf("Fecha de ejecucion: %s | Run ID: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), run_id), rep_con)
+  writeLines("================================================================================", rep_con)
+  writeLines(sprintf("Variable objetivo:               %s", target_prop), rep_con)
+  writeLines(sprintf("Profundidad estandarizada:       %d-%d cm", depth_d1, depth_d2), rep_con)
+  writeLines(sprintf("Codigo de pais OpenNSIS (<CC>):  %s", country_code), rep_con)
+  writeLines(sprintf("Codigo de proyecto (<PROJ>):     %s", project_code), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("ARCHIVOS GENERADOS BAJO ESTANDAR OPENNSIS:", rep_con)
+  writeLines(sprintf("  Mapa de Media:         %s", name_mean_cog), rep_con)
+  writeLines(sprintf("  Mapa de Incertidumbre: %s", name_sd_cog), rep_con)
+  writeLines(sprintf("  Ruta fisica:           %s", base_out_dir), rep_con)
+  writeLines("--------------------------------------------------------------------------------", rep_con)
+  writeLines("VERIFICACION TECNICA DEL RASTER:", rep_con)
+  writeLines(sprintf("  Estado COG:            %s", cog_audit_status), rep_con)
+  writeLines(sprintf("  Compresion GDAL:       DEFLATE (Predictor 2)"), rep_con)
+  writeLines(sprintf("  Tamano de bloque:      512 x 512 pixeles"), rep_con)
+  writeLines(sprintf("  Valor NoData:          -9999"), rep_con)
+  writeLines(sprintf("  Dimensiones espaciales:%d cols x %d rows", ncol(pred_mean_raw), nrow(pred_mean_raw)), rep_con)
+  writeLines("================================================================================", rep_con)
+}
 close(rep_con)
-cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
+if (is_en) cat(sprintf("[OK] Report written to: '%s'\n", output_report)) else cat(sprintf("[OK] Reporte escrito en: '%s'\n", output_report))
 
 # 12. Resumen en consola -------------------------------------------------------
-cat("\n==============================================================================\n")
-cat("  RESUMEN DE PREDICCIÓN ESPACIAL Y COG OPENNSIS (Paso 4)\n")
-cat("==============================================================================\n")
-cat(sprintf("Variable mapeada:         %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
-cat(sprintf("Estándar de archivo:      OpenNSIS Cloud-Optimized GeoTIFF (COG)\n"))
-cat(sprintf("Archivo Media:            %s\n", name_mean_cog))
-cat(sprintf("Archivo Incertidumbre:    %s\n", name_sd_cog))
-cat(sprintf("[OK] Reporte guardado:    %s\n", output_report))
-if (decision_logged) cat(sprintf("[OK] Log de decisiones:   %s\n", decisions_log))
-cat("==============================================================================\n\n")
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa los mapas desplegados en la pestaña 'Plots' de RStudio.\n")
-cat("2. En el chat con la IA, dialoga sobre los patrones espaciales observados y las zonas de mayor incertidumbre.\n")
-cat("------------------------------------------------------------------------------\n\n")
+if (is_en) {
+  cat("\n==============================================================================\n")
+  cat("  SUMMARY OF SPATIAL PREDICTION AND OPENNSIS COG (Step 4)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Mapped property:          %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("File standard:            OpenNSIS Cloud-Optimized GeoTIFF (COG)\n"))
+  cat(sprintf("Mean File:                %s\n", name_mean_cog))
+  cat(sprintf("Uncertainty File:         %s\n", name_sd_cog))
+  cat(sprintf("[OK] Saved report:        %s\n", output_report))
+  if (decision_logged) cat(sprintf("[OK] Decisions log:       %s\n", decisions_log))
+  cat("==============================================================================\n\n")
+  cat("------------------------------------------------------------------------------\n")
+  cat("INSTRUCTION FOR STUDENT:\n")
+  cat("1. Review maps displayed in RStudio 'Plots' tab.\n")
+  cat("2. Discuss observed spatial patterns and areas of highest uncertainty in chat with AI.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+} else {
+  cat("\n==============================================================================\n")
+  cat("  RESUMEN DE PREDICCIÓN ESPACIAL Y COG OPENNSIS (Paso 4)\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Variable mapeada:         %s (%d–%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("Estándar de archivo:      OpenNSIS Cloud-Optimized GeoTIFF (COG)\n"))
+  cat(sprintf("Archivo Media:            %s\n", name_mean_cog))
+  cat(sprintf("Archivo Incertidumbre:    %s\n", name_sd_cog))
+  cat(sprintf("[OK] Reporte guardado:    %s\n", output_report))
+  if (decision_logged) cat(sprintf("[OK] Log de decisiones:   %s\n", decisions_log))
+  cat("==============================================================================\n\n")
+  cat("------------------------------------------------------------------------------\n")
+  cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
+  cat("1. Revisa los mapas desplegados en la pestaña 'Plots' de RStudio.\n")
+  cat("2. En el chat con la IA, dialoga sobre los patrones espaciales observados y las zonas de mayor incertidumbre.\n")
+  cat("------------------------------------------------------------------------------\n\n")
+}

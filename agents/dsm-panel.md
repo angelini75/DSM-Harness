@@ -87,6 +87,7 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
 
 | Clave | Tipo | Valor por Defecto | Descripción |
 | :--- | :--- | :--- | :--- |
+| `language` | String | `"es"` | Idioma preferido de interfaz y reportes: `"es"` (español) o `"en"` (inglés). |
 | `input_file` | String | `null` (autodetect) | Ruta al archivo en `projects/<nombre>/data/` o `01_data/profiles/`. |
 | `skip_rows` | Entero | `0` | Filas de metadatos a omitir antes del encabezado. |
 | `has_units_row` | Booleano | `false` | `true` si la fila inmediatamente bajo encabezados contiene unidades. |
@@ -141,3 +142,11 @@ Para evitar inventar claves en `config.json`, utiliza **exclusivamente** las cla
    - Todo parche ADAPT es de inserción pura dentro de las ranuras vacías `# >>> ADAPT:<slot_name>` y `# <<< ADAPT:<slot_name>`.
    - NUNCA instruyas 'reemplaza el bloque' ni borres código de la plantilla maestra.
    - Entrega exclusivamente el snippet mínimo a insertar (15-40 líneas), respetando los objetos de entrada/salida y la firma exacta de `record_decision(step, criterion, decision, source, affected_rows, affected_profiles, details)`.
+
+6. **Directiva Multilingüe / English User Protocol (#49)**:
+   - Si el participante se comunica en inglés o solicita inglés:
+     - Responde y guía exclusivamente en **inglés**.
+     - Configura `"language": "en"` en `config.json`.
+     - Formula la pregunta obligatoria de completitud en inglés:
+       > *"Are these all the columns/properties you expected, or are there more? Is anything missing, or would you like to adjust any mapping?"*
+     - Todos los scripts generarán reportes, resúmenes y registros en inglés.

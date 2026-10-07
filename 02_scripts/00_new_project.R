@@ -22,10 +22,19 @@ cat("===========================================================================
 
 if (!exists("project_name") || is.null(project_name) || !nzchar(project_name)) {
   if (interactive()) {
-    p_input <- readline(prompt = "Ingresa el nombre para tu proyecto (ej: suelo_nacional_gtm): ")
+    p_input <- readline(prompt = "Ingresa el nombre para tu proyecto / Project name (ej: suelo_nacional_gtm): ")
     project_name <- trimws(p_input)
   } else {
     project_name <- "mi_proyecto_suelos"
+  }
+}
+
+if (!exists("project_language") || is.null(project_language) || !(project_language %in% c("es", "en"))) {
+  if (interactive()) {
+    p_lang <- readline(prompt = "Idioma del proyecto / Project language ([es]/en): ")
+    project_language <- if (tolower(trimws(p_lang)) == "en") "en" else "es"
+  } else {
+    project_language <- "es"
   }
 }
 
@@ -55,6 +64,7 @@ file.create(file.path(covariates_dir, ".gitkeep"))
 
 # 1. Copiar y estampar procedencia en scripts ----------------------------------
 source_scripts <- c(
+  "00_i18n.R",
   "00_inspect_data.R",
   "01_1_byod_audit.R",
   "01_2_byod_audit.R",
@@ -102,7 +112,12 @@ proj_cfg     <- file.path(proj_dir, "config.json")
 
 if (file.exists(template_cfg) && requireNamespace("jsonlite", quietly = TRUE)) {
   cfg_obj <- jsonlite::fromJSON(template_cfg, simplifyVector = FALSE)
-  cfg_obj$`_comment` <- sprintf("Configuración de proyecto: %s (TEMPLATE v%s)", project_name, TEMPLATE_VERSION)
+  cfg_obj$language <- project_language
+  cfg_obj$`_comment` <- if (project_language == "en") {
+    sprintf("Project configuration: %s (TEMPLATE v%s)", project_name, TEMPLATE_VERSION)
+  } else {
+    sprintf("Configuración de proyecto: %s (TEMPLATE v%s)", project_name, TEMPLATE_VERSION)
+  }
   cfg_obj$input_file <- sprintf("projects/%s/data/perfiles.xlsx", project_name)
   jsonlite::write_json(cfg_obj, proj_cfg, auto_unbox = TRUE, pretty = TRUE)
   cat(sprintf("[*] Configuración inicial creada: '%s'\n", proj_cfg))
@@ -115,9 +130,34 @@ cat(log_header, file = proj_log)
 cat(sprintf("[*] Log de auditoría inicializado: '%s'\n", proj_log))
 
 # 4. Crear ejecutor de conveniencia run_step.R ---------------------------------
+is_en <- identical(project_language, "en")
+step_exec_msg <- if (is_en) "\\n[>>> EXECUTING STEP %s] %s ...\\n" else "\\n[>>> EJECUTANDO PASO %s] %s ...\\n"
+env_loaded_msg <- if (is_en) "\\n[*] Environment loaded for project: \"%s\"\\n" else "\\n[*] Entorno cargado para proyecto: \"%s\"\\n"
+avail_cmd_hdr <- if (is_en) "Available commands:\\n" else "Comandos disponibles:\\n"
+cmds_list <- if (is_en) c(
+  "  run_step(\"0\")   -> Structural data inspection\\n",
+  "  run_step(\"1.1\") -> Variable mapping and selection\\n",
+  "  run_step(\"1.2\") -> Spatial audit and CRS\\n",
+  "  run_step(\"1.3\") -> Depths and pedological consistency\\n",
+  "  run_step(\"2\")   -> Environmental covariate extraction\\n",
+  "  run_step(\"3\")   -> QRF modeling and cross-validation\\n",
+  "  run_step(\"4\")   -> Spatial prediction and COG export\\n",
+  "  run_step(\"5\")   -> Final parameterized HTML report\\n\\n"
+) else c(
+  "  run_step(\"0\")   -> Inspección estructural\\n",
+  "  run_step(\"1.1\") -> Mapeo y selección de variables\\n",
+  "  run_step(\"1.2\") -> Auditoría espacial y CRS\\n",
+  "  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n",
+  "  run_step(\"2\")   -> Extracción de covariables ambientales\\n",
+  "  run_step(\"3\")   -> Modelado QRF y validación cruzada\\n",
+  "  run_step(\"4\")   -> Predicción espacial y exportación COG\\n",
+  "  run_step(\"5\")   -> Reporte final en HTML parametrizado\\n\\n"
+)
+
 run_step_code <- c(
-  paste0("# DSM-Harness | Ejecutor de pasos para: ", project_name),
+  paste0("# DSM-Harness | ", if (is_en) "Step runner for: " else "Ejecutor de pasos para: ", project_name),
   paste0("PROJECT_NAME <- '", project_name, "'"),
+  paste0("PROJECT_LANGUAGE <- '", project_language, "'"),
   paste0("CURRENT_PROJECT_DIR <- '", proj_dir, "'"),
   paste0("PROJECT_DIR <- '", proj_dir, "'"),
   "",
@@ -134,25 +174,20 @@ run_step_code <- c(
   "  )",
   "  step_char <- as.character(step)",
   "  if (!(step_char %in% names(s_map))) {",
-  "    stop(sprintf('Paso desconocido \"%s\". Opciones: %s', step_char, paste(names(s_map), collapse = ', ')))",
+  sprintf("    stop(sprintf('%s \"%%s\". %s: %%s', step_char, paste(names(s_map), collapse = ', ')))",
+          if (is_en) "Unknown step" else "Paso desconocido",
+          if (is_en) "Options" else "Opciones"),
   "  }",
   "  s_file <- file.path('projects', PROJECT_NAME, 'scripts', s_map[[step_char]])",
-  "  cat(sprintf('\\n[>>> EJECUTANDO PASO %s] %s ...\\n', step_char, s_file))",
+  sprintf("  cat(sprintf('%s', step_char, s_file))", step_exec_msg),
   "  CURRENT_PROJECT_DIR <<- file.path('projects', PROJECT_NAME)",
   "  PROJECT_DIR <<- file.path('projects', PROJECT_NAME)",
   "  source(s_file, local = FALSE)",
   "}",
   "",
-  sprintf("cat('\\n[*] Entorno cargado para proyecto: \"%s\"\\n')", project_name),
-  "cat('Comandos disponibles:\\n')",
-  "cat('  run_step(\"0\")   -> Inspección estructural\\n')",
-  "cat('  run_step(\"1.1\") -> Mapeo y selección de variables\\n')",
-  "cat('  run_step(\"1.2\") -> Auditoría espacial y CRS\\n')",
-  "cat('  run_step(\"1.3\") -> Profundidades y coherencia edafológica\\n')",
-  "cat('  run_step(\"2\")   -> Extracción de covariables ambientales\\n')",
-  "cat('  run_step(\"3\")   -> Modelado QRF y validación cruzada\\n')",
-  "cat('  run_step(\"4\")   -> Predicción espacial y exportación COG\\n')",
-  "cat('  run_step(\"5\")   -> Reporte final en HTML parametrizado\\n\\n')"
+  sprintf("cat(sprintf('%s', project_name))", env_loaded_msg),
+  sprintf("cat('%s')", avail_cmd_hdr),
+  paste0("cat('", paste(cmds_list, collapse = "')\ncat('"), "')")
 )
 writeLines(run_step_code, file.path(proj_dir, "run_step.R"))
 cat(sprintf("[*] Ejecutor de conveniencia creado: '%s'\n", file.path(proj_dir, "run_step.R")))
