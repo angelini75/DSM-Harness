@@ -454,6 +454,14 @@ if (has_om_or_soc) {
 # Reglas de imputación y confirmación (Issue #24):
 # Siempre pedir confirmación al alumno antes de estimar/imputar BD_est. No se imputa automáticamente.
 has_user_ptf_choice <- !is.null(user_cfg$selected_ptf) && nzchar(as.character(user_cfg$selected_ptf))
+if (has_user_ptf_choice) {
+  allowed_ptfs <- c("local_fit", "best_published", "saini_1996", "drew_1973", "jeffrey_1979", "grigal_1989", "adams_1973", "honeyset_1989")
+  sel_raw <- tolower(trimws(as.character(user_cfg$selected_ptf)))
+  if (!(sel_raw %in% allowed_ptfs)) {
+    stop(sprintf("[ERROR CONFIG]: Valor no válido para 'selected_ptf': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                 user_cfg$selected_ptf, paste(allowed_ptfs, collapse = ", ")))
+  }
+}
 
 if (estimate_bd_req && has_user_ptf_choice) {
   sel_key <- tolower(trimws(as.character(user_cfg$selected_ptf)))

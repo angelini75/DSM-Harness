@@ -168,9 +168,9 @@ If you do **not** have Antigravity or an AI IDE, you can use any free web chat i
 
 ---
 
-## 🗺️ Modular Workflow (The 4 Canonical DSM Stages)
+## 🗺️ Modular Workflow (The 5 Canonical DSM Stages)
 
-The Digital Soil Mapping curriculum is structured into 4 sequential stages:
+The Digital Soil Mapping curriculum is structured into 5 sequential stages:
 
 | Stage | Methodological Module | Task Card | Core Objective |
 | :--- | :--- | :--- | :--- |
@@ -179,6 +179,7 @@ The Digital Soil Mapping curriculum is structured into 4 sequential stages:
 | **02** | Environmental Covariates | [`cards/en/02-covariates-card.md`](cards/en/02-covariates-card.md) | **Spatial Extraction**: Raster stack inspection, CRS harmonization, quality flag filtering, and point extraction (`dat_cov`). |
 | **03** | Spatial Predictive Modeling | [`cards/en/04-qrf-modeling-card.md`](cards/en/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Boruta selection, repeated CV tuning grid, metrics, and scatter plots reflecting reference modeling script. |
 | **04** | Spatial Prediction & COG | [`cards/en/05-prediction-opennsis-card.md`](cards/en/05-prediction-opennsis-card.md) | **Spatial Prediction & OpenNSIS**: Block-wise raster prediction (mean and `sd` uncertainty), standard COG export, and ISO metadata. |
+| **05** | Final Mapping Report | [`02_scripts/05_render_report.R`](02_scripts/05_render_report.R) | **Parameterized Reporting**: Standalone HTML report consolidating dataset metrics, 1:1 validation, OpenNSIS maps, and audit trail. |
 
 > 📌 *Note*: Soil Spectroscopy (DRS, previously Stage 03) is out of scope for the harness for now (Issue #42).
 

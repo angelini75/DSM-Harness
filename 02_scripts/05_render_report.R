@@ -141,12 +141,27 @@ cat(sprintf("  - Variable:     %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2
 cat(sprintf("  - Pais/Proj:    %s / %s\n", country_code, project_code))
 cat(sprintf("  - Destino HTML: %s\n", output_html))
 
-# 5. Renderizar informe con rmarkdown ------------------------------------------
+# 5. Pre-evaluación de datos y renderizado con rmarkdown -----------------------
 dir.create(base_rep_dir, recursive = TRUE, showWarnings = FALSE)
+
+n_rows_dat <- 0
+f_cov_check <- file.path(base_data_dir, "step2_covariates.csv")
+if (file.exists(f_cov_check)) {
+  tryCatch({
+    n_rows_dat <- nrow(read.csv(f_cov_check, stringsAsFactors = FALSE))
+  }, error = function(e) NULL)
+}
+
+root_dir <- normalizePath(".", winslash = "/", mustWork = FALSE)
+proj_dir_normalized <- if (!is.null(proj_active)) {
+  normalizePath(proj_active, winslash = "/", mustWork = FALSE)
+} else {
+  root_dir
+}
 
 render_params <- list(
   project = proj_name,
-  project_dir = if (!is.null(proj_active)) proj_active else ".",
+  project_dir = proj_dir_normalized,
   cc = country_code,
   proj = project_code,
   property = target_prop,
@@ -160,6 +175,7 @@ res_render <- tryCatch({
     input = rmd_template,
     output_file = basename(output_html),
     output_dir = dirname(output_html),
+    knit_root_dir = root_dir,
     params = render_params,
     quiet = TRUE,
     envir = new.env()
@@ -167,6 +183,17 @@ res_render <- tryCatch({
 }, error = function(e) {
   stop(sprintf("Error al renderizar el reporte R Markdown: %s", e$message))
 })
+
+# Validación post-render: asegurar que el HTML no se haya generado vacío
+if (!file.exists(output_html) || file.size(output_html) == 0) {
+  stop(sprintf("El archivo de reporte HTML '%s' no se generó o está vacío.", output_html))
+}
+
+html_lines <- readLines(output_html, encoding = "UTF-8", warn = FALSE)
+if (n_rows_dat > 0 && any(grepl("Perfiles usados</span><b>0</b>", html_lines, fixed = TRUE))) {
+  stop(sprintf("El reporte HTML se generó sin perfiles ('Perfiles usados: 0') a pesar de existir %d filas en '%s'. Verifica las rutas y knit_root_dir.",
+               n_rows_dat, f_cov_check))
+}
 
 cat(sprintf("[OK] Reporte HTML generado: '%s' (%.1f KB)\n", output_html, file.size(output_html) / 1024))
 
@@ -176,14 +203,6 @@ cat(sprintf("[OK] Reporte HTML generado: '%s' (%.1f KB)\n", output_html, file.si
 # <<< ADAPT:render_report
 
 # 6. Registrar en auditoria ----------------------------------------------------
-n_rows_dat <- 0
-f_cov_check <- file.path(base_data_dir, "step2_covariates.csv")
-if (file.exists(f_cov_check)) {
-  tryCatch({
-    n_rows_dat <- nrow(read.csv(f_cov_check, stringsAsFactors = FALSE))
-  }, error = function(e) NULL)
-}
-
 record_decision(
   step = 5.0,
   criterion = "Reporte final de mapeo",

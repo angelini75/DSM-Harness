@@ -113,8 +113,43 @@ if (file.exists(config_file)) {
       
       applied_keys <- intersect(names(user_cfg), known_config_keys)
       cat(sprintf("[*] Parámetros aplicados: [%s]\n", paste(applied_keys, collapse = ", ")))
+      
+      # Validación estricta de enumeraciones (Issue #47)
+      if (!is.null(user_cfg$duplicate_key_strategy)) {
+        val_dks <- as.character(user_cfg$duplicate_key_strategy)
+        allowed_dks <- c("fail", "average", "keep_first")
+        if (!(val_dks %in% allowed_dks)) {
+          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_key_strategy': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                       val_dks, paste(allowed_dks, collapse = ", ")))
+        }
+      }
+      if (!is.null(user_cfg$duplicate_action)) {
+        val_da <- as.character(user_cfg$duplicate_action)
+        allowed_da <- c("preserve_and_flag", "average", "keep_first")
+        if (!(val_da %in% allowed_da)) {
+          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                       val_da, paste(allowed_da, collapse = ", ")))
+        }
+      }
+      if (!is.null(user_cfg$outlier_action)) {
+        val_oa <- as.character(user_cfg$outlier_action)
+        allowed_oa <- c("flag", "exclude", "keep")
+        if (!(val_oa %in% allowed_oa)) {
+          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                       val_oa, paste(allowed_oa, collapse = ", ")))
+        }
+      }
+      if (!is.null(user_cfg$spatial_outlier_action)) {
+        val_soa <- as.character(user_cfg$spatial_outlier_action)
+        allowed_soa <- c("flag", "exclude", "keep")
+        if (!(val_soa %in% allowed_soa)) {
+          stop(sprintf("[ERROR CONFIG]: Valor no válido para 'spatial_outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                       val_soa, paste(allowed_soa, collapse = ", ")))
+        }
+      }
     }
   }, error = function(e) {
+    if (grepl("\\[ERROR CONFIG\\]", e$message)) stop(e$message)
     cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 } else {
@@ -217,6 +252,8 @@ if (ext %in% c("xlsx", "xls")) {
         df_sites <- df_sites %>% distinct(across(all_of(site_k)), .keep_all = TRUE)
         record_decision(1.1, "Claves duplicadas en tabla de sitios", "Conservar primera ocurrencia",
                         source = "user_config", affected_rows = dup_site_count, details = sprintf("Hoja: %s", s_sites))
+      } else {
+        stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_key_strategy': '%s'. Valores válidos: fail, average, keep_first.", dup_strat))
       }
     }
     
@@ -270,6 +307,8 @@ if (ext %in% c("xlsx", "xls")) {
             df_h_cur <- df_h_cur %>% distinct(across(all_of(target_j)), .keep_all = TRUE)
             record_decision(1.1, "Claves duplicadas en unión", "Conservar primera ocurrencia",
                             source = "user_config", affected_rows = dup_right_count, details = sprintf("Hoja: %s", h_name))
+          } else {
+            stop(sprintf("[ERROR CONFIG]: Valor no válido para 'duplicate_key_strategy': '%s'. Valores válidos: fail, average, keep_first.", dup_strat_sec))
           }
         }
         

@@ -649,10 +649,10 @@ test_that("Issue #41: 04_predict_and_cog.R validates country_code and project_co
 test_that("Issue #42: Spectroscopy is strictly banished from DSM documentation and workflows", {
   readme_lines <- readLines("README.md", encoding = "UTF-8")
   expect_true(any(grepl("OUT OF SCOPE", readme_lines, ignore.case = TRUE)))
-  expect_true(any(grepl("The 4 Canonical DSM Stages", readme_lines)))
+  expect_true(any(grepl("The 5 Canonical DSM Stages", readme_lines)))
   
   readme_es_lines <- readLines("README.es.md", encoding = "UTF-8")
-  expect_true(any(grepl("Las 4 Etapas Canónicas de DSM", readme_es_lines)))
+  expect_true(any(grepl("Las 5 Etapas Canónicas de DSM", readme_es_lines)))
   
   agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
   expect_true(any(grepl("ABSOLUTE BAN on Spectroscopy", agents_lines)))
@@ -752,9 +752,57 @@ test_that("Issue #45: Step 5 parameterized R Markdown report template and runner
   expect_true(file.size(expected_html) > 1000, info = "HTML file is non-empty")
   expect_true(file.exists(expected_txt), info = "Generated companion summary TXT")
   
+  html_lines <- readLines(expected_html, encoding = "UTF-8")
+  expect_false(any(grepl("Perfiles usados</span><b>0</b>", html_lines, fixed = TRUE)))
+  expect_true(any(grepl("Perfiles usados</span><b>30</b>", html_lines, fixed = TRUE)))
+  
   # Check decision logged
   log_lines <- readLines(file.path(proj_path, "decisions_log.csv"), encoding = "UTF-8")
   expect_true(any(grepl("Reporte final de mapeo", log_lines)))
+})
+
+test_that("Issue #46: Step 5 enforces knit_root_dir and validates non-empty dataset profiles in rendered HTML", {
+  lines_05 <- readLines("02_scripts/05_render_report.R", encoding = "UTF-8")
+  expect_true(any(grepl("knit_root_dir", lines_05, fixed = TRUE)))
+  expect_true(any(grepl("Perfiles usados</span><b>0</b>", lines_05, fixed = TRUE)))
+  expect_true(any(grepl("El reporte HTML se generó sin perfiles", lines_05, fixed = TRUE)))
+})
+
+test_that("Issue #47: Step 1.1, 1.2 and 1.3 enforce strict enum validation and reject invalid preset strategies", {
+  lines_11 <- readLines("02_scripts/01_1_byod_audit.R", encoding = "UTF-8")
+  expect_true(any(grepl("Valor no válido para 'duplicate_key_strategy'", lines_11, fixed = TRUE)))
+  expect_true(any(grepl("Valor no válido para 'duplicate_action'", lines_11, fixed = TRUE)))
+  expect_true(any(grepl("Valor no válido para 'outlier_action'", lines_11, fixed = TRUE)))
+  expect_true(any(grepl("Valor no válido para 'spatial_outlier_action'", lines_11, fixed = TRUE)))
+  
+  lines_12 <- readLines("02_scripts/01_2_byod_audit.R", encoding = "UTF-8")
+  expect_true(any(grepl("Valor no válido para 'outlier_action'", lines_12, fixed = TRUE)))
+  
+  lines_13 <- readLines("02_scripts/01_3_byod_audit.R", encoding = "UTF-8")
+  expect_true(any(grepl("Valor no válido para 'selected_ptf'", lines_13, fixed = TRUE)))
+  
+  agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
+  expect_true(any(grepl("ABSOLUTE BAN on Proactive Duplicate Presets & Invalid Enums (#47)", agents_lines, fixed = TRUE)))
+  expect_true(any(grepl("ABSOLUTE BAN on Fictitious Row Removals (#47)", agents_lines, fixed = TRUE)))
+})
+
+test_that("Issue #48: Agent neutrality, no CRS qualitative bias, no unbacked property scales, no persistent code examples", {
+  lines_04 <- readLines("02_scripts/04_predict_and_cog.R", encoding = "UTF-8")
+  expect_false(any(grepl("ej. GTM, MKD", lines_04, fixed = TRUE)))
+  expect_false(any(grepl("ej. NACIONAL", lines_04, fixed = TRUE)))
+  
+  rmd_lines <- readLines("02_scripts/05_variable_report.Rmd", encoding = "UTF-8")
+  expect_false(any(grepl('cc: "MKD"', rmd_lines, fixed = TRUE)))
+  expect_false(any(grepl('proj: "NACIONAL"', rmd_lines, fixed = TRUE)))
+  
+  agents_lines <- readLines("AGENTS.md", encoding = "UTF-8")
+  expect_true(any(grepl("ABSOLUTE BAN on Unbacked Analytical Scales & Presumptive Norms (#48)", agents_lines, fixed = TRUE)))
+  expect_true(any(grepl("No Persistent Numeric Examples or Fixed Codes (#48)", agents_lines, fixed = TRUE)))
+  expect_true(any(grepl("WITHOUT qualitative labels", agents_lines, fixed = TRUE)))
+  
+  panel_lines <- readLines("agents/dsm-panel.md", encoding = "UTF-8")
+  expect_true(any(grepl("PROHIBICIÓN DE ESCALAS ANALÍTICAS SIN RESPALDO Y JUICIOS DE AJUSTE (#48)", panel_lines, fixed = TRUE)))
+  expect_true(any(grepl("código del proyecto nacional", panel_lines, fixed = TRUE)))
 })
 
 

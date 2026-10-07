@@ -236,6 +236,13 @@ dat_valid$flag_spatial_outlier <- outlier_mask
 
 # Aplicar decisión del usuario sobre outliers si está configurada
 target_outlier_act <- if (!is.null(user_cfg$outlier_action)) user_cfg$outlier_action else user_cfg$spatial_outlier_action
+if (!is.null(target_outlier_act)) {
+  valid_outlier_acts <- c("flag", "exclude", "keep")
+  if (!(target_outlier_act %in% valid_outlier_acts)) {
+    stop(sprintf("[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+                 target_outlier_act, paste(valid_outlier_acts, collapse = ", ")))
+  }
+}
 outlier_act_source <- if (!is.null(target_outlier_act)) "user_config" else "script_default"
 
 if (!is.null(target_outlier_act) && outlier_count > 0) {
@@ -250,7 +257,7 @@ if (!is.null(target_outlier_act) && outlier_count > 0) {
     record_decision(1.2, "Outliers espaciales", "Conservar y marcar bandera", source = outlier_act_source,
                     affected_rows = outlier_count, affected_profiles = outlier_profiles,
                     details = sprintf("Columna flag_spatial_outlier agregada sobre %s", coord_space_iqr))
-  } else {
+  } else if (target_outlier_act == "keep") {
     outlier_action_applied <- sprintf("Conservados como válidos por decisión del usuario (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Conservar como válidos", source = outlier_act_source,
                     affected_rows = outlier_count, affected_profiles = outlier_profiles)

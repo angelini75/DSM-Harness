@@ -167,9 +167,9 @@ Si **no** tienes Antigravity ni un IDE de IA, puedes usar cualquier chat gratuit
 
 ---
 
-## 🗺️ Flujo de Trabajo Modular (Las 4 Etapas Canónicas de DSM)
+## 🗺️ Flujo de Trabajo Modular (Las 5 Etapas Canónicas de DSM)
 
-El proceso de Mapeo Digital de Suelos está estructurado en 4 etapas secuenciales:
+El proceso de Mapeo Digital de Suelos está estructurado en 5 etapas secuenciales:
 
 | Etapa | Módulo Metodológico | Tarjeta de Prompt | Objetivo Central |
 | :--- | :--- | :--- | :--- |
@@ -178,6 +178,7 @@ El proceso de Mapeo Digital de Suelos está estructurado en 4 etapas secuenciale
 | **02** | Covariables Ambientales | [`cards/es/02-covariates-card.md`](cards/es/02-covariates-card.md) | **Extracción Espacial**: Inspección de rásteres ambientales, armonización de CRS, filtrado de calidad y extracción puntual (`dat_cov`). |
 | **03** | Modelado Espacial QRF | [`cards/es/04-qrf-modeling-card.md`](cards/es/04-qrf-modeling-card.md) | **Quantile Regression Forest**: Selección con `Boruta`, afinación con grilla en validación cruzada y métricas según script de referencia. |
 | **04** | Predicción Espacial & COG | [`cards/es/05-prediction-opennsis-card.md`](cards/es/05-prediction-opennsis-card.md) | **Mapeo Espacial & OpenNSIS**: Predicción por bloques (media e incertidumbre `sd`), exportación a COG estándar y metadatos. |
+| **05** | Reporte Final de Mapeo | [`02_scripts/05_render_report.R`](02_scripts/05_render_report.R) | **Reporte Parametrizado**: HTML autocontenido con métricas, validación 1:1, mapas OpenNSIS y trazabilidad de decisiones. |
 
 > 📌 *Nota*: La espectroscopía de suelos (DRS, anteriormente Etapa 03) queda fuera del alcance operativo del arnés por ahora (Issue #42).
 

@@ -15,7 +15,7 @@
 # 4. Log de decisiones:       'decisions_log.csv'
 #
 # INSTRUCCIONES PARA EL ALUMNO:
-# 1. Asegúrate de configurar 'country_code' (ej. GTM, MKD) y 'project_code' (ej. NACIONAL)
+# 1. Asegúrate de configurar 'country_code' (código ISO-3 del país) y 'project_code' (código del proyecto)
 #    en 'config.json'.
 # 2. Ejecuta este script en RStudio (Source o Ctrl+Shift+S) o mediante run_step("4").
 # 3. Observa los mapas diagnósticos generados en la pestaña 'Plots' de RStudio.
@@ -116,7 +116,7 @@ country_code <- if (!is.null(user_cfg$country_code) && nzchar(as.character(user_
   toupper(as.character(user_cfg$country_code))
 } else {
   cat("\n[AVISO OPENNSIS]: 'country_code' no está declarado en config.json.\n")
-  cat("  -> Se utilizará 'PAIS' como código provisional. Consulta tu código ISO-3 (ej. GTM, MKD) con la IA.\n")
+  cat("  -> Se utilizará 'PAIS' como código provisional. Declara el código ISO-3 de tu país en 'config.json'.\n")
   "PAIS"
 }
 
@@ -124,7 +124,7 @@ project_code <- if (!is.null(user_cfg$project_code) && nzchar(as.character(user_
   toupper(as.character(user_cfg$project_code))
 } else {
   cat("\n[AVISO OPENNSIS]: 'project_code' no está declarado en config.json.\n")
-  cat("  -> Se utilizará 'PROJ' como código provisional. NUNCA inventes nombres de proyecto.\n")
+  cat("  -> Se utilizará 'PROJ' como código provisional. Declara el identificador de tu proyecto en 'config.json'. NUNCA inventes nombres de proyecto.\n")
   "PROJ"
 }
 

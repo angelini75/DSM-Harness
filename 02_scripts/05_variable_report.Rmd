@@ -6,10 +6,10 @@ output:
     theme: null
     css: null
 params:
-  project: "nacional"
-  cc: "MKD"
-  proj: "NACIONAL"
-  property: "pH_H2O"
+  project: ""
+  cc: ""
+  proj: ""
+  property: ""
   d1: 0
   d2: 30
   unit: ""
@@ -29,6 +29,10 @@ p <- if (!is.null(params$project_dir) && nzchar(params$project_dir) && dir.exist
   params$project_dir
 } else if (dir.exists(file.path("projects", params$project))) {
   file.path("projects", params$project)
+} else if (dir.exists(file.path("..", params$project))) {
+  file.path("..", params$project)
+} else if (dir.exists("..") && dir.exists(file.path("..", "data"))) {
+  ".."
 } else if (dir.exists(params$project)) {
   params$project
 } else {
