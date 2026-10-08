@@ -449,10 +449,23 @@ fit_local_models <- function(df_val, om_full) {
   best_name <- names(which.min(rmse_list))
   best_cand <- candidates[[best_name]]
   
+  type_lbl <- if (is_en) {
+    switch(best_name,
+      "Lineal" = "Linear",
+      "Logarítmico" = "Logarithmic",
+      "Recíproco" = "Reciprocal",
+      "Exponencial" = "Exponential",
+      best_name
+    )
+  } else {
+    best_name
+  }
+  fit_prefix <- if (is_en) "Simple local fit" else "Ajuste local simple"
+
   list(
     type = best_name,
     formula = best_cand$formula,
-    name = sprintf("Ajuste local simple (%s)", best_name),
+    name = sprintf("%s (%s)", fit_prefix, type_lbl),
     pred = best_cand$pred_all
   )
 }
@@ -512,9 +525,10 @@ if (has_om_or_soc) {
   }
 }
 
-# Reglas de imputación y confirmación (Issue #24):
-# Siempre pedir confirmación al alumno antes de estimar/imputar BD_est. No se imputa automáticamente.
-has_user_ptf_choice <- !is.null(user_cfg$selected_ptf) && nzchar(as.character(user_cfg$selected_ptf))
+has_user_ptf_choice <- !is.null(user_cfg$selected_ptf) && 
+  length(user_cfg$selected_ptf) > 0 && 
+  !is.na(user_cfg$selected_ptf[[1]]) && 
+  nzchar(trimws(as.character(user_cfg$selected_ptf[[1]])))
 if (has_user_ptf_choice) {
   allowed_ptfs <- c("local_fit", "best_published", "saini_1996", "drew_1973", "jeffrey_1979", "grigal_1989", "adams_1973", "honeyset_1989")
   sel_raw <- tolower(trimws(as.character(user_cfg$selected_ptf)))
@@ -531,7 +545,7 @@ if (estimate_bd_req && has_user_ptf_choice) {
   if (sel_key %in% names(all_models_list)) {
     winner_key <- sel_key
   } else if (sel_key %in% c("best_published", "best", "mejor")) {
-    pub_rows <- ptf_eval_table[!grepl("Ajuste local", ptf_eval_table$PTF), ]
+    pub_rows <- ptf_eval_table[!grepl("Ajuste local|Simple local fit", ptf_eval_table$PTF), ]
     if (nrow(pub_rows) > 0) {
       best_pub_name <- pub_rows$PTF[which.min(pub_rows$RMSE)]
       winner_key <- names(all_models_list)[sapply(all_models_list, function(x) x$name == best_pub_name)]

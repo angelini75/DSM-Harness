@@ -202,6 +202,8 @@ translate_decision_text <- function(text, lang = "es") {
   txt_res <- gsub("Recíproco", "Reciprocal", txt_res, fixed = TRUE)
   txt_res <- gsub("Archivos: ", "Files: ", txt_res, fixed = TRUE)
   txt_res <- gsub("Compresión: ", "Compression: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("Ajuste local y contraste de 6 PTFs disponibles sobre n=", "Local fit and contrast of 6 available PTFs on n=", txt_res, fixed = TRUE)
+  txt_res <- gsub("Contraste de 6 PTFs publicadas sobre n=", "Contrast of 6 published PTFs on n=", txt_res, fixed = TRUE)
   
   return(txt_res)
 }

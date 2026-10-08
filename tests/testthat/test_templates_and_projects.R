@@ -1074,5 +1074,56 @@ test_that("Issue #51: Console output, reports, and HTML document title emit zero
   expect_false(any(grepl("<title>Reporte de mapeo", html_lines)))
 })
 
+test_that("Issue #52: Step 1.3 local PTF fit label is in English when language is English", {
+  test_proj <- "test_issue_52_ptf"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  project_language <<- "en"
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  # Generate synthetic dataset with >= 30 measured BD and OM values to trigger local calibration
+  set.seed(123)
+  n <- 40
+  om_vals <- runif(n, 1.0, 5.0)
+  bd_vals <- round(1.6 * exp(-0.05 * om_vals) + rnorm(n, 0, 0.05), 3)
+  
+  df_ptf <- data.frame(
+    profile_code = paste0("P", 1:n),
+    longitude = runif(n, 21.0, 22.0),
+    latitude = runif(n, 41.0, 42.0),
+    upper = 0,
+    lower = 20,
+    OM = om_vals,
+    BD = bd_vals
+  )
+  write.csv(df_ptf, file.path(proj_path, "data", "step1_2_spatial.csv"), row.names = FALSE)
+  
+  cfg_read <- jsonlite::fromJSON(file.path(proj_path, "config.json"), simplifyVector = FALSE)
+  cfg_read$estimate_bd <- TRUE
+  cfg_read$bd_fit_min_n <- 30
+  jsonlite::write_json(cfg_read, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  PROJECT_DIR <<- proj_path
+  CURRENT_PROJECT_DIR <<- proj_path
+  PROJECT_NAME <<- test_proj
+  
+  s13_out <- capture.output({
+    source(file.path(proj_path, "scripts", "01_3_byod_audit.R"), local = new.env())
+  })
+  
+  # Console should contain "Simple local fit" and NOT "Ajuste local simple"
+  expect_true(any(grepl("Simple local fit \\(", s13_out)))
+  expect_false(any(grepl("Ajuste local simple", s13_out)))
+  
+  # Report .txt should contain "Simple local fit" and NOT "Ajuste local simple"
+  rep_file <- file.path(proj_path, "reports", "step1_3_pedological_report.txt")
+  expect_true(file.exists(rep_file))
+  rep_lines <- readLines(rep_file, encoding = "UTF-8")
+  expect_true(any(grepl("Simple local fit \\(", rep_lines)))
+  expect_false(any(grepl("Ajuste local simple", rep_lines)))
+})
+
 
 
