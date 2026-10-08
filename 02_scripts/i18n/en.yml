@@ -1,0 +1,55 @@
+# English message catalogue for DSM-Harness v2
+project_missing: "Project name must be provided (e.g., run_step(\"1.1\", project = \"myproj\"))."
+project_not_found: "Project folder not found: %s"
+config_missing: "config.json missing in project folder: %s"
+script_not_found: "Script not found for step: %s (looked for %s)"
+custom_override: "[INFO] Using custom script for step %s: %s"
+step_running: "--- Running Step %s for project '%s' ---"
+step_success: "Step %s completed successfully."
+step_error: "Error during step execution: %s"
+step_missing_input: "Missing required input file for step %s: %s. Please run step %s first."
+
+# Step 0
+inspect_header: "DSM-HARNESS: DATASET STRUCTURAL INSPECTION REPORT"
+inspect_no_file: "No data file found in project data folder: %s"
+inspect_sheet_summary: "Sheet '%s': %d rows, %d columns"
+inspect_col_header: "Column inspection:"
+inspect_complete: "Data inspection completed. Report written to %s"
+
+# Step 1.1
+map_input_missing: "Input file specified in config not found: %s"
+map_dup_keys_found: "Found %d duplicate profile keys in sheet '%s'."
+map_dup_no_strategy: "Duplicate keys detected but 'duplicate_key_strategy' is not specified or invalid. Allowed strategies: fail | average | keep_first"
+map_dup_fail: "Execution stopped because duplicate keys were detected and strategy is 'fail'."
+map_dup_resolved: "Resolved duplicate keys using strategy '%s'. Original rows: %d, Cleaned rows: %d."
+map_complete: "Mapping completed. Mapped data written to %s. Report written to %s"
+map_missing_roles: "Config is missing required roles: %s"
+
+# Step 1.2
+spatial_input_missing: "Mapped data file not found: %s. Please run step 1.1 first."
+spatial_coords_missing: "Coordinate columns (roles 'x' and 'y') not found in data or config."
+spatial_looks_projected: "Coordinates appear to be projected (X range: [%.2f, %.2f], Y range: [%.2f, %.2f])."
+spatial_looks_geographic: "Coordinates appear to be geographic (Lon range: [%.4f, %.4f], Lat range: [%.4f, %.4f])."
+spatial_crs_needed: "source_crs is not configured or empty. Source CRS is needed to reproject coordinates. Spatial data file was NOT written."
+spatial_reprojected: "Reprojected coordinates from EPSG:%s to EPSG:4326. Resulting Lon range: [%.4f, %.4f], Lat range: [%.4f, %.4f]."
+spatial_complete: "Spatial audit completed. Data written to %s. Report written to %s"
+
+# Step 1.3
+ped_input_missing: "Spatial data file not found: %s. Please run step 1.2 first."
+ped_depth_invalid: "Found %d horizons with invalid depth intervals (top < 0 or bottom <= top)."
+ped_bd_catalogue: "Bulk density PTF catalogue contrast:"
+ped_bd_local: "Bulk density local fit model (n = %d):"
+ped_bd_no_local: "Insufficient measured bulk density samples for local fit (n = %d, threshold = %d)."
+ped_bd_imputed: "Imputed bulk density using %s into separate column 'bd_imputed'."
+ped_bd_not_imputed: "Bulk density imputation not enabled (impute_bulk_density = false). Original values preserved."
+ped_complete: "Pedological audit completed. Clean data written to %s. Report written to %s"
+
+# Config Validator
+val_unknown_key: "Unknown configuration key found: '%s'"
+val_missing_field: "Required configuration field missing: '%s'"
+val_invalid_role: "Invalid role '%s' for column '%s'. Allowed roles: %s"
+val_invalid_category: "Invalid property category '%s' for column '%s'. Allowed categories: %s"
+val_invalid_enum: "Invalid value '%s' for enum '%s'. Allowed values: %s"
+val_path_absolute: "input_file path must be relative to project directory, not absolute: '%s'"
+val_col_not_found: "Configured column '%s' does not exist in data file."
+val_valid: "Configuration is valid."

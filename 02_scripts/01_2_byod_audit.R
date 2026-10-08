@@ -1,223 +1,180 @@
 # ==============================================================================
-# DSM-Harness | Paso 1.2: Validación Espacial, CRS y Diagnóstico Geográfico
-# ==============================================================================
-# OBJETIVO:
-# Auditar las coordenadas geográficas del dataset intermedio (Paso 1.1), verificar
-# rangos de latitud/longitud, detectar sistemas proyectados (UTM, Gauss-Krüger)
-# y transformar a WGS84 (EPSG:4326), generar visualización interactiva y
-# producir un reporte de texto con las métricas espaciales para que la IA
-# formule preguntas pedagógicas de reflexión territorial.
-#
-# SALIDAS GENERADAS:
-# 1. Dataset intermedio: '01_data/profiles/step1_2_spatial.csv'
-# 2. Reporte espacial:   '01_data/profiles/step1_2_spatial_report.txt'
-# 3. Gráfico en RStudio:  Visualizador interactivo mapview o ggplot2
-#
-# INSTRUCCIONES PARA EL ALUMNO:
-# 1. Ejecuta este script en RStudio (Source o Ctrl+Shift+S).
-# 2. Observa el mapa interactivo que se abrirá en la pestaña 'Viewer' o 'Plots'.
-# 3. Avísale a la IA en el chat cuando haya terminado de ejecutarse.
+# DSM-Harness v2 | 02_scripts/01_2_byod_audit.R
+# Step 1.2: Spatial Range Audit, CRS Diagnosis & Reprojection
 # ==============================================================================
 
-rm(list = ls())
-
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(sf)
-})
-
-# 1. Configuración de rutas y parámetros ---------------------------------------
-input_csv     <- "01_data/profiles/step1_1_variables.csv"
-output_csv    <- "01_data/profiles/step1_2_spatial.csv"
-output_report <- "01_data/profiles/step1_2_spatial_report.txt"
-
-# CRS de origen si las coordenadas son proyectadas (ej. UTM).
-# Si tus coordenadas ya son WGS84 (grados decimales), déjalo en NA o 4326.
-# La IA o el alumno pueden ajustar este valor si sus datos vienen en una proyección nacional específica:
-source_crs <- NA  # Ejemplo: 32634 (UTM 34N), 32719 (UTM 19S), 5343 (POSGAR), etc.
-
-if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR] No se encontro '%s'. Debes ejecutar primero '02_scripts/01_1_byod_audit.R'.", input_csv))
+# Ensure repo_root and proj_root are set
+if (!exists("repo_root", inherits = FALSE)) {
+  find_root <- function(d = getwd()) {
+    curr <- normalizePath(d, winslash = "/", mustWork = FALSE)
+    while (nchar(curr) > 0 && dirname(curr) != curr) {
+      if (file.exists(file.path(curr, "DSM-Harness.Rproj"))) return(curr)
+      curr <- dirname(curr)
+    }
+    normalizePath(d, winslash = "/", mustWork = FALSE)
+  }
+  repo_root <- find_root()
 }
 
-cat(sprintf("\n[*] Cargando dataset del Paso 1.1: %s ...\n", input_csv))
-dat <- readr::read_csv(input_csv, show_col_types = FALSE)
-
-# 2. Verificación de presencia de coordenadas ----------------------------------
-has_coords <- all(c("longitude", "latitude") %in% names(dat))
-
-if (!has_coords) {
-  stop("[ERROR FATAL]: Las columnas 'longitude' y/latitude' no estan presentes en el dataset. Revisa el mapeo en Paso 1.1.")
+if (!exists("msg", mode = "function")) {
+  source(file.path(repo_root, "02_scripts", "i18n", "load_i18n.R"), local = FALSE)
+}
+if (!exists("record_decision", mode = "function")) {
+  source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
 }
 
-dat <- dat %>%
-  mutate(
-    longitude = as.numeric(longitude),
-    latitude  = as.numeric(latitude)
+if (!exists("project", inherits = FALSE) || is.null(project)) {
+  stop("Step 1.2 must be run within a project context (e.g., run_step('1.2', project = 'myproj'))")
+}
+
+proj_root <- file.path(repo_root, "projects", project)
+data_dir <- file.path(proj_root, "data")
+reports_dir <- file.path(proj_root, "reports")
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
+if (!dir.exists(reports_dir)) dir.create(reports_dir, recursive = TRUE)
+
+config_path <- file.path(proj_root, "config.json")
+if (!file.exists(config_path)) {
+  stop(msg("config_missing", "en", config_path, repo_root = repo_root), call. = FALSE)
+}
+
+if (!exists("cfg", inherits = FALSE) || is.null(cfg)) {
+  cfg <- jsonlite::fromJSON(config_path, simplifyVector = FALSE)
+}
+lang <- cfg$language %||% "en"
+
+is_str <- function(x) {
+  if (is.null(x) || length(x) == 0) return(FALSE)
+  ch <- as.character(x)[1]
+  !is.na(ch) && nzchar(ch)
+}
+
+# Verify that Step 1.1 output exists
+in_csv <- file.path(data_dir, "01_mapped.csv")
+if (!file.exists(in_csv)) {
+  err_msg <- msg("step_missing_input", lang, "1.2", "data/01_mapped.csv", "1.1", repo_root = repo_root)
+  stop(err_msg, call. = FALSE)
+}
+
+df <- as.data.frame(readr::read_csv(in_csv, show_col_types = FALSE))
+
+x_col <- if (is_str(cfg$roles$x)) as.character(cfg$roles$x) else NULL
+y_col <- if (is_str(cfg$roles$y)) as.character(cfg$roles$y) else NULL
+
+if (is.null(x_col) || is.null(y_col) || !x_col %in% names(df) || !y_col %in% names(df)) {
+  err_msg <- msg("spatial_coords_missing", lang, repo_root = repo_root)
+  stop(err_msg, call. = FALSE)
+}
+
+# Coordinate ranges
+x_vals <- as.numeric(df[[x_col]])
+y_vals <- as.numeric(df[[y_col]])
+x_valid <- x_vals[!is.na(x_vals)]
+y_valid <- y_vals[!is.na(y_vals)]
+
+if (length(x_valid) == 0 || length(y_valid) == 0) {
+  stop("No non-NA coordinates found in dataset.", call. = FALSE)
+}
+
+x_min <- min(x_valid); x_max <- max(x_valid)
+y_min <- min(y_valid); y_max <- max(y_valid)
+
+# Diagnostic: geographic vs projected
+is_geo <- (x_min >= -180 && x_max <= 180 && y_min >= -90 && y_max <= 90)
+
+report_path <- file.path(reports_dir, "12_spatial.txt")
+rep_con <- file(report_path, open = "wt", encoding = "UTF-8")
+
+log_out <- function(...) {
+  line <- paste0(...)
+  cat(line, "\n")
+  cat(line, "\n", file = rep_con)
+}
+
+log_out("================================================================================")
+log_out("  DSM-HARNESS: STEP 1.2 SPATIAL AUDIT & CRS DIAGNOSIS")
+log_out("================================================================================")
+log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+log_out("Project: ", project)
+log_out("Input File: data/01_mapped.csv (", nrow(df), " rows)")
+log_out("Coordinate columns: X = '", x_col, "', Y = '", y_col, "'")
+log_out(sprintf("Raw X range: [%.4f, %.4f]", x_min, x_max))
+log_out(sprintf("Raw Y range: [%.4f, %.4f]\n", y_min, y_max))
+
+if (is_geo) {
+  log_out("Diagnostic: ", msg("spatial_looks_geographic", lang, x_min, x_max, y_min, y_max, repo_root = repo_root))
+} else {
+  log_out("Diagnostic: ", msg("spatial_looks_projected", lang, x_min, x_max, y_min, y_max, repo_root = repo_root))
+}
+
+source_crs <- cfg$source_crs
+
+# If source_crs is missing or empty
+if (!is_str(source_crs)) {
+  crs_msg <- msg("spatial_crs_needed", lang, repo_root = repo_root)
+  log_out("\n[NOTICE] ", crs_msg)
+  close(rep_con)
+  
+  record_decision(
+    project = project,
+    step = "1.2",
+    decision = "Spatial audit performed (CRS needed)",
+    details = sprintf("Raw X: [%.2f, %.2f], Y: [%.2f, %.2f]. Awaiting source_crs.", x_min, x_max, y_min, y_max),
+    repo_root = repo_root
   )
-
-n_total <- nrow(dat)
-n_profiles <- if ("profile_code" %in% names(dat)) length(unique(na.omit(dat$profile_code))) else n_total
-
-# 3. Detección y Auditoría de Coordenadas ---------------------------------------
-missing_coords <- sum(is.na(dat$longitude) | is.na(dat$latitude))
-zero_coords    <- sum(dat$longitude == 0 & dat$latitude == 0, na.rm = TRUE)
-
-valid_mask <- !is.na(dat$longitude) & !is.na(dat$latitude) & !(dat$longitude == 0 & dat$latitude == 0)
-dat_valid  <- dat[valid_mask, ]
-
-min_x <- min(dat_valid$longitude, na.rm = TRUE)
-max_x <- max(dat_valid$longitude, na.rm = TRUE)
-min_y <- min(dat_valid$latitude, na.rm = TRUE)
-max_y <- max(dat_valid$latitude, na.rm = TRUE)
-
-is_projected <- (max_x > 180 || min_x < -180 || max_y > 90 || min_y < -90)
-coord_diagnosis <- ""
-crs_used <- "EPSG:4326 (WGS84 nativo)"
-
-if (is_projected) {
-  cat("\n[ALERTA ESPACIAL]: Las coordenadas exceden los rangos de WGS84 (-180..180, -90..90).\n")
-  cat(sprintf("  Rango X detectado: [%.1f, %.1f]\n", min_x, max_x))
-  cat(sprintf("  Rango Y detectado: [%.1f, %.1f]\n", min_y, max_y))
-  cat("  -> Se detectaron coordenadas métricas proyectadas (ej. UTM o cuadrícula nacional).\n")
   
-  if (is.na(source_crs)) {
-    # Heurística para sugerir zona UTM basada en valores X / Y
-    cat("\n[ACCION REQUERIDA]: Define la variable 'source_crs' arriba con el código EPSG correspondiente a tu proyección.\n")
-    cat("Ejemplo: source_crs <- 32634 para UTM Zona 34N, 32719 para UTM Zona 19S.\n")
-    # Intentar continuar si el usuario ya tenía EPSG configurado
-    coord_diagnosis <- "Coordenadas proyectadas detectadas. Pendiente confirmación de EPSG de origen."
-  } else {
-    cat(sprintf("[*] Transformando coordenadas desde EPSG:%s a EPSG:4326 (WGS84)...\n", as.character(source_crs)))
-    sf_pts <- sf::st_as_sf(dat_valid, coords = c("longitude", "latitude"), crs = source_crs)
-    sf_wgs84 <- sf::st_transform(sf_pts, crs = 4326)
-    coords_wgs84 <- sf::st_coordinates(sf_wgs84)
-    
-    dat_valid$longitude <- coords_wgs84[, 1]
-    dat_valid$latitude  <- coords_wgs84[, 2]
-    
-    crs_used <- sprintf("Transformado de EPSG:%s a EPSG:4326 (WGS84)", as.character(source_crs))
-    min_x <- min(dat_valid$longitude)
-    max_x <- max(dat_valid$longitude)
-    min_y <- min(dat_valid$latitude)
-    max_y <- max(dat_valid$latitude)
-    coord_diagnosis <- "Coordenadas proyectadas transformadas exitosamente a WGS84."
-  }
+  cat(crs_msg, "\n")
+  # Do NOT write 02_spatial.csv
 } else {
-  # Verificar posible inversión latitud/longitud
-  if (min_x > 0 && max_x < 90 && (min_y > 90 || min_y < -90)) {
-    cat("[ALERTA]: Posible inversión de ejes X (longitud) e Y (latitud). Verificando...\n")
-    coord_diagnosis <- "Posible inversión detectada entre latitud y longitud."
-  } else {
-    coord_diagnosis <- "Coordenadas geográficas estándar WGS84 (grados decimales)."
-  }
-}
-
-# 4. Cálculo de Métricas Territoriales para el Reporte -------------------------
-span_x <- max_x - min_x
-span_y <- max_y - min_y
-
-# Perfiles colocalizados (mismas coordenadas)
-unique_locs <- dat_valid %>%
-  distinct(longitude, latitude) %>%
-  nrow()
-
-# 5. Generación del Reporte Espacial en Texto (para lectura de la IA) ----------
-report_con <- file(output_report, open = "wt", encoding = "UTF-8")
-writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.2: AUDITORÍA ESPACIAL Y GEOGRÁFICA", report_con)
-writeLines("================================================================================", report_con)
-writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
-writeLines(paste("Archivo analizado:", input_csv), report_con)
-writeLines(paste("Diagnóstico general:", coord_diagnosis), report_con)
-writeLines(paste("Sistema de referencia (CRS):", crs_used), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("MÉTRICAS DE REGISTROS Y LOCALIZACIONES:", report_con)
-writeLines(sprintf("  Total registros (horizontes):       %d", n_total), report_con)
-writeLines(sprintf("  Registros con coordenadas válidas:  %d (%.1f%%)", nrow(dat_valid), (nrow(dat_valid) / n_total) * 100), report_con)
-writeLines(sprintf("  Registros con coordenadas nulas/NA: %d", missing_coords), report_con)
-writeLines(sprintf("  Registros en (0, 0):                %d", zero_coords), report_con)
-writeLines(sprintf("  Sitios / ubicaciones únicas:        %d", unique_locs), report_con)
-if ("profile_code" %in% names(dat)) {
-  writeLines(sprintf("  Perfiles únicos identificados:      %d", n_profiles), report_con)
-}
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("EXTENSIÓN ESPACIAL (BOUNDING BOX EN WGS84):", report_con)
-writeLines(sprintf("  Longitud mínima (Oeste):  %10.5f°", min_x), report_con)
-writeLines(sprintf("  Longitud máxima (Este):   %10.5f°", max_x), report_con)
-writeLines(sprintf("  Amplitud Este-Oeste:      %10.5f°", span_x), report_con)
-writeLines(sprintf("  Latitud mínima (Sur):     %10.5f°", min_y), report_con)
-writeLines(sprintf("  Latitud máxima (Norte):   %10.5f°", max_y), report_con)
-writeLines(sprintf("  Amplitud Norte-Sur:       %10.5f°", span_y), report_con)
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("ELEMENTOS OBSERVABLES EN EL GRÁFICO (PARA ANÁLISIS DE LA IA):", report_con)
-writeLines(sprintf("  - Bounding Box: [%.3f, %.3f] Longitud x [%.3f, %.3f] Latitud", min_x, max_x, min_y, max_y), report_con)
-writeLines(sprintf("  - Cobertura espacial: %.2f x %.2f grados (~ %.0f x %.0f km aprox.)", 
-                   span_x, span_y, span_x * 111 * cos(mean(c(min_y, max_y)) * pi / 180), span_y * 111), report_con)
-writeLines(sprintf("  - Dispersión: %d sitios distribuidos en el área de estudio.", unique_locs), report_con)
-writeLines("================================================================================", report_con)
-close(report_con)
-
-# 6. Exportar dataset intermedio con coordenadas validadas ---------------------
-readr::write_csv(dat_valid, output_csv)
-
-# 7. Diagnóstico Visual en RStudio ---------------------------------------------
-cat("\n[*] Generando visualización geográfica en RStudio...\n")
-
-# Intentar mapa interactivo con mapview si está disponible
-has_mapview <- requireNamespace("mapview", quietly = TRUE)
-
-sf_pts_view <- sf::st_as_sf(
-  dat_valid %>% distinct(longitude, latitude, .keep_all = TRUE),
-  coords = c("longitude", "latitude"),
-  crs = 4326
-)
-
-if (has_mapview) {
-  # Visualización interactiva Leaflet/mapview
-  color_col <- if ("SOC" %in% names(sf_pts_view)) "SOC" else (if ("pH_H2O" %in% names(sf_pts_view)) "pH_H2O" else NULL)
+  crs_str <- as.character(source_crs)
+  log_out("\nConfigured source_crs: ", crs_str)
   
-  if (!is.null(color_col)) {
-    m <- mapview::mapview(sf_pts_view, zcol = color_col, layer.name = paste("Perfiles:", color_col),
-                          map.types = c("CartoDB.Positron", "OpenStreetMap", "Esri.WorldImagery"))
+  # Check if CRS is already geographic (EPSG:4326 / WGS84)
+  is_crs_geo <- grepl("4326|wgs84|crs84", tolower(crs_str))
+  
+  if (is_crs_geo || is_geo) {
+    # Geographic coordinates pass through
+    log_out("Coordinates are geographic (EPSG:4326). Passing through without reprojection.")
+    res_lon_min <- x_min; res_lon_max <- x_max
+    res_lat_min <- y_min; res_lat_max <- y_max
   } else {
-    m <- mapview::mapview(sf_pts_view, layer.name = "Perfiles de Suelo",
-                          map.types = c("CartoDB.Positron", "OpenStreetMap", "Esri.WorldImagery"))
+    # Projected coordinates -> reproject to EPSG:4326
+    crs_arg <- crs_str
+    if (grepl("^[0-9]+$", crs_str)) {
+      crs_arg <- as.integer(crs_str)
+    }
+    
+    has_coords <- !is.na(df[[x_col]]) & !is.na(df[[y_col]])
+    coords_df <- df[has_coords, c(x_col, y_col)]
+    
+    sf_pts <- sf::st_as_sf(coords_df, coords = c(x_col, y_col), crs = crs_arg)
+    sf_geo <- sf::st_transform(sf_pts, 4326)
+    geo_coords <- sf::st_coordinates(sf_geo)
+    
+    df[has_coords, x_col] <- geo_coords[, 1]
+    df[has_coords, y_col] <- geo_coords[, 2]
+    
+    res_lon_min <- min(geo_coords[, 1]); res_lon_max <- max(geo_coords[, 1])
+    res_lat_min <- min(geo_coords[, 2]); res_lat_max <- max(geo_coords[, 2])
+    
+    log_out(msg("spatial_reprojected", lang, crs_str, res_lon_min, res_lon_max, res_lat_min, res_lat_max, repo_root = repo_root))
   }
-  print(m)
-  cat("[OK] Mapa interactivo cargado en la pestaña 'Viewer' de RStudio.\n")
-} else {
-  # Fallback a ggplot2
-  p <- ggplot() +
-    geom_point(data = dat_valid, aes(x = longitude, y = latitude), color = "darkred", alpha = 0.6, size = 1.5) +
-    coord_quickmap() +
-    theme_minimal() +
-    labs(
-      title = "Distribución Espacial de Perfiles de Suelo",
-      subtitle = sprintf("Total: %d puntos válidos | BBox: [%.2f, %.2f] Lon, [%.2f, %.2f] Lat", 
-                         nrow(dat_valid), min_x, max_x, min_y, max_y),
-      x = "Longitud (°)",
-      y = "Latitud (°)"
-    )
-  print(p)
-  cat("[OK] Gráfico espacial generado en la pestaña 'Plots' de RStudio.\n")
+  
+  log_out(sprintf("\nResulting Lon range: [%.4f, %.4f]", res_lon_min, res_lon_max))
+  log_out(sprintf("Resulting Lat range: [%.4f, %.4f]\n", res_lat_min, res_lat_max))
+  
+  out_csv <- file.path(data_dir, "02_spatial.csv")
+  readr::write_csv(df, out_csv)
+  
+  close(rep_con)
+  
+  record_decision(
+    project = project,
+    step = "1.2",
+    decision = "Spatial audit and coordinate standardization",
+    details = sprintf("source_crs: %s. Resulting Lon: [%.4f, %.4f], Lat: [%.4f, %.4f]. Written data/02_spatial.csv", crs_str, res_lon_min, res_lon_max, res_lat_min, res_lat_max),
+    repo_root = repo_root
+  )
+  
+  cat(msg("spatial_complete", lang, out_csv, report_path, repo_root = repo_root), "\n")
 }
-
-cat("\n==============================================================================\n")
-cat("  RESUMEN DE AUDITORÍA ESPACIAL (Paso 1.2)\n")
-cat("==============================================================================\n")
-cat(sprintf("  Puntos válidos:       %d de %d (%.1f%%)\n", nrow(dat_valid), n_total, (nrow(dat_valid)/n_total)*100))
-cat(sprintf("  Ubicaciones únicas:   %d sitios\n", unique_locs))
-cat(sprintf("  Extensión Longitud:   [%.4f°, %.4f°]\n", min_x, max_x))
-cat(sprintf("  Extensión Latitud:    [%.4f°, %.4f°]\n", min_y, max_y))
-cat(sprintf("  Dataset guardado en:  %s\n", output_csv))
-cat(sprintf("  Reporte guardado en:  %s\n", output_report))
-cat("==============================================================================\n\n")
-
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Examina el mapa en el visor de RStudio.\n")
-cat("2. Verifica si los puntos caen exactamente en la zona o país de estudio.\n")
-cat("3. Avísale a la IA en el chat que ya ejecutaste '01_2_byod_audit.R'.\n")
-cat("   -> La IA leerá el reporte espacial y te hará preguntas sobre la distribución.\n")
-cat("------------------------------------------------------------------------------\n\n")

@@ -1,202 +1,280 @@
 # ==============================================================================
-# DSM-Harness | Paso 1.1: Identificación, Relaciones y Selección de Variables
-# ==============================================================================
-# OBJETIVO:
-# Cargar el dataset de perfiles (Excel multi-hoja o CSV), realizar la unión
-# relacional si corresponde (Sitios + Horizontes), seleccionar ÚNICAMENTE las
-# variables esenciales para DSM (estándar ISO 28258) y descartar metadatos accesorios.
-#
-# SALIDAS GENERADAS:
-# 1. Dataset intermedio: '01_data/profiles/step1_1_variables.csv'
-# 2. Reporte descriptivo: '01_data/profiles/step1_1_variables_report.txt'
-#
-# INSTRUCCIONES PARA EL ALUMNO:
-# 1. Ejecuta este script en RStudio (Source o Ctrl+Shift+S).
-# 2. Revisa la tabla de mapeo de variables impresa en la consola.
-# 3. Confirma en el chat con la IA si la correspondencia es correcta.
+# DSM-Harness v2 | 02_scripts/01_1_byod_audit.R
+# Step 1.1: Variable Mapping, Relational Joins & Duplicate Key Resolution
 # ==============================================================================
 
-rm(list = ls())
-
-suppressPackageStartupMessages({
-  library(tidyverse)
-  library(readxl)
-})
-
-# 1. Configuración de rutas ----------------------------------------------------
-input_file    <- "01_data/profiles/Profiles_data.xlsx"
-output_csv    <- "01_data/profiles/step1_1_variables.csv"
-output_report <- "01_data/profiles/step1_1_variables_report.txt"
-
-# Si no existe la ruta exacta, buscar primer archivo en 01_data/profiles/
-if (!file.exists(input_file)) {
-  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt)$", full.names = TRUE)
-  avail <- avail[!grepl("data_inspection_report\\.txt$", avail)]
-  avail <- avail[!grepl("step1_.*", avail)]
-  avail <- avail[!grepl("cleaned_profiles\\.csv$", avail)]
-  if (length(avail) > 0) {
-    input_file <- avail[1]
-  } else {
-    stop("No se encontro ningun archivo de perfiles en '01_data/profiles/'.")
+# Ensure repo_root and proj_root are set
+if (!exists("repo_root", inherits = FALSE)) {
+  find_root <- function(d = getwd()) {
+    curr <- normalizePath(d, winslash = "/", mustWork = FALSE)
+    while (nchar(curr) > 0 && dirname(curr) != curr) {
+      if (file.exists(file.path(curr, "DSM-Harness.Rproj"))) return(curr)
+      curr <- dirname(curr)
+    }
+    normalizePath(d, winslash = "/", mustWork = FALSE)
   }
+  repo_root <- find_root()
 }
 
-ext <- tolower(tools::file_ext(input_file))
-cat(sprintf("\n[*] Cargando archivo: %s (formato .%s) ...\n", input_file, ext))
+if (!exists("msg", mode = "function")) {
+  source(file.path(repo_root, "02_scripts", "i18n", "load_i18n.R"), local = FALSE)
+}
+if (!exists("record_decision", mode = "function")) {
+  source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
+}
+if (!exists("validate_config", mode = "function")) {
+  source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
+}
 
-# 2. Carga y Estructuración (Soporte multi-hoja o tabla plana) ------------------
+if (!exists("project", inherits = FALSE) || is.null(project)) {
+  stop("Step 1.1 must be run within a project context (e.g., run_step('1.1', project = 'myproj'))")
+}
+
+proj_root <- file.path(repo_root, "projects", project)
+data_dir <- file.path(proj_root, "data")
+reports_dir <- file.path(proj_root, "reports")
+if (!dir.exists(data_dir)) dir.create(data_dir, recursive = TRUE)
+if (!dir.exists(reports_dir)) dir.create(reports_dir, recursive = TRUE)
+
+config_path <- file.path(proj_root, "config.json")
+if (!file.exists(config_path)) {
+  stop(msg("config_missing", "en", config_path, repo_root = repo_root), call. = FALSE)
+}
+
+if (!exists("cfg", inherits = FALSE) || is.null(cfg)) {
+  cfg <- jsonlite::fromJSON(config_path, simplifyVector = FALSE)
+}
+lang <- cfg$language %||% "en"
+
+is_str <- function(x) {
+  if (is.null(x) || length(x) == 0) return(FALSE)
+  ch <- as.character(x)[1]
+  !is.na(ch) && nzchar(ch)
+}
+
+# Validate configuration
+validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
+
+# Locate raw input file
+raw_file <- file.path(proj_root, cfg$input_file)
+if (!file.exists(raw_file)) {
+  stop(msg("map_input_missing", lang, raw_file, repo_root = repo_root), call. = FALSE)
+}
+
+report_path <- file.path(reports_dir, "11_mapping.txt")
+rep_con <- file(report_path, open = "wt", encoding = "UTF-8")
+
+log_out <- function(...) {
+  line <- paste0(...)
+  cat(line, "\n")
+  cat(line, "\n", file = rep_con)
+}
+
+log_out("================================================================================")
+log_out("  DSM-HARNESS: STEP 1.1 VARIABLE MAPPING & RELATIONAL AUDIT")
+log_out("================================================================================")
+log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+log_out("Project: ", project)
+log_out("Input File: ", cfg$input_file)
+log_out("================================================================================\n")
+
+ext <- tolower(tools::file_ext(raw_file))
+id_col <- if (is_str(cfg$roles$profile_id)) as.character(cfg$roles$profile_id) else "id"
+dup_strat <- if (is_str(cfg$duplicate_key_strategy)) as.character(cfg$duplicate_key_strategy) else NULL
+
+df_merged <- NULL
+
 if (ext %in% c("xlsx", "xls")) {
-  sheets <- readxl::excel_sheets(input_file)
-  cat(sprintf("[*] Hojas detectadas en Excel: [%s]\n", paste(sheets, collapse = ", ")))
-  
-  # Si tiene múltiples hojas relacionales (ej. Sitios y Horizontes)
-  # la IA adaptará la lógica de lectura y unión aquí según el reporte estructural:
-  if (length(sheets) == 1) {
-    dat_raw <- readxl::read_excel(input_file, sheet = 1, guess_max = 100000)
-    join_info <- "Hoja única (tabla plana)"
+  sheets <- readxl::excel_sheets(raw_file)
+  if (!is.null(cfg$sheets) && length(cfg$sheets) > 0) {
+    target_sheets <- unlist(cfg$sheets)
   } else {
-    # Detección heurística de hojas principales
-    s_sites <- sheets[grepl("site|sitio|perfil|loc|header", tolower(sheets))][1]
-    s_horiz <- sheets[grepl("hor|capa|layer|anal|prop", tolower(sheets))][1]
-    
-    if (!is.na(s_sites) && !is.na(s_horiz)) {
-      df_sites <- readxl::read_excel(input_file, sheet = s_sites, guess_max = 100000)
-      df_horiz <- readxl::read_excel(input_file, sheet = s_horiz, guess_max = 100000)
-      
-      # Buscar clave común (ID)
-      common_keys <- intersect(tolower(names(df_sites)), tolower(names(df_horiz)))
-      key_matches <- common_keys[grepl("id|code|perfil|sitio|profile", common_keys)]
-      
-      if (length(key_matches) > 0) {
-        join_key_site <- names(df_sites)[which(tolower(names(df_sites)) == key_matches[1])]
-        join_key_horiz <- names(df_horiz)[which(tolower(names(df_horiz)) == key_matches[1])]
-        
-        dat_raw <- dplyr::left_join(
-          df_horiz,
-          df_sites,
-          by = setNames(join_key_site, join_key_horiz)
-        )
-        join_info <- sprintf("Unión relacional entre '%s' y '%s' mediante clave '%s'", s_sites, s_horiz, key_matches[1])
-      } else {
-        # Si no hay clave obvia, cargar la primera hoja con más columnas
-        dat_raw <- readxl::read_excel(input_file, sheet = 1, guess_max = 100000)
-        join_info <- "Hoja 1 (sin clave relacional automática detectada)"
-      }
-    } else {
-      dat_raw <- readxl::read_excel(input_file, sheet = 1, guess_max = 100000)
-      join_info <- paste("Lectura de hoja principal:", sheets[1])
+    target_sheets <- sheets
+  }
+  
+  sheet_dfs <- list()
+  for (sh in target_sheets) {
+    if (sh %in% sheets) {
+      sheet_dfs[[sh]] <- as.data.frame(readxl::read_excel(raw_file, sheet = sh, guess_max = 100000))
     }
+  }
+  
+  if (length(sheet_dfs) == 0) {
+    close(rep_con)
+    stop("No sheets could be loaded from input file.", call. = FALSE)
+  }
+  
+  if (length(sheet_dfs) == 1) {
+    df_merged <- sheet_dfs[[1]]
+  } else {
+    top_col <- if (is_str(cfg$roles$top)) as.character(cfg$roles$top) else "top"
+    bottom_col <- if (is_str(cfg$roles$bottom)) as.character(cfg$roles$bottom) else "bottom"
+    
+    horizon_sh_name <- NULL
+    profile_sh_name <- NULL
+    
+    for (sh in names(sheet_dfs)) {
+      cols <- names(sheet_dfs[[sh]])
+      if (top_col %in% cols || bottom_col %in% cols) {
+        horizon_sh_name <- sh
+      } else if (id_col %in% cols) {
+        profile_sh_name <- sh
+      }
+    }
+    
+    # If not distinct by depth, choose by row count
+    if (is.null(horizon_sh_name) || is.null(profile_sh_name)) {
+      row_counts <- sapply(sheet_dfs, nrow)
+      horizon_sh_name <- names(which.max(row_counts))
+      profile_sh_name <- names(which.min(row_counts))
+    }
+    
+    log_out(sprintf("Identified Profile sheet: '%s' (%d rows)", profile_sh_name, nrow(sheet_dfs[[profile_sh_name]])))
+    log_out(sprintf("Identified Horizon sheet: '%s' (%d rows)", horizon_sh_name, nrow(sheet_dfs[[horizon_sh_name]])))
+    
+    df_prof <- sheet_dfs[[profile_sh_name]]
+    df_horiz <- sheet_dfs[[horizon_sh_name]]
+    
+    # Check duplicate keys in profile table
+    if (id_col %in% names(df_prof)) {
+      prof_ids <- df_prof[[id_col]]
+      dup_mask <- duplicated(prof_ids)
+      n_dups <- sum(dup_mask)
+      
+      if (n_dups > 0) {
+        log_out(msg("map_dup_keys_found", lang, n_dups, profile_sh_name, repo_root = repo_root))
+        
+        if (is.null(dup_strat) || !nzchar(as.character(dup_strat))) {
+          err_msg <- msg("map_dup_no_strategy", lang, repo_root = repo_root)
+          log_out("[ERROR] ", err_msg)
+          close(rep_con)
+          stop(err_msg, call. = FALSE)
+        }
+        
+        if (dup_strat == "fail") {
+          err_msg <- msg("map_dup_fail", lang, repo_root = repo_root)
+          log_out("[ERROR] ", err_msg)
+          close(rep_con)
+          stop(err_msg, call. = FALSE)
+        } else if (dup_strat == "average") {
+          orig_rows <- nrow(df_prof)
+          num_cols <- names(df_prof)[sapply(df_prof, is.numeric)]
+          non_num_cols <- setdiff(names(df_prof), c(num_cols, id_col))
+          
+          df_prof <- df_prof |>
+            dplyr::group_by(dplyr::across(dplyr::all_of(id_col))) |>
+            dplyr::summarise(
+              dplyr::across(dplyr::all_of(num_cols), ~ mean(.x, na.rm = TRUE)),
+              dplyr::across(dplyr::all_of(non_num_cols), ~ dplyr::first(.x)),
+              .groups = "drop"
+            ) |>
+            as.data.frame()
+          
+          log_out(msg("map_dup_resolved", lang, "average", orig_rows, nrow(df_prof), repo_root = repo_root))
+        } else if (dup_strat == "keep_first") {
+          orig_rows <- nrow(df_prof)
+          df_prof <- df_prof[!duplicated(df_prof[[id_col]]), ]
+          log_out(msg("map_dup_resolved", lang, "keep_first", orig_rows, nrow(df_prof), repo_root = repo_root))
+        }
+      }
+    }
+    
+    # Left join horizon with profile
+    df_merged <- dplyr::left_join(df_horiz, df_prof, by = id_col)
+    log_out(sprintf("Merged table dimensions: %d rows x %d columns\n", nrow(df_merged), ncol(df_merged)))
   }
 } else {
-  # Archivo de texto delimitado
-  dat_raw <- readr::read_csv(input_file, show_col_types = FALSE)
-  join_info <- "Archivo delimitado plano (CSV)"
+  # CSV / Flat file
+  df_merged <- as.data.frame(readr::read_csv(raw_file, guess_max = 100000, show_col_types = FALSE))
+  log_out(sprintf("Loaded flat dataset: %d rows x %d columns\n", nrow(df_merged), ncol(df_merged)))
 }
 
-# 3. Diccionario Edafológico de Variables Clave para DSM (ISO 28258) ------------
-# Se seleccionan ÚNICAMENTE variables necesarias para modelado espacial.
-# Se descartan metadatos taxonómicos, morfológicos y notas accesorias de campo.
-dsm_dict <- list(
-  profile_code = c("profile_code", "profile_id", "id_perfil", "perfil", "codigo", "sitio", 
-                   "calicata", "pedon_id", "site_id", "id", "sample_id", "profile_no", "prof_id"),
-  Horizon      = c("horizon", "horizonte", "hor", "hz", "capa", "estrato", "layer", "subsample"),
-  upper        = c("upper", "prof_sup", "desde", "limite_sup", "prof_inicial", "top_depth", 
-                   "top", "from", "upper_depth", "depth_top", "prof_desde"),
-  lower        = c("lower", "prof_inf", "hasta", "limite_inf", "prof_final", "bottom_depth", 
-                   "bottom", "to", "lower_depth", "depth_bottom", "prof_hasta"),
-  longitude    = c("longitude", "lon", "long", "longitud", "x", "coord_x", "dec_long", 
-                   "wgs84_x", "long_wgs84", "point_x", "east", "easting"),
-  latitude     = c("latitude", "lat", "latitud", "y", "coord_y", "dec_lat", 
-                   "wgs84_y", "lat_wgs84", "point_y", "north", "northing"),
-  SOC          = c("soc", "cos", "cot", "co", "c_org", "carbono_organico", "carbono", 
-                   "oc", "org_c", "organic_carbon", "soil_organic_carbon"),
-  OM           = c("om", "mo", "materia_organica", "mat_org", "som", "soil_organic_matter"),
-  pH_H2O       = c("ph", "ph_h2o", "ph_agua", "ph_suelo", "ph_water"),
-  Clay         = c("clay", "arcilla", "arcillas", "clay_pct", "arcilla_%", "arcilla_porc"),
-  Sand         = c("sand", "arena", "arenas", "sand_pct", "arena_%", "arena_porc"),
-  Silt         = c("silt", "limo", "limos", "silt_pct", "limo_%", "limo_porc"),
-  BD           = c("bd", "da", "densidad_aparente", "dens_apar", "bulk_density", "bulk_dens"),
-  CEC          = c("cec", "cic", "capacidad_intercambio_cationico", "ecec", "cice"),
-  Total_N      = c("nitrogeno_total", "total_n", "n_total", "ntot", "nitrogeno", "n_pct"),
-  P_ext        = c("fosforo", "fosforo_disponible", "p_olsen", "p_bray", "p_extractable", "p_ext")
-)
-
-cols_raw   <- names(dat_raw)
-cols_clean <- tolower(trimws(gsub("[^[:alnum:]_]", "_", cols_raw)))
-
-mapping <- data.frame(Original = character(), Estandar_DSM = character(), stringsAsFactors = FALSE)
-rename_vector <- character()
-
-for (target_var in names(dsm_dict)) {
-  # Buscar coincidencias exactas o por prefijo
-  matches <- which(cols_clean %in% tolower(dsm_dict[[target_var]]))
-  if (length(matches) > 0) {
-    orig_col <- cols_raw[matches[1]]
-    if (!(orig_col %in% mapping$Original)) {
-      mapping <- rbind(mapping, data.frame(Original = orig_col, Estandar_DSM = target_var))
-      rename_vector[target_var] <- orig_col
+# Check duplicate keys in flat dataset if profile-level only (no top/bottom)
+top_col <- if (is_str(cfg$roles$top)) as.character(cfg$roles$top) else "top"
+if (!top_col %in% names(df_merged)) {
+  if (id_col %in% names(df_merged)) {
+    dup_mask <- duplicated(df_merged[[id_col]])
+    n_dups <- sum(dup_mask)
+    if (n_dups > 0) {
+      log_out(msg("map_dup_keys_found", lang, n_dups, "data", repo_root = repo_root))
+      if (is.null(dup_strat) || !nzchar(as.character(dup_strat))) {
+        err_msg <- msg("map_dup_no_strategy", lang, repo_root = repo_root)
+        log_out("[ERROR] ", err_msg)
+        close(rep_con)
+        stop(err_msg, call. = FALSE)
+      }
+      if (dup_strat == "fail") {
+        err_msg <- msg("map_dup_fail", lang, repo_root = repo_root)
+        log_out("[ERROR] ", err_msg)
+        close(rep_con)
+        stop(err_msg, call. = FALSE)
+      } else if (dup_strat == "average") {
+        orig_rows <- nrow(df_merged)
+        num_cols <- names(df_merged)[sapply(df_merged, is.numeric)]
+        non_num_cols <- setdiff(names(df_merged), c(num_cols, id_col))
+        df_merged <- df_merged |>
+          dplyr::group_by(dplyr::across(dplyr::all_of(id_col))) |>
+          dplyr::summarise(
+            dplyr::across(dplyr::all_of(num_cols), ~ mean(.x, na.rm = TRUE)),
+            dplyr::across(dplyr::all_of(non_num_cols), ~ dplyr::first(.x)),
+            .groups = "drop"
+          ) |>
+          as.data.frame()
+        log_out(msg("map_dup_resolved", lang, "average", orig_rows, nrow(df_merged), repo_root = repo_root))
+      } else if (dup_strat == "keep_first") {
+        orig_rows <- nrow(df_merged)
+        df_merged <- df_merged[!duplicated(df_merged[[id_col]]), ]
+        log_out(msg("map_dup_resolved", lang, "keep_first", orig_rows, nrow(df_merged), repo_root = repo_root))
+      }
     }
   }
 }
 
-# 4. Creación del dataset limpio de variables -----------------------------------
-dat_step1 <- dat_raw %>%
-  dplyr::select(all_of(mapping$Original)) %>%
-  dplyr::rename(!!!rename_vector)
+# Handle category / column exclusions
+cat_map <- cfg$categories %||% cfg$columns
+excluded_cats <- unlist(cfg$excluded_categories)
+excluded_cols <- unlist(cfg$excluded_columns)
 
-# Si hay OM pero no SOC, calcular SOC = OM / 1.724 (regla de van Bemmelen / FAO)
-if (!("SOC" %in% names(dat_step1)) && ("OM" %in% names(dat_step1))) {
-  dat_step1 <- dat_step1 %>%
-    mutate(SOC = round(as.numeric(OM) / 1.724, 2))
-  cat("[AVISO PEDOLÓGICO]: SOC no presente directamente; calculado a partir de Materia Orgánica (SOC = OM / 1.724).\n")
+cols_to_drop <- character(0)
+if (!is.null(excluded_cats) && length(excluded_cats) > 0 && !is.null(cat_map)) {
+  for (cn in names(cat_map)) {
+    if (as.character(cat_map[[cn]]) %in% excluded_cats) {
+      cols_to_drop <- c(cols_to_drop, cn)
+    }
+  }
+}
+if (!is.null(excluded_cols) && length(excluded_cols) > 0) {
+  cols_to_drop <- union(cols_to_drop, excluded_cols)
 }
 
-# Descartar columnas no esenciales
-cols_descartadas <- setdiff(cols_raw, mapping$Original)
+# Never drop role columns
+role_cols <- unlist(cfg$roles)
+cols_to_drop <- setdiff(cols_to_drop, role_cols)
 
-# 5. Generar Reporte de Texto (para que la IA lo lea de forma nativa) ----------
-report_con <- file(output_report, open = "wt", encoding = "UTF-8")
-writeLines("================================================================================", report_con)
-writeLines("  DSM-HARNESS | REPORTE PASO 1.1: MAPEO Y SELECCIÓN DE VARIABLES", report_con)
-writeLines("================================================================================", report_con)
-writeLines(paste("Fecha:", format(Sys.time(), "%Y-%m-%d %H:%M:%S")), report_con)
-writeLines(paste("Archivo de entrada:", input_file), report_con)
-writeLines(paste("Estructura de carga:", join_info), report_con)
-writeLines(paste("Dimensiones iniciales:", nrow(dat_raw), "filas x", ncol(dat_raw), "columnas"), report_con)
-writeLines(paste("Dimensiones filtradas:", nrow(dat_step1), "filas x", ncol(dat_step1), "variables DSM"), report_con)
-if ("profile_code" %in% names(dat_step1)) {
-  writeLines(paste("Número de perfiles únicos:", length(unique(na.omit(dat_step1$profile_code)))), report_con)
+if (length(cols_to_drop) > 0) {
+  df_merged <- df_merged[, !(names(df_merged) %in% cols_to_drop), drop = FALSE]
+  log_out("Excluded columns: ", paste(cols_to_drop, collapse = ", "), "\n")
 }
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines("TABLA DE CORRESPONDENCIA DE VARIABLES:", report_con)
-for (i in seq_len(nrow(mapping))) {
-  writeLines(sprintf("  %-35s ---> %s", mapping$Original[i], mapping$Estandar_DSM[i]), report_con)
+
+# Summary of mapped columns and roles
+log_out("--- Summary of Configured Roles ---")
+for (r in names(cfg$roles)) {
+  log_out(sprintf("  %-16s : %s", r, as.character(cfg$roles[[r]])))
 }
-writeLines("--------------------------------------------------------------------------------", report_con)
-writeLines(paste("Variables descartadas (no esenciales para DSM):", length(cols_descartadas)), report_con)
-writeLines("Muestra de variables descartadas:", report_con)
-writeLines(paste(" ", head(cols_descartadas, 10), collapse = "\n"), report_con)
-writeLines("================================================================================", report_con)
-close(report_con)
+log_out("\nFinal mapped dataset dimensions: ", nrow(df_merged), " rows x ", ncol(df_merged), " columns")
 
-# 6. Guardar dataset intermedio -------------------------------------------------
-readr::write_csv(dat_step1, output_csv)
+# Write output file
+out_csv <- file.path(data_dir, "01_mapped.csv")
+readr::write_csv(df_merged, out_csv)
 
-# 7. Resumen en consola e instrucción ------------------------------------------
-cat("\n==============================================================================\n")
-cat("  TABLA DE MAPEO DE VARIABLES CONFIRMADAS (Paso 1.1)\n")
-cat("==============================================================================\n")
-for (i in seq_len(nrow(mapping))) {
-  cat(sprintf("  %-35s ---> %s\n", mapping$Original[i], mapping$Estandar_DSM[i]))
-}
-cat("==============================================================================\n")
-cat(sprintf("[OK] Dataset intermedio guardado en: %s (%d filas)\n", output_csv, nrow(dat_step1)))
-cat(sprintf("[OK] Reporte descriptivo guardado en: %s\n\n", output_report))
+close(rep_con)
 
-cat("------------------------------------------------------------------------------\n")
-cat("INSTRUCCIÓN PARA EL ALUMNO:\n")
-cat("1. Revisa la tabla de correspondencia mostrada arriba.\n")
-cat("2. En el chat con la IA, confirma si las variables coinciden con tus datos:\n")
-cat("   -> Ejemplo: 'Paso 1.1 listo, las variables coinciden' o indica si falta alguna.\n")
-cat("3. La IA configurará '02_scripts/01_2_byod_audit.R' para la validación espacial.\n")
-cat("------------------------------------------------------------------------------\n\n")
+record_decision(
+  project = project,
+  step = "1.1",
+  decision = "Mapped and joined dataset",
+  details = sprintf("Output data/01_mapped.csv (%d rows, %d cols). Dup strategy: %s", nrow(df_merged), ncol(df_merged), dup_strat %||% "none"),
+  repo_root = repo_root
+)
+
+cat(msg("map_complete", lang, out_csv, report_path, repo_root = repo_root), "\n")

@@ -1,260 +1,154 @@
 # ==============================================================================
-# DSM-Harness | 00_inspect_data.R: Escudriñador Exhaustivo de Datasets (BYOD)
-# ==============================================================================
-# OBJETIVO:
-# Este script escudriña el archivo de datos provisto (sea Excel con múltiples
-# hojas o delimitado .csv/.tsv/.txt), analizando exhaustivamente todas las hojas,
-# columnas, tipos de datos (class), porcentaje de valores nulos, muestras de
-# valores reales NO NULOS y rangos numéricos.
-#
-# IMPORTANTE:
-# - No omite columnas con valores vacíos en las primeras filas.
-# - No trunca los nombres de las columnas.
-# - Examina el vector completo de cada columna para deducir su tipo real.
-#
-# El resultado se imprime en la consola de RStudio y se guarda automáticamente
-# en '01_data/profiles/data_inspection_report.txt'.
-# La IA utilizará ese reporte descriptivo para diseñar a medida tu script
-# de auditoría '02_scripts/01_1_byod_audit.R'.
-#
-# INSTRUCCIONES PARA EL ALUMNO:
-# 1. Abre este script en RStudio (con el proyecto DSM-Harness.Rproj abierto).
-# 2. Verifica abajo que 'input_file' apunte a tu archivo.
-# 3. Ejecuta todo el script (presiona el botón 'Source' o Ctrl+Shift+S).
-# 4. Cuando termine, avísale a la IA en el chat que ya lo ejecutaste.
+# DSM-Harness v2 | 02_scripts/00_inspect_data.R
+# Step 0: Exhaustive Dataset Profiling & Structural Inspection
 # ==============================================================================
 
-# 1. Configuración del archivo de entrada ---------------------------------------
-if (!exists("input_file")) {
-  input_file <- "01_data/profiles/Profiles_data.xlsx"
+# Ensure repo_root and proj_root are set
+if (!exists("repo_root", inherits = FALSE)) {
+  find_root <- function(d = getwd()) {
+    curr <- normalizePath(d, winslash = "/", mustWork = FALSE)
+    while (nchar(curr) > 0 && dirname(curr) != curr) {
+      if (file.exists(file.path(curr, "DSM-Harness.Rproj"))) return(curr)
+      curr <- dirname(curr)
+    }
+    normalizePath(d, winslash = "/", mustWork = FALSE)
+  }
+  repo_root <- find_root()
 }
-rm(list = setdiff(ls(), c("input_file", "output_report")))
 
-# Archivo de salida donde se guardará el reporte descriptivo
-if (!exists("output_report")) {
-  output_report <- "01_data/profiles/data_inspection_report.txt"
+if (!exists("msg", mode = "function")) {
+  source(file.path(repo_root, "02_scripts", "i18n", "load_i18n.R"), local = FALSE)
+}
+if (!exists("record_decision", mode = "function")) {
+  source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
 }
 
-# ------------------------------------------------------------------------------
-# 2. Verificación de existencia del archivo
-# ------------------------------------------------------------------------------
-if (!file.exists(input_file)) {
-  avail <- list.files("01_data/profiles", pattern = "\\.(xlsx|xls|csv|txt|tsv)$", full.names = TRUE)
-  avail <- avail[!grepl("data_inspection_report\\.txt$", avail)]
-  avail <- avail[!grepl("step1_.*\\.csv$", avail)]
-  avail <- avail[!grepl("cleaned_profiles\\.csv$", avail)]
-  
+if (!exists("project", inherits = FALSE) || is.null(project)) {
+  stop("Step 0 must be run within a project context (e.g., run_step('0', project = 'myproj'))")
+}
+
+proj_root <- file.path(repo_root, "projects", project)
+lang <- if (exists("lang", inherits = FALSE) && !is.null(lang)) lang else "en"
+
+# Locate raw input file
+data_dir <- file.path(proj_root, "data")
+reports_dir <- file.path(proj_root, "reports")
+if (!dir.exists(reports_dir)) dir.create(reports_dir, recursive = TRUE)
+
+raw_file <- NULL
+if (exists("cfg", inherits = FALSE) && !is.null(cfg) && !is.null(cfg$input_file)) {
+  candidate <- file.path(proj_root, cfg$input_file)
+  if (file.exists(candidate)) raw_file <- candidate
+}
+
+if (is.null(raw_file)) {
+  avail <- list.files(data_dir, pattern = "\\.(xlsx|xls|csv|tsv|txt)$", full.names = TRUE, ignore.case = TRUE)
+  # Exclude fixed output files
+  avail <- avail[!grepl("(01_mapped|02_spatial|03_clean|04_cov_.*)\\.csv$", avail, ignore.case = TRUE)]
   if (length(avail) > 0) {
-    cat(sprintf("[AVISO] No se encontro '%s'. Usando archivo detectado: '%s'\n", input_file, avail[1]))
-    input_file <- avail[1]
-  } else {
-    stop(sprintf("\n[ERROR] No se encontro el archivo '%s' ni ningun archivo de datos en '01_data/profiles/'.\nPor favor coloca tu archivo en esa carpeta y verifica la ruta.", input_file))
+    raw_file <- avail[1]
   }
 }
 
-ext <- tolower(tools::file_ext(input_file))
-
-# Crear carpeta de salida si no existe
-out_dir <- dirname(output_report)
-if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE)
-
-# Iniciar captura de texto para consola y archivo simultáneamente
-report_con <- file(output_report, open = "wt", encoding = "UTF-8")
-
-log_line <- function(...) {
-  msg <- paste0(...)
-  cat(msg, "\n")
-  cat(msg, "\n", file = report_con)
+if (is.null(raw_file) || !file.exists(raw_file)) {
+  stop(msg("inspect_no_file", lang, data_dir, repo_root = repo_root), call. = FALSE)
 }
 
-log_line("================================================================================")
-log_line("  DSM-HARNESS: REPORTE DESCRIPTIVO ESTRUCTURAL DEL DATASET (BYOD)")
-log_line("================================================================================")
-log_line("Fecha y hora: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-log_line("Archivo inspeccionado: ", input_file)
-log_line("Formato detectado: .", ext)
-log_line("Tamano del archivo: ", round(file.size(input_file) / 1024, 2), " KB")
-log_line("================================================================================\n")
+report_path <- file.path(reports_dir, "00_inspection.txt")
+rep_con <- file(report_path, open = "wt", encoding = "UTF-8")
 
-# ------------------------------------------------------------------------------
-# 3. Función de Inspección Exhaustiva de DataFrames
-# ------------------------------------------------------------------------------
+log_out <- function(...) {
+  line <- paste0(...)
+  cat(line, "\n")
+  cat(line, "\n", file = rep_con)
+}
 
-inspect_dataframe <- function(df, label = "Tabla") {
-  log_line(sprintf(">>> RESUMEN DE %s <<<", toupper(label)))
+ext <- tolower(tools::file_ext(raw_file))
+rel_input_file <- sub(paste0("^", normalizePath(proj_root, winslash = "/", mustWork = FALSE), "/?"), "", normalizePath(raw_file, winslash = "/", mustWork = FALSE))
+
+log_out("================================================================================")
+log_out(msg("inspect_header", lang, repo_root = repo_root))
+log_out("================================================================================")
+log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+log_out("Project: ", project)
+log_out("File: ", rel_input_file)
+log_out("Format: .", ext)
+log_out("File size: ", round(file.size(raw_file) / 1024, 2), " KB")
+log_out("================================================================================\n")
+
+# Inspection helper
+inspect_table <- function(df, tbl_name) {
+  log_out(sprintf("--- Sheet / Table: %s ---", tbl_name))
+  log_out(sprintf("Dimensions: %d rows x %d columns\n", nrow(df), ncol(df)))
   
-  if (is.null(df) || nrow(df) == 0 || ncol(df) == 0) {
-    log_line("[AVISO]: La tabla está vacía (0 filas o 0 columnas).")
-    log_line("--------------------------------------------------------------------------------\n")
-    return(invisible(NULL))
+  if (nrow(df) == 0 || ncol(df) == 0) {
+    log_out("Table is empty (0 rows or 0 columns).\n")
+    return()
   }
-  
-  log_line(sprintf("Dimensiones: %d filas x %d columnas", nrow(df), ncol(df)))
-  log_line("--------------------------------------------------------------------------------")
   
   col_names <- names(df)
-  max_w <- max(c(nchar(col_names), 16), na.rm = TRUE)
-  # Limitar ancho de columna a un máximo razonable para legibilidad pero sin truncar arbitrariamente
-  col_w <- min(max(max_w, 20), 45)
+  log_out(sprintf("%-30s | %-12s | %-10s | %s", "Column Name", "Type", "% Missing", "Range / Distinct Samples"))
+  log_out(paste(rep("-", 80), collapse = ""))
   
-  col_info <- data.frame(
-    No = seq_along(col_names),
-    Columna = col_names,
-    Clase = sapply(df, function(x) paste(class(x), collapse = "/")),
-    Nulos = sapply(df, function(x) sum(is.na(x))),
-    Nulos_Pct = round(sapply(df, function(x) mean(is.na(x)) * 100), 1),
-    Valores_Unicos = sapply(df, function(x) length(unique(na.omit(x)))),
-    stringsAsFactors = FALSE
-  )
-  
-  fmt_head <- sprintf("%%-4s | %%-%ds | %%-12s | %%-8s | %%-7s | %%-10s", col_w)
-  fmt_row  <- sprintf("%%-4d | %%-%ds | %%-12s | %%-8d | %%-6.1f%%%% | %%-10d", col_w)
-  sep_line <- paste(rep("-", col_w + 50), collapse = "")
-  
-  log_line(sprintf(fmt_head, "No.", "Nombre Columna", "Clase", "NAs", "% NAs", "Unicos"))
-  log_line(sep_line)
-  
-  for (i in seq_len(nrow(col_info))) {
-    c_name_disp <- if (nchar(col_info$Columna[i]) > col_w) {
-      paste0(substr(col_info$Columna[i], 1, col_w - 3), "...")
-    } else {
-      col_info$Columna[i]
-    }
+  for (cn in col_names) {
+    col_data <- df[[cn]]
+    col_type <- class(col_data)[1]
+    pct_na <- round(sum(is.na(col_data)) / length(col_data) * 100, 1)
     
-    log_line(sprintf(fmt_row,
-                     col_info$No[i],
-                     c_name_disp,
-                     col_info$Clase[i],
-                     col_info$Nulos[i],
-                     col_info$Nulos_Pct[i],
-                     col_info$Valores_Unicos[i]))
-  }
-  log_line(sep_line)
-  log_line("")
-  
-  # Nombres completos de columnas (para asegurar que ningún nombre largo se pierda)
-  long_cols <- col_names[nchar(col_names) > col_w]
-  if (length(long_cols) > 0) {
-    log_line("--- NOMBRES COMPLETOS DE COLUMNAS LARGAS ---")
-    for (lc in long_cols) {
-      log_line(sprintf("  [%d] %s", which(col_names == lc), lc))
-    }
-    log_line("")
-  }
-  
-  # Muestra de primeros 3 valores NO NULOS por columna
-  log_line("--- MUESTRA DE VALORES REALES (Primeros 3 valores NO NULOS) ---")
-  for (col in col_names) {
-    non_na <- na.omit(df[[col]])
-    if (length(non_na) > 0) {
-      sample_str <- paste(as.character(head(non_na, 3)), collapse = " | ")
-      log_line(sprintf("  %-35s : %s", col, sample_str))
-    } else {
-      log_line(sprintf("  %-35s : [TODOS LOS VALORES SON NA]", col))
-    }
-  }
-  log_line("")
-  
-  # Muestra de últimos 3 valores NO NULOS por columna (para verificar consistencia final)
-  log_line("--- MUESTRA FINAL DE VALORES REALES (Ultimos 3 valores NO NULOS) ---")
-  for (col in col_names) {
-    non_na <- na.omit(df[[col]])
-    if (length(non_na) > 3) {
-      sample_str <- paste(as.character(tail(non_na, 3)), collapse = " | ")
-      log_line(sprintf("  %-35s : %s", col, sample_str))
-    }
-  }
-  log_line("")
-  
-  # Resumen numérico para columnas numéricas (calculado sobre valores no nulos)
-  num_cols <- col_names[sapply(df, is.numeric)]
-  if (length(num_cols) > 0) {
-    log_line("--- RANGOS DE VARIABLES NUMERICAS (Min / Mediana / Media / Max) ---")
-    for (nc in num_cols) {
-      vals <- na.omit(df[[nc]])
-      if (length(vals) > 0) {
-        log_line(sprintf("  %-35s : Min = %g | Mediana = %g | Media = %.2f | Max = %g", 
-                         nc, min(vals), median(vals), mean(vals), max(vals)))
+    val_sample <- ""
+    if (is.numeric(col_data)) {
+      non_na <- col_data[!is.na(col_data)]
+      if (length(non_na) > 0) {
+        val_sample <- sprintf("[%g, %g]", min(non_na), max(non_na))
       } else {
-        log_line(sprintf("  %-35s : (100%% valores NA)", nc))
+        val_sample <- "[All NA]"
+      }
+    } else {
+      non_na <- as.character(col_data[!is.na(col_data) & nzchar(trimws(as.character(col_data)))])
+      n_distinct <- length(unique(non_na))
+      if (n_distinct > 0) {
+        first_few <- paste(utils::head(unique(non_na), 3), collapse = ", ")
+        val_sample <- sprintf("%d distinct (e.g. %s)", n_distinct, first_few)
+      } else {
+        val_sample <- "[All NA/empty]"
       }
     }
-    log_line("")
+    
+    log_out(sprintf("%-30s | %-12s | %9.1f%% | %s", cn, col_type, pct_na, val_sample))
   }
+  log_out("\n")
 }
 
-# ------------------------------------------------------------------------------
-# 4. Procesamiento según formato: Excel (.xlsx, .xls) o CSV (.csv, .txt, .tsv)
-# ------------------------------------------------------------------------------
-
+# Inspect according to format
 if (ext %in% c("xlsx", "xls")) {
-  if (!requireNamespace("readxl", quietly = TRUE)) {
-    stop("La libreria 'readxl' es necesaria para leer archivos Excel. Instala con install.packages('readxl').")
-  }
-  
-  sheets <- readxl::excel_sheets(input_file)
-  log_line(sprintf("ESTRUCTURA EXCEL: El archivo contiene %d hoja(s): [%s]\n", 
-                   length(sheets), paste(paste0("'", sheets, "'"), collapse = ", ")))
-  
-  for (s_name in sheets) {
-    log_line("================================================================================")
-    log_line(sprintf("HOJA EXCEL: '%s'", s_name))
-    log_line("================================================================================")
-    
-    # guess_max = 100000 asegura que escanee todas las filas para no clasificar como 'logical'
-    # columnas con NAs en las primeras filas
+  sheets <- readxl::excel_sheets(raw_file)
+  log_out("Detected sheets (", length(sheets), "): ", paste(sheets, collapse = ", "), "\n")
+  for (sh in sheets) {
     df_sheet <- tryCatch(
-      readxl::read_excel(input_file, sheet = s_name, guess_max = 100000),
+      as.data.frame(readxl::read_excel(raw_file, sheet = sh, guess_max = 100000)),
       error = function(e) {
-        log_line("[ERROR al leer hoja '", s_name, "']: ", e$message)
+        log_out(sprintf("Error reading sheet '%s': %s\n", sh, e$message))
         NULL
       }
     )
-    
     if (!is.null(df_sheet)) {
-      inspect_dataframe(df_sheet, label = paste("Hoja:", s_name))
+      inspect_table(df_sheet, sh)
     }
   }
-  
-} else if (ext %in% c("csv", "txt", "tsv")) {
-  # Detección inteligente de delimitador
-  first_lines <- readLines(input_file, n = 5, warn = FALSE)
-  delim <- ","
-  if (length(first_lines) > 0) {
-    semis  <- sum(gregexpr(";", first_lines[[1]])[[1]] > 0)
-    commas <- sum(gregexpr(",", first_lines[[1]])[[1]] > 0)
-    tabs   <- sum(gregexpr("\t", first_lines[[1]])[[1]] > 0)
-    if (semis > commas && semis > tabs) delim <- ";"
-    if (tabs > commas && tabs > semis) delim <- "\t"
-  }
-  log_line(sprintf("ESTRUCTURA TEXTO: Delimitador detectado: '%s'\n", delim))
-  
-  df_csv <- tryCatch(
-    read.table(input_file, header = TRUE, sep = delim, stringsAsFactors = FALSE, 
-               check.names = FALSE, fill = TRUE, quote = "\""),
-    error = function(e) {
-      log_line("[ERROR al leer archivo]: ", e$message)
-      NULL
-    }
-  )
-  
-  if (!is.null(df_csv)) {
-    inspect_dataframe(df_csv, label = paste("Archivo:", basename(input_file)))
-  }
-  
 } else {
-  log_line("[ERROR]: Formato no reconocido. Por favor proporciona un archivo .xlsx, .xls o .csv.")
+  # CSV / delimited
+  df_csv <- as.data.frame(readr::read_csv(raw_file, guess_max = 100000, show_col_types = FALSE))
+  inspect_table(df_csv, "data")
 }
 
-log_line("================================================================================")
-log_line("  FIN DEL REPORTE DESCRIPTIVO")
-log_line("================================================================================")
-close(report_con)
+close(rep_con)
 
-cat(sprintf("\n[OK] Reporte generado y guardado con exito en:\n  -> %s\n\n", output_report))
-cat("--------------------------------------------------------------------------------\n")
-cat("INSTRUCCION PARA EL ALUMNO:\n")
-cat("Avísale a la IA en el chat que ya ejecutaste '00_inspect_data.R'.\n")
-cat("La IA leera '01_data/profiles/data_inspection_report.txt' para diseñar a medida\n")
-cat("tu script de mapeo de variables: '02_scripts/01_1_byod_audit.R'.\n")
-cat("--------------------------------------------------------------------------------\n\n")
+record_decision(
+  project = project,
+  step = "0",
+  decision = "Inspected raw data file",
+  details = sprintf("Inspected '%s' format .%s. Output report: reports/00_inspection.txt", rel_input_file, ext),
+  repo_root = repo_root
+)
+
+cat(msg("inspect_complete", lang, report_path, repo_root = repo_root), "\n")
