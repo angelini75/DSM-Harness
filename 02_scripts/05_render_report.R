@@ -68,21 +68,46 @@ if (!is.null(proj_active)) {
   proj_name     <- "default"
 }
 
+# Carga de motor i18n
+i18n_candidates <- c(
+  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R"),
+  if (!is.null(proj_active)) file.path(proj_active, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (!is.null(cand) && file.exists(cand)) {
+    tryCatch(source(cand, local = FALSE), error = function(e) NULL)
+    break
+  }
+}
+
 run_id <- sprintf("R-%s-%04d", format(Sys.time(), "%Y%m%d"), sample(1:9999, 1))
 decision_logged <- FALSE
 
+lang <- if (exists("get_project_language")) get_project_language() else "es"
+is_en <- identical(lang, "en")
+
 # 2. Función de registro de auditoría ------------------------------------------
-record_decision <- function(step, criterion, decision, source = "script_default", affected_rows = 0, affected_profiles = 0, details = "") {
+record_decision <- function(step, criterion, decision, source = "script_default",
+                            affected_rows = 0, affected_profiles = 0, details = "") {
+  if (is_en && exists("translate_decision_text")) {
+    criterion <- translate_decision_text(criterion, "en")
+    decision  <- translate_decision_text(decision, "en")
+    details   <- translate_decision_text(details, "en")
+  }
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
     step = as.character(step),
-    criterion = criterion,
-    user_decision = decision,
-    source = source,
+    criterion = as.character(criterion),
+    user_decision = as.character(decision),
+    source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
-    details = details,
+    details = as.character(details),
     template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
@@ -100,10 +125,18 @@ if (file.exists(config_file)) {
   tryCatch({
     if (requireNamespace("jsonlite", quietly = TRUE)) {
       user_cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
-      cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      if (exists("get_project_language")) {
+        lang <- get_project_language(user_cfg)
+        is_en <- identical(lang, "en")
+      }
+      if (is_en) {
+        cat(sprintf("[*] Configuration loaded from: '%s'\n", config_file))
+      } else {
+        cat(sprintf("[*] Configuración cargada desde: '%s'\n", config_file))
+      }
     }
   }, error = function(e) {
-    cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
+    if (is_en) cat(sprintf("[NOTICE] Could not parse '%s': %s\n", config_file, e$message)) else cat(sprintf("[AVISO] No se pudo parsear '%s': %s\n", config_file, e$message))
   })
 }
 
@@ -133,13 +166,24 @@ for (rc in rmd_candidates) {
 }
 
 if (is.null(rmd_template)) {
-  stop("No se encontro la plantilla '05_variable_report.Rmd' en 'scripts/' ni en '02_scripts/'.")
+  if (is_en) {
+    stop("Template '05_variable_report.Rmd' was not found in 'scripts/' or '02_scripts/'.")
+  } else {
+    stop("No se encontro la plantilla '05_variable_report.Rmd' en 'scripts/' ni en '02_scripts/'.")
+  }
 }
 
-cat(sprintf("[*] Generando reporte final con plantilla: '%s'\n", rmd_template))
-cat(sprintf("  - Variable:     %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2))
-cat(sprintf("  - Pais/Proj:    %s / %s\n", country_code, project_code))
-cat(sprintf("  - Destino HTML: %s\n", output_html))
+if (is_en) {
+  cat(sprintf("[*] Generating final report with template: '%s'\n", rmd_template))
+  cat(sprintf("  - Property:     %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("  - Country/Proj: %s / %s\n", country_code, project_code))
+  cat(sprintf("  - HTML Target:  %s\n", output_html))
+} else {
+  cat(sprintf("[*] Generando reporte final con plantilla: '%s'\n", rmd_template))
+  cat(sprintf("  - Variable:     %s (%d-%d cm)\n", target_prop, depth_d1, depth_d2))
+  cat(sprintf("  - Pais/Proj:    %s / %s\n", country_code, project_code))
+  cat(sprintf("  - Destino HTML: %s\n", output_html))
+}
 
 # 5. Pre-evaluación de datos y renderizado con rmarkdown -----------------------
 dir.create(base_rep_dir, recursive = TRUE, showWarnings = FALSE)
@@ -159,24 +203,10 @@ proj_dir_normalized <- if (!is.null(proj_active)) {
   root_dir
 }
 
-i18n_candidates <- c(
-  if (!is.null(proj_active)) file.path(proj_active, "scripts", "00_i18n.R") else NULL,
-  if (!is.null(proj_active)) file.path(proj_active, "00_i18n.R") else NULL,
-  file.path("02_scripts", "00_i18n.R"),
-  "scripts/00_i18n.R",
-  "00_i18n.R"
-)
-for (ic in i18n_candidates) {
-  if (!is.null(ic) && file.exists(ic)) {
-    source(ic)
-    break
-  }
-}
-
-lang <- if (exists("get_project_language")) get_project_language(user_cfg) else (if (!is.null(user_cfg$language)) tolower(user_cfg$language) else "es")
-is_en <- identical(lang, "en")
+doc_title <- if (is_en) sprintf("Soil Mapping Report · %s", tag) else sprintf("Reporte de mapeo · %s", tag)
 
 render_params <- list(
+  title = doc_title,
   project = proj_name,
   project_dir = proj_dir_normalized,
   cc = country_code,
@@ -194,6 +224,7 @@ res_render <- tryCatch({
     output_file = basename(output_html),
     output_dir = dirname(output_html),
     knit_root_dir = root_dir,
+    output_options = list(title = doc_title),
     params = render_params,
     quiet = TRUE,
     envir = new.env()

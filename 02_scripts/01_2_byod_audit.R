@@ -135,10 +135,18 @@ if (file.exists(config_file)) {
 }
 
 if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR FATAL]: No se encontró el dataset intermedio '%s'. Ejecuta primero el Paso 1.1.", input_csv))
+  if (is_en) {
+    stop(sprintf("[FATAL ERROR]: Intermediate dataset '%s' not found. Please run Step 1.1 first.", input_csv))
+  } else {
+    stop(sprintf("[ERROR FATAL]: No se encontró el dataset intermedio '%s'. Ejecuta primero el Paso 1.1.", input_csv))
+  }
 }
 
-cat(sprintf("\n[*] Cargando datos espaciales desde: %s ...\n", input_csv))
+if (is_en) {
+  cat(sprintf("\n[*] Loading spatial data from: %s ...\n", input_csv))
+} else {
+  cat(sprintf("\n[*] Cargando datos espaciales desde: %s ...\n", input_csv))
+}
 dat <- readr::read_csv(input_csv, show_col_types = FALSE)
 n_total <- nrow(dat)
 
@@ -147,7 +155,11 @@ lon_col <- intersect(c("longitude", "x", "lon", "long", "longitud"), names(dat))
 lat_col <- intersect(c("latitude", "y", "lat", "latitud"), names(dat))
 
 if (length(lon_col) == 0 || length(lat_col) == 0) {
-  stop("[ERROR FATAL]: El dataset no contiene columnas estándar de coordenadas ('longitude'/'latitude' o 'x'/'y').")
+  if (is_en) {
+    stop("[FATAL ERROR]: The dataset does not contain standard coordinate columns ('longitude'/'latitude' or 'x'/'y').")
+  } else {
+    stop("[ERROR FATAL]: El dataset no contiene columnas estándar de coordenadas ('longitude'/'latitude' o 'x'/'y').")
+  }
 }
 
 lon_name <- lon_col[1]
@@ -167,7 +179,11 @@ zero_coords_count    <- sum(is_zero_coord, na.rm = TRUE)
 dat_valid <- dat %>% filter(!is_na_coord & !is_zero_coord)
 
 if (nrow(dat_valid) == 0) {
-  stop("[ERROR FATAL]: Ningún registro posee coordenadas válidas no nulas. Imposible realizar auditoría espacial.")
+  if (is_en) {
+    stop("[FATAL ERROR]: No records have valid non-zero coordinates. Spatial audit impossible.")
+  } else {
+    stop("[ERROR FATAL]: Ningún registro posee coordenadas válidas no nulas. Imposible realizar auditoría espacial.")
+  }
 }
 
 n_profiles <- if ("profile_code" %in% names(dat)) length(unique(na.omit(dat$profile_code))) else nrow(dat)
@@ -183,32 +199,46 @@ max_y_raw <- max(dat_valid$latitude, na.rm = TRUE)
 is_projected_coords <- (abs(min_x_raw) > 180 || abs(max_x_raw) > 180 || abs(min_y_raw) > 90 || abs(max_y_raw) > 90)
 
 # 3. Transformación de Coordenadas y CRS ---------------------------------------
-crs_used <- "EPSG:4326 (WGS84 no proyectado)"
-coord_diagnosis <- "Coordenadas geográficas estándar WGS84."
+crs_used <- if (is_en) "EPSG:4326 (WGS84 unprojected)" else "EPSG:4326 (WGS84 no proyectado)"
+coord_diagnosis <- if (is_en) "Standard WGS84 geographic coordinates." else "Coordenadas geográficas estándar WGS84."
 source_crs <- if (!is.null(user_cfg$source_crs)) as.integer(user_cfg$source_crs) else NULL
 
 if (is_projected_coords) {
-  coord_diagnosis <- sprintf("Coordenadas proyectadas/métricas detectadas: X[%.1f, %.1f], Y[%.1f, %.1f].",
+  coord_diagnosis <- sprintf(if (is_en) "Projected/metric coordinates detected: X[%.1f, %.1f], Y[%.1f, %.1f]." else "Coordenadas proyectadas/métricas detectadas: X[%.1f, %.1f], Y[%.1f, %.1f].",
                              min_x_raw, max_x_raw, min_y_raw, max_y_raw)
   if (is.null(source_crs)) {
     cat("\n==============================================================================\n")
-    cat("[ALERTA DE PROYECCIÓN]: Las coordenadas están en metros/proyectadas pero 'source_crs'\n")
-    cat("NO está definido en 'config.json'.\n")
-    cat(sprintf("Rango detectado: X: [%.1f, %.1f] | Y: [%.1f, %.1f]\n", min_x_raw, max_x_raw, min_y_raw, max_y_raw))
-    cat("Por favor, consulta el EPSG de tu país/zona en 'docs/OPENNSIS_STANDARDS.md' o con la IA,\n")
-    cat("y decláralo en 'config.json' (ej: \"source_crs\": <código EPSG de tu zona>).\n")
-    cat("==============================================================================\n\n")
-    crs_used <- "MÉTRICAS SIN EPSG (Gráfico 2D generado en panel Plots; mapa base omitido hasta declarar source_crs)"
+    if (is_en) {
+      cat("[PROJECTION ALERT]: Coordinates are in meters/projected but 'source_crs'\n")
+      cat("is NOT defined in 'config.json'.\n")
+      cat(sprintf("Detected range: X: [%.1f, %.1f] | Y: [%.1f, %.1f]\n", min_x_raw, max_x_raw, min_y_raw, max_y_raw))
+      cat("Please consult the EPSG for your country/area in 'docs/OPENNSIS_STANDARDS.md' or with the AI,\n")
+      cat("and declare it in 'config.json' (e.g. \"source_crs\": <EPSG code for your area>).\n")
+      cat("==============================================================================\n\n")
+      crs_used <- "METRICS WITHOUT EPSG (2D plot generated in Plots pane; basemap omitted until source_crs declared)"
+    } else {
+      cat("[ALERTA DE PROYECCIÓN]: Las coordenadas están en metros/proyectadas pero 'source_crs'\n")
+      cat("NO está definido en 'config.json'.\n")
+      cat(sprintf("Rango detectado: X: [%.1f, %.1f] | Y: [%.1f, %.1f]\n", min_x_raw, max_x_raw, min_y_raw, max_y_raw))
+      cat("Por favor, consulta el EPSG de tu país/zona en 'docs/OPENNSIS_STANDARDS.md' o con la IA,\n")
+      cat("y decláralo en 'config.json' (ej: \"source_crs\": <código EPSG de tu zona>).\n")
+      cat("==============================================================================\n\n")
+      crs_used <- "MÉTRICAS SIN EPSG (Gráfico 2D generado en panel Plots; mapa base omitido hasta declarar source_crs)"
+    }
   } else {
-    cat(sprintf("[*] Reproyectando coordenadas desde EPSG:%d a EPSG:4326 (WGS84) ...\n", source_crs))
+    if (is_en) {
+      cat(sprintf("[*] Reprojecting coordinates from EPSG:%d to EPSG:4326 (WGS84) ...\n", source_crs))
+    } else {
+      cat(sprintf("[*] Reproyectando coordenadas desde EPSG:%d a EPSG:4326 (WGS84) ...\n", source_crs))
+    }
     sf_pts <- sf::st_as_sf(dat_valid, coords = c("longitude", "latitude"), crs = source_crs)
     sf_wgs84 <- sf::st_transform(sf_pts, crs = 4326)
     coords_wgs84 <- sf::st_coordinates(sf_wgs84)
     
     dat_valid$longitude <- coords_wgs84[, 1]
     dat_valid$latitude  <- coords_wgs84[, 2]
-    crs_used <- sprintf("Transformado de EPSG:%d a EPSG:4326 (WGS84)", source_crs)
-    coord_diagnosis <- sprintf("Coordenadas transformadas a WGS84 desde EPSG:%d.", source_crs)
+    crs_used <- sprintf(if (is_en) "Transformed from EPSG:%d to EPSG:4326 (WGS84)" else "Transformado de EPSG:%d a EPSG:4326 (WGS84)", source_crs)
+    coord_diagnosis <- sprintf(if (is_en) "Coordinates transformed to WGS84 from EPSG:%d." else "Coordenadas transformadas a WGS84 desde EPSG:%d.", source_crs)
     
     record_decision(1.2, "Transformación CRS", sprintf("Reproyección EPSG:%d -> EPSG:4326", source_crs),
                     source = "user_config", affected_rows = nrow(dat_valid), affected_profiles = n_profiles,
@@ -216,9 +246,9 @@ if (is_projected_coords) {
   }
 } else {
   if (min_x_raw > -90 && max_x_raw < 90 && (min_y_raw < -90 || max_y_raw > 90 || min_x_raw > 0)) {
-    coord_diagnosis <- "Posible inversión entre latitud y longitud; verificar visualmente en mapa."
+    coord_diagnosis <- if (is_en) "Possible latitude and longitude swap; visually inspect on map." else "Posible inversión entre latitud y longitud; verificar visualmente en mapa."
   } else {
-    coord_diagnosis <- "Coordenadas geográficas estándar WGS84 (grados decimales)."
+    coord_diagnosis <- if (is_en) "Standard WGS84 geographic coordinates (decimal degrees)." else "Coordenadas geográficas estándar WGS84 (grados decimales)."
   }
   record_decision(1.2, "Sistema de referencia (CRS)", "WGS84 geográfico (EPSG:4326)",
                   source = if (!is.null(user_cfg$source_crs)) "user_config" else "script_default",
@@ -257,11 +287,11 @@ outlier_profiles <- if ("profile_code" %in% names(dat_valid)) {
 }
 
 coord_space_iqr <- if (is_projected_coords && is.null(source_crs)) {
-  "Coordenadas métricas originales (sin reproyectar)"
+  if (is_en) "Original metric coordinates (unprojected)" else "Coordenadas métricas originales (sin reproyectar)"
 } else if (is_projected_coords && !is.null(source_crs)) {
-  sprintf("Grados decimales WGS84 (reproyectados desde EPSG:%d)", source_crs)
+  sprintf(if (is_en) "WGS84 decimal degrees (reprojected from EPSG:%d)" else "Grados decimales WGS84 (reproyectados desde EPSG:%d)", source_crs)
 } else {
-  "Grados decimales WGS84 (coordenadas geográficas de origen)"
+  if (is_en) "WGS84 decimal degrees (source geographic coordinates)" else "Grados decimales WGS84 (coordenadas geográficas de origen)"
 }
 
 dat_valid$flag_spatial_outlier <- outlier_mask
@@ -271,7 +301,7 @@ target_outlier_act <- if (!is.null(user_cfg$outlier_action)) user_cfg$outlier_ac
 if (!is.null(target_outlier_act)) {
   valid_outlier_acts <- c("flag", "exclude", "keep")
   if (!(target_outlier_act %in% valid_outlier_acts)) {
-    stop(sprintf("[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+    stop(sprintf(if (is_en) "[CONFIG ERROR]: Invalid value for 'outlier_action': '%s'.\n  Valid values per 'docs/CONFIG_SCHEMA.md': [%s]." else "[ERROR CONFIG]: Valor no válido para 'outlier_action': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
                  target_outlier_act, paste(valid_outlier_acts, collapse = ", ")))
   }
 }
@@ -280,29 +310,29 @@ outlier_act_source <- if (!is.null(target_outlier_act)) "user_config" else "scri
 if (!is.null(target_outlier_act) && outlier_count > 0) {
   if (target_outlier_act == "exclude") {
     dat_valid <- dat_valid %>% filter(!flag_spatial_outlier)
-    outlier_action_applied <- sprintf("Excluidos %d registros (%d perfiles únicos)", outlier_count, outlier_profiles)
+    outlier_action_applied <- sprintf(if (is_en) "Excluded %d records (%d unique profiles)" else "Excluidos %d registros (%d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Excluir puntos anómalos", source = outlier_act_source,
                     affected_rows = outlier_count, affected_profiles = outlier_profiles,
-                    details = sprintf("Filtro IQR 3x aplicado tras confirmación sobre %s", coord_space_iqr))
+                    details = sprintf(if (is_en) "3x IQR filter applied after confirmation on %s" else "Filtro IQR 3x aplicado tras confirmación sobre %s", coord_space_iqr))
   } else if (target_outlier_act == "flag") {
-    outlier_action_applied <- sprintf("Conservados con flag_spatial_outlier = TRUE (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
+    outlier_action_applied <- sprintf(if (is_en) "Preserved with flag_spatial_outlier = TRUE (%d records, %d unique profiles)" else "Conservados con flag_spatial_outlier = TRUE (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Conservar y marcar bandera", source = outlier_act_source,
                     affected_rows = outlier_count, affected_profiles = outlier_profiles,
-                    details = sprintf("Columna flag_spatial_outlier agregada sobre %s", coord_space_iqr))
+                    details = sprintf(if (is_en) "flag_spatial_outlier column added on %s" else "Columna flag_spatial_outlier agregada sobre %s", coord_space_iqr))
   } else if (target_outlier_act == "keep") {
-    outlier_action_applied <- sprintf("Conservados como válidos por decisión del usuario (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
+    outlier_action_applied <- sprintf(if (is_en) "Preserved as valid by user decision (%d records, %d unique profiles)" else "Conservados como válidos por decisión del usuario (%d registros, %d perfiles únicos)", outlier_count, outlier_profiles)
     record_decision(1.2, "Outliers espaciales", "Conservar como válidos", source = outlier_act_source,
                     affected_rows = outlier_count, affected_profiles = outlier_profiles)
   }
 } else {
   outlier_action_applied <- if (outlier_count > 0) {
-    sprintf("Identificados %d candidatos (%d perfiles únicos); marcados con flag_spatial_outlier para inspección visual", outlier_count, outlier_profiles)
+    sprintf(if (is_en) "Identified %d candidates (%d unique profiles); marked with flag_spatial_outlier for visual inspection" else "Identificados %d candidatos (%d perfiles únicos); marcados con flag_spatial_outlier para inspección visual", outlier_count, outlier_profiles)
   } else {
-    "0 outliers detectados por filtro univariado IQR 3x"
+    if (is_en) "0 outliers detected by univariate 3x IQR filter" else "0 outliers detectados por filtro univariado IQR 3x"
   }
   record_decision(1.2, "Outliers espaciales", "Evaluación completada", source = outlier_act_source,
                   affected_rows = outlier_count, affected_profiles = outlier_profiles,
-                  details = sprintf("%s (espacio: %s)", outlier_action_applied, coord_space_iqr))
+                  details = sprintf(if (is_en) "%s (space: %s)" else "%s (espacio: %s)", outlier_action_applied, coord_space_iqr))
 }
 
 # >>> ADAPT:crs_and_outliers
@@ -362,7 +392,7 @@ if (is_en) {
   writeLines("--------------------------------------------------------------------------------", report_con)
   writeLines("SPATIAL OUTLIER AUDIT AND DISPERSION:", report_con)
   writeLines(sprintf("  Applied method:                   1D IQR per axis (threshold: Q1 - 3*IQR or Q3 + 3*IQR)"))
-  writeLines(sprintf("  Evaluated coordinate space:       %s", if (coord_space_iqr == "metricas_proyectadas") "projected metric" else "geographic WGS84"), report_con)
+  writeLines(sprintf("  Evaluated coordinate space:       %s", coord_space_iqr), report_con)
   writeLines(sprintf("  Candidates detected by IQR 3x:    %d unique profiles (%d records/rows)", outlier_profiles, outlier_count), report_con)
   out_act_en <- if (exists("translate_decision_text")) translate_decision_text(outlier_action_applied, "en") else outlier_action_applied
   writeLines(sprintf("  Outlier treatment:                %s", out_act_en), report_con)
@@ -521,7 +551,7 @@ if (is_en) {
     cat(sprintf("Resulting degree range (WGS84):       Lon [%.4f, %.4f] | Lat [%.4f, %.4f]\n", min_lon, max_lon, min_lat, max_lat))
   }
   cat(sprintf("Potential spatial outliers (IQR 3x):  %d unique profiles (%d records/horizons)\n", outlier_profiles, outlier_count))
-  cat(sprintf("Evaluated coordinate space for IQR:   %s\n", if (coord_space_iqr == "metricas_proyectadas") "projected metric" else "geographic WGS84"))
+  cat(sprintf("Evaluated coordinate space for IQR:   %s\n", coord_space_iqr))
   out_act_en <- if (exists("translate_decision_text")) translate_decision_text(outlier_action_applied, "en") else outlier_action_applied
   cat(sprintf("Applied action:                       %s\n", out_act_en))
   cat(sprintf("[OK] Spatial dataset saved to:        %s\n", output_csv))

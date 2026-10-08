@@ -100,14 +100,14 @@ record_decision <- function(step, criterion, decision, source = "user_config",
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
-    template_version = TEMPLATE_VERSION,
     step = as.character(step),
     criterion = as.character(criterion),
-    decision = as.character(decision),
+    user_decision = as.character(decision),
     source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
     details = as.character(details),
+    template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
   if (!file.exists(decisions_log)) {

@@ -95,14 +95,14 @@ record_decision <- function(step, criterion, decision, source = "user_config",
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
-    template_version = TEMPLATE_VERSION,
     step = as.character(step),
     criterion = as.character(criterion),
-    decision = as.character(decision),
+    user_decision = as.character(decision),
     source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
     details = as.character(details),
+    template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
   if (!file.exists(decisions_log)) {
@@ -136,11 +136,19 @@ if (file.exists(config_file)) {
 
 # 4. Cargar dataset con covariables --------------------------------------------
 if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR CRÍTICO] No se encontró el dataset de covariables en '%s'.\nEjecuta primero el Paso 2 (run_step('2')).", input_csv))
+  if (is_en) {
+    stop(sprintf("[CRITICAL ERROR] Covariates dataset not found at '%s'.\nPlease run Step 2 first (run_step('2')).", input_csv))
+  } else {
+    stop(sprintf("[ERROR CRÍTICO] No se encontró el dataset de covariables en '%s'.\nEjecuta primero el Paso 2 (run_step('2')).", input_csv))
+  }
 }
 
 dat_cov <- readr::read_csv(input_csv, show_col_types = FALSE)
-cat(sprintf("[*] Dataset con covariables cargado: %d registros.\n", nrow(dat_cov)))
+if (is_en) {
+  cat(sprintf("[*] Covariates dataset loaded: %d records.\n", nrow(dat_cov)))
+} else {
+  cat(sprintf("[*] Dataset con covariables cargado: %d registros.\n", nrow(dat_cov)))
+}
 
 # Identificar variable objetivo y columnas de covariables
 meta_cols <- c("profile_code", "longitude", "latitude", "support_cm")
@@ -154,10 +162,18 @@ if (!(target_prop %in% names(dat_cov))) {
 
 cov_cols <- setdiff(names(dat_cov), c(meta_cols, target_prop))
 if (length(cov_cols) == 0) {
-  stop("[ERROR CRÍTICO] No se encontraron columnas de covariables en el dataset.")
+  if (is_en) {
+    stop("[CRITICAL ERROR] No covariate columns found in the dataset.")
+  } else {
+    stop("[ERROR CRÍTICO] No se encontraron columnas de covariables en el dataset.")
+  }
 }
 
-cat(sprintf("[*] Variable objetivo: '%s' | Total covariables candidatas: %d\n", target_prop, length(cov_cols)))
+if (is_en) {
+  cat(sprintf("[*] Target property: '%s' | Total candidate covariates: %d\n", target_prop, length(cov_cols)))
+} else {
+  cat(sprintf("[*] Variable objetivo: '%s' | Total covariables candidatas: %d\n", target_prop, length(cov_cols)))
+}
 
 # Preparar datos completos (sin NA)
 d_train <- dat_cov %>%
@@ -166,12 +182,20 @@ d_train <- dat_cov %>%
   as.data.frame()
 
 n_train <- nrow(d_train)
-cat(sprintf("[*] Datos para entrenamiento tras omitir NA: %d observaciones.\n", n_train))
+if (is_en) {
+  cat(sprintf("[*] Training data after omitting NA: %d observations.\n", n_train))
+} else {
+  cat(sprintf("[*] Datos para entrenamiento tras omitir NA: %d observaciones.\n", n_train))
+}
 
 # 5. Selección de variables con Boruta ------------------------------------------
 set.seed(42)
 boruta_runs <- if (!is.null(user_cfg$boruta_max_runs)) as.integer(user_cfg$boruta_max_runs) else 100
-cat(sprintf("[*] Ejecutando selección de características Boruta (maxRuns = %d) ...\n", boruta_runs))
+if (is_en) {
+  cat(sprintf("[*] Running Boruta feature selection (maxRuns = %d) ...\n", boruta_runs))
+} else {
+  cat(sprintf("[*] Ejecutando selección de características Boruta (maxRuns = %d) ...\n", boruta_runs))
+}
 
 boruta_result <- Boruta::Boruta(
   y = d_train[, target_prop],
@@ -183,12 +207,22 @@ boruta_result <- Boruta::Boruta(
 selected_features <- Boruta::getSelectedAttributes(boruta_result, withTentative = TRUE)
 
 if (length(selected_features) == 0) {
-  cat("[AVISO] Boruta no confirmó variables; usando todas las covariables disponibles.\n")
+  if (is_en) {
+    cat("[NOTICE] Boruta did not confirm variables; using all available covariates.\n")
+    boruta_decision_txt <- "All covariates (none confirmed by Boruta)"
+  } else {
+    cat("[AVISO] Boruta no confirmó variables; usando todas las covariables disponibles.\n")
+    boruta_decision_txt <- "Todas las covariables (ninguna confirmada por Boruta)"
+  }
   selected_features <- cov_cols
-  boruta_decision_txt <- "Todas las covariables (ninguna confirmada por Boruta)"
 } else {
-  cat(sprintf("[OK] Boruta seleccionó %d variables (confirmadas + tentativas).\n", length(selected_features)))
-  boruta_decision_txt <- sprintf("%d de %d covariables seleccionadas", length(selected_features), length(cov_cols))
+  if (is_en) {
+    cat(sprintf("[OK] Boruta selected %d variables (confirmed + tentative).\n", length(selected_features)))
+    boruta_decision_txt <- sprintf("%d of %d covariates selected", length(selected_features), length(cov_cols))
+  } else {
+    cat(sprintf("[OK] Boruta seleccionó %d variables (confirmadas + tentativas).\n", length(selected_features)))
+    boruta_decision_txt <- sprintf("%d de %d covariables seleccionadas", length(selected_features), length(cov_cols))
+  }
 }
 
 record_decision(3.0, "Selección de características", boruta_decision_txt,
@@ -201,15 +235,27 @@ boruta_png <- file.path(base_rep_dir, sprintf("boruta_%s.png", target_prop))
 tryCatch({
   png(boruta_png, width = 18, height = 22, units = "cm", res = 150)
   par(las = 1, mar = c(4, 12, 4, 2) + 0.1)
-  plot(boruta_result, horizontal = TRUE, las = 1, xlab = "Importancia Z-Score", ylab = "", cex.axis = 0.6)
+  plot(boruta_result, horizontal = TRUE, las = 1, xlab = if (is_en) "Z-Score Importance" else "Importancia Z-Score", ylab = "", cex.axis = 0.6)
   dev.off()
-  cat(sprintf("[OK] Gráfico de importancia Boruta guardado: '%s'\n", boruta_png))
+  if (is_en) {
+    cat(sprintf("[OK] Boruta importance plot saved: '%s'\n", boruta_png))
+  } else {
+    cat(sprintf("[OK] Gráfico de importancia Boruta guardado: '%s'\n", boruta_png))
+  }
 }, error = function(e) {
-  cat("[AVISO] No se pudo generar gráfico Boruta PNG:", e$message, "\n")
+  if (is_en) {
+    cat("[NOTICE] Could not generate Boruta PNG plot:", e$message, "\n")
+  } else {
+    cat("[AVISO] No se pudo generar gráfico Boruta PNG:", e$message, "\n")
+  }
 })
 
 # 6. Entrenamiento QRF con Validación Cruzada Repetida y Grilla de Afinación ---
-cat("[*] Configurando validación cruzada repetida y afinación de hiperparámetros ...\n")
+if (is_en) {
+  cat("[*] Setting up repeated cross-validation and hyperparameter tuning ...\n")
+} else {
+  cat("[*] Configurando validación cruzada repetida y afinación de hiperparámetros ...\n")
+}
 cv_folds   <- if (!is.null(user_cfg$cv_folds)) as.integer(user_cfg$cv_folds) else 5
 cv_repeats <- if (!is.null(user_cfg$cv_repeats)) as.integer(user_cfg$cv_repeats) else 5
 
@@ -234,8 +280,13 @@ tune_grid <- expand.grid(
 )
 
 n_threads <- max(1, parallel::detectCores() - 1)
-cat(sprintf("[*] Entrenando Quantile Regression Forest (%d pliegues, %d repeticiones, %d hilos CPU) ...\n",
-            cv_folds, cv_repeats, n_threads))
+if (is_en) {
+  cat(sprintf("[*] Training Quantile Regression Forest (%d folds, %d repeats, %d CPU threads) ...\n",
+              cv_folds, cv_repeats, n_threads))
+} else {
+  cat(sprintf("[*] Entrenando Quantile Regression Forest (%d pliegues, %d repeticiones, %d hilos CPU) ...\n",
+              cv_folds, cv_repeats, n_threads))
+}
 
 set.seed(42)
 qrf_model <- caret::train(
@@ -250,8 +301,13 @@ qrf_model <- caret::train(
 )
 
 best_tune <- qrf_model$bestTune
-cat(sprintf("[OK] Mejor combinación de hiperparámetros: mtry = %d, splitrule = %s, min.node.size = %d\n",
-            best_tune$mtry, best_tune$splitrule, best_tune$min.node.size))
+if (is_en) {
+  cat(sprintf("[OK] Best hyperparameter combination: mtry = %d, splitrule = %s, min.node.size = %d\n",
+              best_tune$mtry, best_tune$splitrule, best_tune$min.node.size))
+} else {
+  cat(sprintf("[OK] Mejor combinación de hiperparámetros: mtry = %d, splitrule = %s, min.node.size = %d\n",
+              best_tune$mtry, best_tune$splitrule, best_tune$min.node.size))
+}
 
 # 7. Evaluación de exactitud y cálculo de métricas ------------------------------
 cv_preds <- qrf_model$pred %>%

@@ -960,4 +960,119 @@ test_that("Issue #49: [i18n] Bilingual English and Spanish workflow, reports, lo
   expect_false(any(log_df$criterion == "Conservación de columnas adicionales"))
 })
 
+test_that("Issue #50: run_step.R executes cleanly in a fresh session without project_name defined", {
+  test_proj <- "test_issue_50_runner"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  project_language <<- "es"
+  source("02_scripts/00_new_project.R", local = new.env())
+  
+  runner_path <- file.path(proj_path, "run_step.R")
+  expect_true(file.exists(runner_path))
+  
+  # Clean environment with no project_name defined
+  clean_env <- new.env(parent = baseenv())
+  expect_false(exists("project_name", envir = clean_env))
+  
+  # Sourcing run_step.R should not raise an error about object 'project_name' not found
+  runner_output <- capture.output({
+    expect_error(source(runner_path, local = clean_env), NA)
+  })
+  
+  expect_true(exists("run_step", envir = clean_env))
+  expect_true(exists("PROJECT_NAME", envir = clean_env))
+  expect_equal(clean_env$PROJECT_NAME, test_proj)
+  expect_true(any(grepl(test_proj, runner_output)))
+})
+
+test_that("Issue #51: Console output, reports, and HTML document title emit zero Spanish text when language is English", {
+  test_proj <- "test_issue_51_en"
+  proj_path <- file.path("projects", test_proj)
+  on.exit(unlink(proj_path, recursive = TRUE), add = TRUE)
+  
+  project_name <<- test_proj
+  project_language <<- "en"
+  
+  # 1. Project creation console capture
+  p_out <- capture.output({
+    source("02_scripts/00_new_project.R", local = new.env())
+  })
+  expect_true(any(grepl("PROJECT CREATED SUCCESSFULLY", p_out)))
+  expect_false(any(grepl("PROYECTO CREADO EXITOSAMENTE", p_out)))
+  expect_false(any(grepl("Script instanciado", p_out)))
+  
+  # Setup synthetic data
+  df_synth <- data.frame(
+    id_perfil = paste0("P", 1:20),
+    x_coord = runif(20, -60, -58),
+    y_coord = runif(20, -35, -33),
+    prof_desde = 0,
+    prof_hasta = 30,
+    carbono_org = runif(20, 0.5, 3.5),
+    ph_suelo = runif(20, 5.5, 7.5),
+    cov1 = runif(20, 10, 50)
+  )
+  write.csv(df_synth, file.path(proj_path, "data", "perfiles.csv"), row.names = FALSE)
+  
+  # Config
+  cfg_read <- jsonlite::fromJSON(file.path(proj_path, "config.json"), simplifyVector = FALSE)
+  cfg_read$input_file <- file.path(proj_path, "data", "perfiles.csv")
+  cfg_read$column_mapping <- list(
+    profile_code = "id_perfil",
+    longitude = "x_coord",
+    latitude = "y_coord",
+    upper = "prof_desde",
+    lower = "prof_hasta",
+    SOC = "carbono_org",
+    pH_H2O = "ph_suelo"
+  )
+  cfg_read$target_property <- "SOC"
+  cfg_read$country_code <- "MKD"
+  cfg_read$project_code <- "DEMO"
+  jsonlite::write_json(cfg_read, file.path(proj_path, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  PROJECT_DIR <<- proj_path
+  CURRENT_PROJECT_DIR <<- proj_path
+  PROJECT_NAME <<- test_proj
+  input_file <<- file.path(proj_path, "data", "perfiles.csv")
+  
+  # 2. Step 0 Console capture
+  s0_out <- capture.output({
+    source(file.path(proj_path, "scripts", "00_inspect_data.R"), local = new.env())
+  })
+  expect_true(any(grepl("COMPACT STRUCTURAL INSPECTION REPORT", s0_out)))
+  expect_false(any(grepl("REPORTE COMPACTO", s0_out)))
+  expect_false(any(grepl("INSPECCIÓN ESTRUCTURAL", s0_out)))
+  
+  # 3. Step 1.1 Console capture
+  s1_out <- capture.output({
+    source(file.path(proj_path, "scripts", "01_1_byod_audit.R"), local = new.env())
+  })
+  expect_true(any(grepl("VARIABLE MAPPING TABLE", s1_out)))
+  expect_true(any(grepl("Configuration loaded from", s1_out)))
+  expect_false(any(grepl("TABLA DE MAPEO DE VARIABLES", s1_out)))
+  expect_false(any(grepl("Configuración cargada desde", s1_out)))
+  expect_false(any(grepl("Perfiles únicos identificados", s1_out)))
+  
+  # 4. Step 5 Console capture & HTML title check
+  write.csv(df_synth, file.path(proj_path, "data", "step2_covariates.csv"), row.names = FALSE)
+  s5_out <- capture.output({
+    source(file.path(proj_path, "scripts", "05_render_report.R"), local = new.env())
+  })
+  expect_true(any(grepl("FINAL REPORT GENERATION SUMMARY", s5_out)))
+  expect_false(any(grepl("RESUMEN DE GENERACIÓN DE REPORTE FINAL", s5_out)))
+  expect_false(any(grepl("Variable mapeada:", s5_out)))
+  
+  html_f <- file.path(proj_path, "reports", "report_MKD-DEMO-SOC-0-30.html")
+  expect_true(file.exists(html_f))
+  html_lines <- readLines(html_f, encoding = "UTF-8")
+  
+  # Document title in HTML <head><title>
+  expect_true(any(grepl("<title>Soil Mapping Report · MKD-DEMO-SOC-0-30</title>", html_lines, fixed = TRUE)))
+  expect_false(any(grepl("<title>Reporte de mapeo", html_lines)))
+})
+
+
 

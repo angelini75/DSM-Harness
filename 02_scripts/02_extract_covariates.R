@@ -98,14 +98,14 @@ record_decision <- function(step, criterion, decision, source = "user_config",
   entry <- data.frame(
     timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
     run_id = run_id,
-    template_version = TEMPLATE_VERSION,
     step = as.character(step),
     criterion = as.character(criterion),
-    decision = as.character(decision),
+    user_decision = as.character(decision),
     source = as.character(source),
     affected_rows = as.integer(affected_rows),
     affected_profiles = as.integer(affected_profiles),
     details = as.character(details),
+    template_version = TEMPLATE_VERSION,
     stringsAsFactors = FALSE
   )
   if (!file.exists(decisions_log)) {
@@ -139,13 +139,21 @@ if (file.exists(config_file)) {
 
 # 4. Cargar dataset auditado (cleaned_profiles.csv) -----------------------------
 if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR CRÍTICO] No se encontró el dataset auditado en '%s'.\nEjecuta primero el Paso 1.3 (run_step('1.3')).", input_csv))
+  if (is_en) {
+    stop(sprintf("[CRITICAL ERROR] Audited dataset not found at '%s'.\nPlease run Step 1.3 first (run_step('1.3')).", input_csv))
+  } else {
+    stop(sprintf("[ERROR CRÍTICO] No se encontró el dataset auditado en '%s'.\nEjecuta primero el Paso 1.3 (run_step('1.3')).", input_csv))
+  }
 }
 
 dat_raw <- readr::read_csv(input_csv, show_col_types = FALSE)
 n_initial_rows <- nrow(dat_raw)
 n_initial_profiles <- if ("profile_code" %in% names(dat_raw)) length(unique(dat_raw$profile_code)) else n_initial_rows
-cat(sprintf("[*] Dataset auditado cargado: %d filas, %d perfiles únicos.\n", n_initial_rows, n_initial_profiles))
+if (is_en) {
+  cat(sprintf("[*] Audited dataset loaded: %d rows, %d unique profiles.\n", n_initial_rows, n_initial_profiles))
+} else {
+  cat(sprintf("[*] Dataset auditado cargado: %d filas, %d perfiles únicos.\n", n_initial_rows, n_initial_profiles))
+}
 
 # 5. Filtrar banderas de calidad (outliers espaciales) --------------------------
 include_outliers <- isTRUE(user_cfg$include_spatial_outliers)
@@ -158,8 +166,13 @@ if ("flag_spatial_outlier" %in% names(dat_raw) && !include_outliers) {
   }
   if (outliers_to_drop > 0) {
     dat_clean <- dat_raw %>% filter(!flag_spatial_outlier)
-    cat(sprintf("[*] Filtro de calidad aplicado: excluidos %d registros (%d perfiles) con flag_spatial_outlier = TRUE.\n",
-                outliers_to_drop, outlier_profiles_dropped))
+    if (is_en) {
+      cat(sprintf("[*] Quality filter applied: excluded %d records (%d profiles) with flag_spatial_outlier = TRUE.\n",
+                  outliers_to_drop, outlier_profiles_dropped))
+    } else {
+      cat(sprintf("[*] Filtro de calidad aplicado: excluidos %d registros (%d perfiles) con flag_spatial_outlier = TRUE.\n",
+                  outliers_to_drop, outlier_profiles_dropped))
+    }
     record_decision(2.0, "Filtro de calidad", "Exclusión de outliers espaciales marcados",
                     source = if (!is.null(user_cfg$include_spatial_outliers)) "user_config" else "script_default",
                     affected_rows = outliers_to_drop, affected_profiles = outlier_profiles_dropped,
@@ -178,9 +191,13 @@ if (!(target_prop %in% names(dat_clean))) {
   candidates <- intersect(c("SOC", "OM", "pH_H2O", "Clay", "Sand", "Silt", "BD"), names(dat_clean))
   if (length(candidates) > 0) {
     target_prop <- candidates[1]
-    cat(sprintf("[AVISO] Propiedad objetivo no definida en config.json; usando disponible: '%s'\n", target_prop))
+    if (is_en) {
+      cat(sprintf("[NOTICE] Target property not defined in config.json; using available: '%s'\n", target_prop))
+    } else {
+      cat(sprintf("[AVISO] Propiedad objetivo no definida en config.json; usando disponible: '%s'\n", target_prop))
+    }
   } else {
-    stop(sprintf("[ERROR CRÍTICO] La variable objetivo '%s' no existe en el dataset. Columnas disponibles: [%s]",
+    stop(sprintf(if (is_en) "[CRITICAL ERROR] Target variable '%s' does not exist in dataset. Available columns: [%s]" else "[ERROR CRÍTICO] La variable objetivo '%s' no existe en el dataset. Columnas disponibles: [%s]",
                  target_prop, paste(names(dat_clean), collapse = ", ")))
   }
 }
@@ -188,7 +205,11 @@ if (!(target_prop %in% names(dat_clean))) {
 depth_d1 <- if (!is.null(user_cfg$target_depth_upper)) as.numeric(user_cfg$target_depth_upper) else 0
 depth_d2 <- if (!is.null(user_cfg$target_depth_lower)) as.numeric(user_cfg$target_depth_lower) else 30
 
-cat(sprintf("[*] Estandarizando perfiles para propiedad '%s' en profundidad %d–%d cm ...\n", target_prop, depth_d1, depth_d2))
+if (is_en) {
+  cat(sprintf("[*] Standardizing profiles for property '%s' at depth %d–%d cm ...\n", target_prop, depth_d1, depth_d2))
+} else {
+  cat(sprintf("[*] Estandarizando perfiles para propiedad '%s' en profundidad %d–%d cm ...\n", target_prop, depth_d1, depth_d2))
+}
 
 # Promedio ponderado por espesor de horizontes dentro del intervalo [d1, d2]
 dat_std <- dat_clean %>%
@@ -213,7 +234,11 @@ min_support <- if (!is.null(user_cfg$min_depth_support_cm)) as.numeric(user_cfg$
 dat_std <- dat_std %>% filter(support_cm >= min_support)
 
 n_std_profiles <- nrow(dat_std)
-cat(sprintf("[OK] Perfiles estandarizados (soporte mínimo >= %.0f cm): %d perfiles.\n", min_support, n_std_profiles))
+if (is_en) {
+  cat(sprintf("[OK] Standardized profiles (minimum support >= %.0f cm): %d profiles.\n", min_support, n_std_profiles))
+} else {
+  cat(sprintf("[OK] Perfiles estandarizados (soporte mínimo >= %.0f cm): %d perfiles.\n", min_support, n_std_profiles))
+}
 record_decision(2.0, "Estandarización de profundidad", sprintf("Intervalo %d-%d cm ponderado por espesor", depth_d1, depth_d2),
                 source = if (!is.null(user_cfg$target_depth_upper)) "user_config" else "script_default",
                 affected_rows = nrow(dat_clean), affected_profiles = n_std_profiles,
@@ -233,22 +258,38 @@ avail_covs <- if (!is.null(cov_path_cfg) && file.exists(cov_path_cfg)) {
 }
 
 if (length(avail_covs) == 0) {
-  stop(sprintf("[ERROR CRÍTICO] No se encontraron archivos ráster de covariables (.tif) en '%s' ni en '01_data/covariates/'.\nColoca tus covariables GeoTIFF en dicha carpeta o especifica 'covariates_path' en config.json.", base_cov_dir))
+  stop(sprintf(if (is_en) "[CRITICAL ERROR] No covariate raster files (.tif) found in '%s' nor in '01_data/covariates/'.\nPlace your GeoTIFF covariates in that folder or specify 'covariates_path' in config.json." else "[ERROR CRÍTICO] No se encontraron archivos ráster de covariables (.tif) en '%s' ni en '01_data/covariates/'.\nColoca tus covariables GeoTIFF en dicha carpeta o especifica 'covariates_path' en config.json.", base_cov_dir))
 }
 
-cat(sprintf("[*] Cargando covariables desde: [%s] ...\n", paste(basename(avail_covs), collapse = ", ")))
+if (is_en) {
+  cat(sprintf("[*] Loading covariates from: [%s] ...\n", paste(basename(avail_covs), collapse = ", ")))
+} else {
+  cat(sprintf("[*] Cargando covariables desde: [%s] ...\n", paste(basename(avail_covs), collapse = ", ")))
+}
 cov_stack <- terra::rast(avail_covs)
 cov_names <- names(cov_stack)
-cat(sprintf("[OK] Pila de covariables: %d capas/bandas. CRS: %s\n", length(cov_names), crs(cov_stack, describe = TRUE)$name))
+if (is_en) {
+  cat(sprintf("[OK] Covariate stack: %d layers/bands. CRS: %s\n", length(cov_names), crs(cov_stack, describe = TRUE)$name))
+} else {
+  cat(sprintf("[OK] Pila de covariables: %d capas/bandas. CRS: %s\n", length(cov_names), crs(cov_stack, describe = TRUE)$name))
+}
 
 # 8. Proyección de puntos y extracción espacial --------------------------------
 dat_pts <- terra::vect(dat_std, geom = c("longitude", "latitude"), crs = "EPSG:4326")
 if (crs(dat_pts) != crs(cov_stack)) {
-  cat("[*] Reproyectando puntos al CRS de las covariables ...\n")
+  if (is_en) {
+    cat("[*] Reprojecting points to covariate CRS ...\n")
+  } else {
+    cat("[*] Reproyectando puntos al CRS de las covariables ...\n")
+  }
   dat_pts <- terra::project(dat_pts, crs(cov_stack))
 }
 
-cat("[*] Extrayendo valores de covariables en ubicaciones de perfiles ...\n")
+if (is_en) {
+  cat("[*] Extracting covariate values at profile locations ...\n")
+} else {
+  cat("[*] Extrayendo valores de covariables en ubicaciones de perfiles ...\n")
+}
 extracted <- terra::extract(cov_stack, dat_pts, ID = FALSE)
 
 dat_cov <- bind_cols(dat_std, as_tibble(extracted))
@@ -259,15 +300,24 @@ n_dropped_mask <- sum(!valid_mask)
 n_final_cov <- sum(valid_mask)
 
 if (n_dropped_mask > 0) {
-  cat(sprintf("[AVISO] %d perfiles cayeron fuera de la máscara válida de covariables (valores NA).\n", n_dropped_mask))
+  if (is_en) {
+    cat(sprintf("[NOTICE] %d profiles fell outside valid covariate mask (NA values).\n", n_dropped_mask))
+  } else {
+    cat(sprintf("[AVISO] %d perfiles cayeron fuera de la máscara válida de covariables (valores NA).\n", n_dropped_mask))
+  }
   record_decision(2.0, "Máscara de covariables", "Filtrado de puntos fuera de máscara",
                   source = "script_default", affected_rows = n_dropped_mask, affected_profiles = n_dropped_mask,
                   details = "Puntos con NA en covariables excluidos del dataset de entrenamiento")
 }
 
 dat_final <- dat_cov %>% filter(valid_mask)
-cat(sprintf("[OK] Dataset final de covariables listo: %d perfiles completos con %d covariables.\n",
-            nrow(dat_final), length(cov_names)))
+if (is_en) {
+  cat(sprintf("[OK] Final covariate dataset ready: %d complete profiles with %d covariates.\n",
+              nrow(dat_final), length(cov_names)))
+} else {
+  cat(sprintf("[OK] Dataset final de covariables listo: %d perfiles completos con %d covariables.\n",
+              nrow(dat_final), length(cov_names)))
+}
 
 # >>> ADAPT:covariate_extraction
 # Punto de extensión: inserción de filtros de covariables o transformaciones personalizadas.
@@ -276,7 +326,11 @@ cat(sprintf("[OK] Dataset final de covariables listo: %d perfiles completos con 
 
 # 9. Guardar dataset intermedio ------------------------------------------------
 readr::write_csv(dat_final, output_csv)
-cat(sprintf("[OK] Dataset con covariables guardado en: '%s'\n", output_csv))
+if (is_en) {
+  cat(sprintf("[OK] Covariate dataset saved to: '%s'\n", output_csv))
+} else {
+  cat(sprintf("[OK] Dataset con covariables guardado en: '%s'\n", output_csv))
+}
 
 # 10. Generar reporte complementario .txt ---------------------------------------
 rep_con <- file(output_report, open = "wt", encoding = "UTF-8")

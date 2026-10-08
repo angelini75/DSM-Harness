@@ -152,7 +152,16 @@ translate_decision_text <- function(text, lang = "es") {
     # Step 5 Criteria & Decisions
     "Reporte final de mapeo"                     = "Final mapping report",
     "Reporte HTML independiente generado"        = "Rendered standalone HTML report",
-    "Reporte HTML generado"                      = "Generated HTML report"
+    "Reporte HTML generado"                      = "Generated HTML report",
+    
+    # Common details & decisions
+    "Sin réplicas ni duplicados en claves evaluadas" = "No replicates or duplicates in evaluated keys",
+    "Sin transformación requerida"               = "No transformation required",
+    "Fracciones de arena consolidadas en Sand para análisis textural" = "Sand fractions consolidated into Sand for textural analysis",
+    "Perfiles marcados en Paso 1.2 no ingresan a la extracción"       = "Profiles flagged in Step 1.2 excluded from extraction",
+    "Todas las covariables (ninguna confirmada por Boruta)"           = "All covariates (none confirmed by Boruta)",
+    "Modelo QRF ranger entrenado"                = "Trained ranger QRF model",
+    "Predicciones continuas y desviaciones estándar" = "Continuous predictions and standard deviations"
   )
   
   if (txt %in% names(trans_map)) {
@@ -175,6 +184,24 @@ translate_decision_text <- function(text, lang = "es") {
   txt_res <- gsub("PTF confirmada por usuario: ", "PTF confirmed by user: ", txt_res, fixed = TRUE)
   txt_res <- gsub("COG estándar verificado: ", "Standard COG verified: ", txt_res, fixed = TRUE)
   txt_res <- gsub("Puntos fuera de máscara raster excluidos", "Points outside raster mask excluded", txt_res, fixed = TRUE)
+  txt_res <- gsub("Fracciones de arena consolidadas en Sand para análisis textural", "Sand fractions consolidated into Sand for textural analysis", txt_res, fixed = TRUE)
+  txt_res <- gsub("Coordenadas originales: ", "Original coordinates: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("Sin transformación requerida", "No transformation required", txt_res, fixed = TRUE)
+  txt_res <- gsub("Perfiles marcados en Paso 1.2 no ingresan a la extracción", "Profiles flagged in Step 1.2 excluded from extraction", txt_res, fixed = TRUE)
+  txt_res <- gsub("Variable: ", "Variable: ", txt_res, fixed = TRUE)
+  txt_res <- gsub(", soporte mínimo: ", ", minimum support: ", txt_res, fixed = TRUE)
+  txt_res <- gsub(" de ", " of ", txt_res, fixed = TRUE)
+  txt_res <- gsub(" covariables seleccionadas", " covariates selected", txt_res, fixed = TRUE)
+  txt_res <- gsub("Ajuste local simple", "Simple local fit", txt_res, fixed = TRUE)
+  txt_res <- gsub("fórmula: ", "formula: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("Horizontes estimados: ", "Estimated horizons: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("PTF imputada tras confirmación del usuario: ", "PTF imputed following user confirmation: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("Exponencial", "Exponential", txt_res, fixed = TRUE)
+  txt_res <- gsub("Lineal", "Linear", txt_res, fixed = TRUE)
+  txt_res <- gsub("Logarítmico", "Logarithmic", txt_res, fixed = TRUE)
+  txt_res <- gsub("Recíproco", "Reciprocal", txt_res, fixed = TRUE)
+  txt_res <- gsub("Archivos: ", "Files: ", txt_res, fixed = TRUE)
+  txt_res <- gsub("Compresión: ", "Compression: ", txt_res, fixed = TRUE)
   
   return(txt_res)
 }

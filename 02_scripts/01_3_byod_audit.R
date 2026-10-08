@@ -135,10 +135,18 @@ if (file.exists(config_file)) {
 }
 
 if (!file.exists(input_csv)) {
-  stop(sprintf("[ERROR FATAL]: No se encontró el dataset intermedio '%s'. Ejecuta primero el Paso 1.2.", input_csv))
+  if (is_en) {
+    stop(sprintf("[FATAL ERROR]: Intermediate dataset '%s' not found. Please run Step 1.2 first.", input_csv))
+  } else {
+    stop(sprintf("[ERROR FATAL]: No se encontró el dataset intermedio '%s'. Ejecuta primero el Paso 1.2.", input_csv))
+  }
 }
 
-cat(sprintf("\n[*] Cargando datos desde: %s ...\n", input_csv))
+if (is_en) {
+  cat(sprintf("\n[*] Loading data from: %s ...\n", input_csv))
+} else {
+  cat(sprintf("\n[*] Cargando datos desde: %s ...\n", input_csv))
+}
 dat <- readr::read_csv(input_csv, show_col_types = FALSE)
 
 # Identificar duplicados exactos previos para separar artefactos de unión
@@ -146,10 +154,18 @@ exact_dup_mask <- duplicated(dat) | duplicated(dat, fromLast = TRUE)
 exact_dup_count <- sum(duplicated(dat))
 
 # 2. Auditoría de Profundidades y Continuidad Vertical -------------------------
-cat("[*] Evaluando límites de profundidad y continuidad de horizontes...\n")
+if (is_en) {
+  cat("[*] Evaluating depth boundaries and horizon continuity ...\n")
+} else {
+  cat("[*] Evaluando límites de profundidad y continuidad de horizontes...\n")
+}
 
 if (!("upper" %in% names(dat)) || !("lower" %in% names(dat))) {
-  stop("[ERROR FATAL]: El dataset no contiene columnas 'upper' y 'lower' requeridas para auditar profundidades.")
+  if (is_en) {
+    stop("[FATAL ERROR]: The dataset does not contain required 'upper' and 'lower' columns to audit depths.")
+  } else {
+    stop("[ERROR FATAL]: El dataset no contiene columnas 'upper' y 'lower' requeridas para auditar profundidades.")
+  }
 }
 
 dat$upper <- suppressWarnings(as.numeric(dat$upper))
@@ -160,7 +176,11 @@ inv_depths_mask <- (!is.na(dat$upper)) & (!is.na(dat$lower)) & (dat$upper > dat$
 inv_depths_count <- sum(inv_depths_mask)
 
 if (inv_depths_count > 0) {
-  cat(sprintf("[AVISO] Se detectaron %d registros con límites invertidos (upper > lower). Invirtiendo límites...\n", inv_depths_count))
+  if (is_en) {
+    cat(sprintf("[NOTICE] Detected %d records with inverted boundaries (upper > lower). Inverting boundaries...\n", inv_depths_count))
+  } else {
+    cat(sprintf("[AVISO] Se detectaron %d registros con límites invertidos (upper > lower). Invirtiendo límites...\n", inv_depths_count))
+  }
   tmp_up <- dat$upper[inv_depths_mask]
   dat$upper[inv_depths_mask] <- dat$lower[inv_depths_mask]
   dat$lower[inv_depths_mask] <- tmp_up
@@ -213,7 +233,11 @@ if ("profile_code" %in% names(dat)) {
 dat$flag_invalid_depth <- na_depths_mask | zero_thick_mask | neg_depths_mask
 
 # 3. Auditoría de Propiedades Físicas y Edafológicas ----------------------------
-cat("[*] Evaluando coherencia de propiedades analíticas de suelo...\n")
+if (is_en) {
+  cat("[*] Evaluating pedological coherence of soil analytical properties ...\n")
+} else {
+  cat("[*] Evaluando coherencia de propiedades analíticas de suelo...\n")
+}
 
 # A. Suma de textura (Arena + Limo + Arcilla ~ 100%)
 has_texture <- all(c("Clay", "Sand", "Silt") %in% names(dat))
@@ -307,7 +331,7 @@ ptf_eval_table <- data.frame(
   Bias = numeric(),
   stringsAsFactors = FALSE
 )
-ptf_status <- "No solicitada (conservando BD medida original sin imputar)"
+ptf_status <- if (is_en) "Not requested (preserving original measured BD without imputation)" else "No solicitada (conservando BD medida original sin imputar)"
 
 # Catálogo base de PTFs del script de referencia y calibración local (Issue #24)
 om_series <- if ("OM" %in% names(dat)) as.numeric(dat$OM) else if ("SOC" %in% names(dat)) as.numeric(dat$SOC) * 1.724 else NULL
@@ -446,8 +470,13 @@ if (has_om_or_soc) {
   
   # Muestras suficientes para calibrar función local simple (n >= bd_fit_min_n)
   if (n_val_total >= bd_fit_min_n) {
-    cat(sprintf("[*] Muestras medidas suficientes (n = %d >= %d). Calibrando función paramétrica simple local ...\n",
-                n_val_total, bd_fit_min_n))
+    if (is_en) {
+      cat(sprintf("[*] Sufficient measured samples (n = %d >= %d). Calibrating simple local parametric function ...\n",
+                  n_val_total, bd_fit_min_n))
+    } else {
+      cat(sprintf("[*] Muestras medidas suficientes (n = %d >= %d). Calibrando función paramétrica simple local ...\n",
+                  n_val_total, bd_fit_min_n))
+    }
     df_val_subset <- data.frame(BD = dat$BD[val_obs_mask], OM = om_series[val_obs_mask])
     loc_fit <- fit_local_models(df_val_subset, om_series)
     if (!is.null(loc_fit)) {
@@ -490,7 +519,7 @@ if (has_user_ptf_choice) {
   allowed_ptfs <- c("local_fit", "best_published", "saini_1996", "drew_1973", "jeffrey_1979", "grigal_1989", "adams_1973", "honeyset_1989")
   sel_raw <- tolower(trimws(as.character(user_cfg$selected_ptf)))
   if (!(sel_raw %in% allowed_ptfs)) {
-    stop(sprintf("[ERROR CONFIG]: Valor no válido para 'selected_ptf': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
+    stop(sprintf(if (is_en) "[CONFIG ERROR]: Invalid value for 'selected_ptf': '%s'.\n  Valid values per 'docs/CONFIG_SCHEMA.md': [%s]." else "[ERROR CONFIG]: Valor no válido para 'selected_ptf': '%s'.\n  Valores válidos según 'docs/CONFIG_SCHEMA.md': [%s].",
                  user_cfg$selected_ptf, paste(allowed_ptfs, collapse = ", ")))
   }
 }
@@ -517,36 +546,36 @@ if (estimate_bd_req && has_user_ptf_choice) {
     bd_imputed_count <- sum(impute_mask)
     dat$BD_source[impute_mask] <- "estimated"
     
-    ptf_status <- sprintf("PTF imputada tras confirmación del usuario: %s (fórmula: %s). Horizontes estimados: %d.",
+    ptf_status <- sprintf(if (is_en) "PTF imputed following user confirmation: %s (formula: %s). Estimated horizons: %d." else "PTF imputada tras confirmación del usuario: %s (fórmula: %s). Horizontes estimados: %d.",
                           chosen_model$name, chosen_model$formula, bd_imputed_count)
     record_decision(1.3, "Estimación BD", sprintf("PTF confirmada por usuario: %s", chosen_model$name),
                     source = "user_config", affected_rows = bd_imputed_count,
                     details = sprintf("Modelo: %s. Fórmula: %s", chosen_model$name, chosen_model$formula))
   } else {
-    ptf_status <- sprintf("Opción 'selected_ptf: %s' no disponible o no calibrable con los datos actuales. Estimación omitida.", sel_key)
+    ptf_status <- sprintf(if (is_en) "Option 'selected_ptf: %s' unavailable or not calibratable with current data. Estimation skipped." else "Opción 'selected_ptf: %s' no disponible o no calibrable con los datos actuales. Estimación omitida.", sel_key)
     record_decision(1.3, "Estimación BD", "Omitida por opción no disponible", source = "user_config", affected_rows = 0)
   }
 } else {
   # Sin confirmación del usuario: solo reportar diagnóstico/contraste sin imputar BD_est
   if (n_val_total >= bd_fit_min_n && nrow(ptf_eval_table) > 0) {
-    ptf_status <- sprintf("Diagnóstico completado sobre n=%d medidos (>= %d). Se calibró función local simple y contrastaron 6 PTFs publicadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
+    ptf_status <- sprintf(if (is_en) "Diagnosis completed on n=%d measured (>= %d). Simple local function calibrated and 6 published PTFs contrasted. BD_est NOT imputed (requires user confirmation in 'config.json')." else "Diagnóstico completado sobre n=%d medidos (>= %d). Se calibró función local simple y contrastaron 6 PTFs publicadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
                           n_val_total, bd_fit_min_n)
     record_decision(1.3, "Estimación BD", "Diagnóstico completado sin imputar (espera confirmación de usuario)",
                     source = "script_default", affected_rows = 0,
                     details = sprintf("Ajuste local y contraste de 6 PTFs disponibles sobre n=%d", n_val_total))
   } else if (n_val_total >= 5 && nrow(ptf_eval_table) > 0) {
-    ptf_status <- sprintf("Diagnóstico de contraste completado sobre n=%d medidos (< %d requeridos para ajuste local). 6 PTFs publicadas contrastadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
+    ptf_status <- sprintf(if (is_en) "Contrast diagnosis completed on n=%d measured (< %d required for local fit). 6 published PTFs contrasted. BD_est NOT imputed (requires user confirmation in 'config.json')." else "Diagnóstico de contraste completado sobre n=%d medidos (< %d requeridos para ajuste local). 6 PTFs publicadas contrastadas. BD_est NO imputada (requiere confirmación del usuario en 'config.json').",
                           n_val_total, bd_fit_min_n)
     record_decision(1.3, "Estimación BD", "Contraste completado sin imputar (espera confirmación de usuario)",
                     source = "script_default", affected_rows = 0,
                     details = sprintf("Contraste de 6 PTFs publicadas sobre n=%d", n_val_total))
   } else if (n_val_total < 5) {
-    ptf_status <- sprintf("Datos medidos insuficientes para contrastar o calibrar PTF (n=%d < 5). BD_est NO imputada (el usuario puede indicar 'selected_ptf' en config.json si decide forzar un modelo publicado sin validación local).", n_val_total)
+    ptf_status <- sprintf(if (is_en) "Insufficient measured data to contrast or calibrate PTF (n=%d < 5). BD_est NOT imputed (user can set 'selected_ptf' in config.json to force a published model without local validation)." else "Datos medidos insuficientes para contrastar o calibrar PTF (n=%d < 5). BD_est NO imputada (el usuario puede indicar 'selected_ptf' en config.json si decide forzar un modelo publicado sin validación local).", n_val_total)
     record_decision(1.3, "Estimación BD", "Omitida por datos insuficientes (n < 5)",
                     source = "script_default", affected_rows = 0,
                     details = "Menos de 5 observaciones con BD y OM/SOC medidos simultáneamente")
   } else {
-    ptf_status <- "No evaluada (variables OM / SOC ausentes para contrastar PTFs)"
+    ptf_status <- if (is_en) "Not evaluated (OM / SOC variables absent to contrast PTFs)" else "No evaluada (variables OM / SOC ausentes para contrastar PTFs)"
     record_decision(1.3, "Estimación BD", "Omitida por falta de variables predictoras",
                     source = "script_default", affected_rows = 0)
   }

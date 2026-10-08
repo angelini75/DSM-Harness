@@ -49,7 +49,13 @@ outputs_dir  <- file.path(proj_dir, "outputs")
 reports_dir    <- file.path(proj_dir, "reports")
 covariates_dir <- file.path(proj_dir, "covariates")
 
-cat(sprintf("[*] Creando estructura de proyecto en: '%s' ...\n", proj_dir))
+is_en <- identical(project_language, "en")
+
+if (is_en) {
+  cat(sprintf("[*] Creating project structure in: '%s' ...\n", proj_dir))
+} else {
+  cat(sprintf("[*] Creando estructura de proyecto en: '%s' ...\n", proj_dir))
+}
 dir.create(data_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(scripts_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(outputs_dir, recursive = TRUE, showWarnings = FALSE)
@@ -95,7 +101,11 @@ for (s_file in source_scripts) {
     
     script_content <- c(prov_header, orig_lines)
     writeLines(script_content, dst_path, useBytes = FALSE)
-    cat(sprintf("  -> Script instanciado: %s\n", dst_path))
+    if (is_en) {
+      cat(sprintf("  -> Script instantiated: %s\n", dst_path))
+    } else {
+      cat(sprintf("  -> Script instanciado: %s\n", dst_path))
+    }
   }
 }
 
@@ -103,7 +113,11 @@ for (s_file in source_scripts) {
 rmd_master <- file.path("02_scripts", "05_variable_report.Rmd")
 if (file.exists(rmd_master)) {
   file.copy(rmd_master, file.path(scripts_dir, "05_variable_report.Rmd"), overwrite = TRUE)
-  cat(sprintf("  -> Plantilla Rmd instanciada: %s\n", file.path(scripts_dir, "05_variable_report.Rmd")))
+  if (is_en) {
+    cat(sprintf("  -> Rmd template instantiated: %s\n", file.path(scripts_dir, "05_variable_report.Rmd")))
+  } else {
+    cat(sprintf("  -> Plantilla Rmd instanciada: %s\n", file.path(scripts_dir, "05_variable_report.Rmd")))
+  }
 }
 
 # 2. Inicializar config.json del proyecto --------------------------------------
@@ -120,14 +134,22 @@ if (file.exists(template_cfg) && requireNamespace("jsonlite", quietly = TRUE)) {
   }
   cfg_obj$input_file <- sprintf("projects/%s/data/perfiles.xlsx", project_name)
   jsonlite::write_json(cfg_obj, proj_cfg, auto_unbox = TRUE, pretty = TRUE)
-  cat(sprintf("[*] Configuración inicial creada: '%s'\n", proj_cfg))
+  if (is_en) {
+    cat(sprintf("[*] Initial configuration created: '%s'\n", proj_cfg))
+  } else {
+    cat(sprintf("[*] Configuración inicial creada: '%s'\n", proj_cfg))
+  }
 }
 
 # 3. Inicializar decisions_log.csv del proyecto --------------------------------
 proj_log <- file.path(proj_dir, "decisions_log.csv")
 log_header <- "timestamp,run_id,step,criterion,user_decision,source,affected_rows,affected_profiles,details,template_version\n"
 cat(log_header, file = proj_log)
-cat(sprintf("[*] Log de auditoría inicializado: '%s'\n", proj_log))
+if (is_en) {
+  cat(sprintf("[*] Audit log initialized: '%s'\n", proj_log))
+} else {
+  cat(sprintf("[*] Log de auditoría inicializado: '%s'\n", proj_log))
+}
 
 # 4. Crear ejecutor de conveniencia run_step.R ---------------------------------
 is_en <- identical(project_language, "en")
@@ -185,19 +207,32 @@ run_step_code <- c(
   "  source(s_file, local = FALSE)",
   "}",
   "",
-  sprintf("cat(sprintf('%s', project_name))", env_loaded_msg),
+  sprintf("cat(sprintf('%s', PROJECT_NAME))", env_loaded_msg),
   sprintf("cat('%s')", avail_cmd_hdr),
   paste0("cat('", paste(cmds_list, collapse = "')\ncat('"), "')")
 )
 writeLines(run_step_code, file.path(proj_dir, "run_step.R"))
-cat(sprintf("[*] Ejecutor de conveniencia creado: '%s'\n", file.path(proj_dir, "run_step.R")))
 
-cat("\n==============================================================================\n")
-cat("  [OK] PROYECTO CREADO EXITOSAMENTE\n")
-cat("==============================================================================\n")
-cat(sprintf("Directorio del proyecto:  %s/\n", proj_dir))
-cat(sprintf("1. Coloca tu archivo de datos en:  projects/%s/data/\n", project_name))
-cat(sprintf("2. Para ejecutar un paso, abre en RStudio y corre:\n"))
-cat(sprintf("   source('projects/%s/run_step.R')\n", project_name))
-cat(sprintf("   run_step('0')\n"))
-cat("==============================================================================\n\n")
+if (is_en) {
+  cat(sprintf("[*] Step runner created: '%s'\n", file.path(proj_dir, "run_step.R")))
+  cat("\n==============================================================================\n")
+  cat("  [OK] PROJECT CREATED SUCCESSFULLY\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Project directory:  %s/\n", proj_dir))
+  cat(sprintf("1. Place your data file in:  projects/%s/data/\n", project_name))
+  cat(sprintf("2. To run a step, open in RStudio and execute:\n"))
+  cat(sprintf("   source('projects/%s/run_step.R')\n", project_name))
+  cat(sprintf("   run_step('0')\n"))
+  cat("==============================================================================\n\n")
+} else {
+  cat(sprintf("[*] Ejecutor de conveniencia creado: '%s'\n", file.path(proj_dir, "run_step.R")))
+  cat("\n==============================================================================\n")
+  cat("  [OK] PROYECTO CREADO EXITOSAMENTE\n")
+  cat("==============================================================================\n")
+  cat(sprintf("Directorio del proyecto:  %s/\n", proj_dir))
+  cat(sprintf("1. Coloca tu archivo de datos en:  projects/%s/data/\n", project_name))
+  cat(sprintf("2. Para ejecutar un paso, abre en RStudio y corre:\n"))
+  cat(sprintf("   source('projects/%s/run_step.R')\n", project_name))
+  cat(sprintf("   run_step('0')\n"))
+  cat("==============================================================================\n\n")
+}

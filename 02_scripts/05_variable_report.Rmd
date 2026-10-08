@@ -1,11 +1,12 @@
 ---
-title: "Reporte de mapeo"
+title: "`r params$title`"
 output:
   html_document:
     self_contained: true
     theme: null
     css: null
 params:
+  title: "Reporte de mapeo"
   project: ""
   cc: ""
   proj: ""
@@ -45,6 +46,22 @@ proj_cfg <- if (file.exists(cfg_f) && requireNamespace("jsonlite", quietly = TRU
   tryCatch(jsonlite::fromJSON(cfg_f, simplifyVector = FALSE), error = function(e) NULL)
 } else {
   NULL
+}
+
+# Carga de motor i18n
+i18n_candidates <- c(
+  file.path(p, "scripts", "00_i18n.R"),
+  file.path(p, "00_i18n.R"),
+  file.path(p, "02_scripts", "00_i18n.R"),
+  "02_scripts/00_i18n.R",
+  "scripts/00_i18n.R",
+  "00_i18n.R"
+)
+for (cand in i18n_candidates) {
+  if (file.exists(cand)) {
+    tryCatch(source(cand, local = TRUE), error = function(e) NULL)
+    break
+  }
 }
 
 is_en <- identical(params$lang, "en") || (!is.null(proj_cfg$language) && identical(tolower(proj_cfg$language), "en"))
@@ -310,14 +327,19 @@ if (file.exists(f_log)) {
       cat('<thead><tr><th>Paso</th><th>Criterio</th><th>Decisión</th><th>Filas</th><th>Detalles</th></tr></thead><tbody>')
     }
     for (i in seq_len(nrow(dlog))) {
-      crit_val <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(dlog$criterion[i]), "en") else as.character(dlog$criterion[i])
-      dec_val  <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(dlog$user_decision[i]), "en") else as.character(dlog$user_decision[i])
+      crit_raw <- if ("criterion" %in% names(dlog)) dlog$criterion[i] else ""
+      dec_raw  <- if ("decision" %in% names(dlog)) dlog$decision[i] else if ("user_decision" %in% names(dlog)) dlog$user_decision[i] else ""
+      det_raw  <- if ("details" %in% names(dlog)) dlog$details[i] else ""
+
+      crit_val <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(crit_raw), "en") else as.character(crit_raw)
+      dec_val  <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(dec_raw), "en") else as.character(dec_raw)
+      det_val  <- if (is_en && exists("translate_decision_text")) translate_decision_text(as.character(det_raw), "en") else as.character(det_raw)
       cat(sprintf('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>',
                   htmltools::htmlEscape(as.character(dlog$step[i])),
                   htmltools::htmlEscape(crit_val),
                   htmltools::htmlEscape(dec_val),
                   htmltools::htmlEscape(as.character(dlog$affected_rows[i])),
-                  htmltools::htmlEscape(as.character(dlog$details[i]))))
+                  htmltools::htmlEscape(det_val)))
     }
     cat('</tbody></table></div>')
   }
