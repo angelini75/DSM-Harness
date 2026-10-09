@@ -291,14 +291,32 @@ if (!is.null(cfg$joins) && length(cfg$joins) > 0) {
 }
 
 # Resolve roles that might reference table.column or bare names
+req_roles <- c("profile_id", "x", "y", "top", "bottom")
+roles_modified <- FALSE
+
 for (r in names(cfg$roles)) {
   role_target <- as.character(cfg$roles[[r]])
-  if (!role_target %in% names(df_merged)) {
-    matching_cols <- grep(paste0("\\.", role_target, "$"), names(df_merged), value = TRUE)
-    if (length(matching_cols) == 1) {
-      cfg$roles[[r]] <- matching_cols[1]
+  if (role_target %in% names(df_merged)) {
+    next
+  }
+  
+  matching_cols <- grep(paste0("(^|\\.)", role_target, "$"), names(df_merged), value = TRUE)
+  if (length(matching_cols) == 1) {
+    cfg$roles[[r]] <- matching_cols[1]
+    roles_modified <- TRUE
+  } else if (length(matching_cols) > 1) {
+    close(rep_con)
+    stop(msg("map_role_ambiguous", lang, r, role_target, paste(matching_cols, collapse = ", "), repo_root = repo_root), call. = FALSE)
+  } else {
+    if (r %in% req_roles) {
+      close(rep_con)
+      stop(msg("map_role_not_found", lang, r, role_target, repo_root = repo_root), call. = FALSE)
     }
   }
+}
+
+if (roles_modified) {
+  jsonlite::write_json(cfg, config_path, auto_unbox = TRUE, pretty = TRUE)
 }
 
 # Handle category / column exclusions

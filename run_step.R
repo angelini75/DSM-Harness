@@ -47,6 +47,27 @@ find_repo_root <- function(start_dir = getwd()) {
   mapping[[step_str]]
 }
 
+# Step to report/error file prefix mapping
+.step_to_prefix <- function(step) {
+  step_str <- as.character(step)
+  mapping <- list(
+    "0"    = "00",
+    "00"   = "00",
+    "1.1"  = "11",
+    "01_1" = "11",
+    "1.2"  = "12",
+    "01_2" = "12",
+    "1.3"  = "13",
+    "01_3" = "13",
+    "2"    = "20",
+    "3"    = "30",
+    "3b"   = "3b",
+    "4"    = "40",
+    "5"    = "50"
+  )
+  if (!is.null(mapping[[step_str]])) mapping[[step_str]] else gsub("[^A-Za-z0-9_-]", "", step_str)
+}
+
 new_project <- function(name, language = "en", repo_root = NULL) {
   if (missing(name) || !nzchar(name)) {
     cat("[ERROR] Project name must be provided: new_project(\"my_project\", language = \"en\")\n")
@@ -202,8 +223,8 @@ run_step <- function(step, project) {
       rep_dir <- file.path(proj_root, "reports")
       if (!dir.exists(rep_dir)) dir.create(rep_dir, recursive = TRUE)
       
-      step_clean <- gsub("[^A-Za-z0-9._-]", "_", as.character(step))
-      err_file <- file.path(rep_dir, paste0(step_clean, "_error.txt"))
+      err_prefix <- .step_to_prefix(step)
+      err_file <- file.path(rep_dir, paste0(err_prefix, "_error.txt"))
       err_con <- file(err_file, open = "wt", encoding = "UTF-8")
       
       cat("================================================================================\n", file = err_con)
@@ -237,7 +258,11 @@ run_step <- function(step, project) {
   )
   
   if (success) {
-    cat(msg("step_success", lang, step, repo_root = repo_root), "\n")
+    if (exists("step_status", envir = env) && identical(env$step_status, "pending_crs")) {
+      cat(msg("step_pending_crs", lang, step, repo_root = repo_root), "\n")
+    } else {
+      cat(msg("step_success", lang, step, repo_root = repo_root), "\n")
+    }
     return(invisible(TRUE))
   } else {
     return(invisible(FALSE))

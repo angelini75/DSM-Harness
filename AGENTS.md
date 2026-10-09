@@ -7,13 +7,13 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 ## 1. Core Principles (10 Principles)
 
 1. **Repository Files First**: Always read project files locally in the repository (e.g., `projects/<name>/reports/*.txt`). Never search the web or external paths for them.
-2. **Fixed Step Contract**: Each step reads fixed input files and writes fixed output files. Order is enforced and sequential.
-3. **No In-Memory Shared State**: Steps share nothing through the R session. State is transferred solely via files on disk (`data/*.csv`, `reports/*.txt`, `config.json`).
+2. **Fixed Files, No Shared State**: Each step reads fixed input files and writes fixed output files, in order. Steps share nothing through the R session; state lives only in files (`data/*.csv`, `reports/*.txt`, `config.json`).
+3. **Evidence and Neutral Options**: State only what a report or the user has established; if something was not computed, say so. When the user must choose (CRS, duplicates, bulk density, targets), list the options with their consequences, without recommending or ranking them. Ask for facts the reports do not contain, such as the study area, instead of inferring them from the data.
 4. **Agent Writes Config, User Confirms**: The user never edits JSON directly. The agent interviews the user, writes `config.json`, and summarizes the actions in plain language for user confirmation.
 5. **No Invented Columns**: Every column in `config.json` must exist in the dataset inspected in Step 0.
 6. **Transparent Auditing & Decisions**: Scripts never prompt or guess for the user. Confirmed decisions are logged automatically to `projects/<name>/decisions_log.csv`.
 7. **Clean Runner Protocol**: `run_step(step, project)` executes in an isolated environment via `sys.source()`. Errors log call and traceback to `reports/<step>_error.txt` and return `invisible(FALSE)`.
-8. **Bilingual Interaction**: Converse and formulate questions in the user's language (Spanish or English). Scripts and internal code documentation are written in English.
+8. **User's Language**: Use the user's language (Spanish or English). Confirm it in the first turn and create the project with `new_project("<name>", language = "<es|en>")`. Scripts and code documentation are in English.
 9. **Pedological Transparency**: Never silently impute or alter data. For bulk density, contrast the published PTF catalogue against local observations; impute only when explicitly requested.
 10. **Code Fixes Over Prose**: Bugs and edge cases are solved in code and tests, never by bloating prompt rules.
 

@@ -59,6 +59,11 @@ test_that("Relational joins: three horizon tables, shared column names, duplicat
   dup_row_phys$clay <- 30 # slightly different value to verify averaging
   df_horiz_phys <- rbind(df_horiz_phys, dup_row_phys)
   
+  # Inject non-numeric character strings in clay to test NA coercion reporting
+  df_horiz_phys$clay <- as.character(df_horiz_phys$clay)
+  df_horiz_phys$clay[2] <- "<0.01"
+  df_horiz_phys$clay[3] <- "trace"
+  
   # Horizon table 3: Density (has shared column: method)
   horiz_dens_list <- list()
   for (i in seq_len(n_profiles)) {
@@ -145,21 +150,37 @@ test_that("Relational joins: three horizon tables, shared column names, duplicat
   res_no_strat <- run_step("1.1", project = proj_rel)
   expect_false(res_no_strat)
   
-  # Verify error report was written with traceback
-  err_file_11 <- file.path(pdir, "reports", "1.1_error.txt")
+  # Verify error report was written with traceback (11_error.txt)
+  err_file_11 <- file.path(pdir, "reports", "11_error.txt")
   expect_true(file.exists(err_file_11))
   err_lines <- readLines(err_file_11)
   expect_true(any(grepl("TRACEBACK", err_lines)))
   
-  # 4. Now configure strategy 'average' and run 1.1
+  # 3b. Test ambiguous bare role column after collision (top = "upper" matches both chem.upper and phys.upper)
+  cfg_ambig <- cfg_no_strat
+  cfg_ambig$duplicate_key_strategy <- "average"
+  cfg_ambig$roles$top <- "upper"
+  jsonlite::write_json(cfg_ambig, file.path(pdir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  res_ambig <- run_step("1.1", project = proj_rel)
+  expect_false(res_ambig)
+  err_lines <- readLines(err_file_11)
+  expect_true(any(grepl("horizons_chem\\.upper", err_lines)))
+  
+  # 4. Now configure strategy 'average' with qualified role and run 1.1
   cfg_valid <- cfg_no_strat
   cfg_valid$duplicate_key_strategy <- "average"
+  cfg_valid$roles$top <- "horizons_chem.upper"
+  cfg_valid$roles$bottom <- "horizons_chem.lower"
   cfg_valid$source_crs <- "EPSG:32642"
   cfg_valid$impute_bulk_density <- TRUE
   jsonlite::write_json(cfg_valid, file.path(pdir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   
   res_step11 <- run_step("1.1", project = proj_rel)
   expect_true(res_step11)
+  
+  # Verify 11_mapping.txt recorded the resolved roles
+  map_txt <- readLines(file.path(pdir, "reports", "11_mapping.txt"))
+  expect_true(any(grepl("horizons_chem\\.upper", map_txt)))
   
   mapped_csv <- file.path(data_dir, "01_mapped.csv")
   expect_true(file.exists(mapped_csv))
@@ -177,14 +198,28 @@ test_that("Relational joins: three horizon tables, shared column names, duplicat
   expect_true(any(grepl("horizons_phys\\.method", col_names)))
   expect_true(any(grepl("horizons_density\\.method", col_names)))
   
-  # 5. Run Step 1.2 (spatial reprojection to EPSG:4326)
+  # 4b. Test Step 1.2 without CRS: returns TRUE, reports pending, does NOT write 02_spatial.csv
+  cfg_no_crs <- cfg_valid
+  cfg_no_crs$source_crs <- NULL
+  jsonlite::write_json(cfg_no_crs, file.path(pdir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  spatial_csv <- file.path(data_dir, "02_spatial.csv")
+  if (file.exists(spatial_csv)) file.remove(spatial_csv)
+  
+  res_no_crs <- run_step("1.2", project = proj_rel)
+  expect_true(res_no_crs)
+  expect_false(file.exists(spatial_csv))
+  
+  # 5. Restore source_crs and run Step 1.2 (spatial reprojection to EPSG:4326)
+  jsonlite::write_json(cfg_valid, file.path(pdir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   res_step12 <- run_step("1.2", project = proj_rel)
   expect_true(res_step12)
-  spatial_csv <- file.path(data_dir, "02_spatial.csv")
   expect_true(file.exists(spatial_csv))
   df_spatial <- readr::read_csv(spatial_csv, show_col_types = FALSE)
   expect_true(all(df_spatial$x >= -180 & df_spatial$x <= 180))
   expect_true(all(df_spatial$y >= -90 & df_spatial$y <= 90))
+  
+  rep12_txt <- readLines(file.path(pdir, "reports", "12_spatial.txt"))
+  expect_false(any(grepl("EPSG:EPSG:", rep12_txt)))
   
   # 6. Run Step 1.3 (pedological audit & bulk density modeling)
   res_step13 <- run_step("1.3", project = proj_rel)
@@ -194,6 +229,12 @@ test_that("Relational joins: three horizon tables, shared column names, duplicat
   df_clean <- readr::read_csv(clean_csv, show_col_types = FALSE)
   expect_equal(nrow(df_clean), 40)
   expect_true("bd_imputed" %in% names(df_clean))
+  expect_true(is.numeric(df_clean$clay))
+  
+  # Verify NA coercion was reported in 13_pedological.txt
+  rep13_txt <- readLines(file.path(pdir, "reports", "13_pedological.txt"))
+  expect_true(any(grepl("Valores no numéricos convertidos a NA", rep13_txt)))
+  expect_false(any(grepl("\\(Exponential\\)", rep13_txt)))
   
   # Check reports exist
   expect_true(file.exists(file.path(pdir, "reports", "11_mapping.txt")))

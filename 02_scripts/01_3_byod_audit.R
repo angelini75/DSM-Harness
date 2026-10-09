@@ -59,6 +59,49 @@ if (!file.exists(in_csv)) {
 df <- as.data.frame(readr::read_csv(in_csv, show_col_types = FALSE))
 n_initial <- nrow(df)
 
+report_path <- file.path(reports_dir, "13_pedological.txt")
+rep_con <- file(report_path, open = "wt", encoding = "UTF-8")
+
+log_out <- function(...) {
+  line <- paste0(...)
+  cat(line, "\n")
+  cat(line, "\n", file = rep_con)
+}
+
+coerce_to_numeric <- function(vec, col_name) {
+  if (is.null(vec)) return(list(vec = NULL, n_coerced = 0, samples = character(0)))
+  if (is.numeric(vec)) return(list(vec = vec, n_coerced = 0, samples = character(0)))
+  
+  ch_vec <- as.character(vec)
+  num_vec <- suppressWarnings(as.numeric(ch_vec))
+  
+  is_orig_non_empty <- !is.na(ch_vec) & nzchar(trimws(ch_vec))
+  coerced_mask <- is_orig_non_empty & is.na(num_vec)
+  n_coerced <- sum(coerced_mask)
+  
+  samples <- if (n_coerced > 0) {
+    unique_vals <- unique(trimws(ch_vec[coerced_mask]))
+    head(unique_vals, 3)
+  } else {
+    character(0)
+  }
+  
+  if (n_coerced > 0) {
+    samp_str <- paste(sprintf("'%s'", samples), collapse = ", ")
+    log_out(msg("ped_coerced_na", lang, col_name, n_coerced, samp_str, repo_root = repo_root))
+  }
+  
+  list(vec = num_vec, n_coerced = n_coerced, samples = samples)
+}
+
+log_out("================================================================================")
+log_out(msg("ped_header", lang, repo_root = repo_root))
+log_out("================================================================================")
+log_out(msg("ped_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
+log_out(msg("ped_project", lang, project, repo_root = repo_root))
+log_out(msg("ped_input_file", lang, repo_root = repo_root))
+log_out(msg("ped_total_records", lang, n_initial, repo_root = repo_root))
+
 resolve_col <- function(col_name) {
   if (is.null(col_name) || !nzchar(col_name)) return(NULL)
   if (col_name %in% names(df)) return(col_name)
@@ -74,11 +117,12 @@ top_col <- resolve_col(if (is_str(cfg$roles$top)) as.character(cfg$roles$top) el
 bottom_col <- resolve_col(if (is_str(cfg$roles$bottom)) as.character(cfg$roles$bottom) else "bottom")
 
 if (is.null(top_col) || is.null(bottom_col)) {
+  close(rep_con)
   stop(msg("ped_depth_missing", lang, cfg$roles$top %||% "top", cfg$roles$bottom %||% "bottom", repo_root = repo_root), call. = FALSE)
 }
 
-df[[top_col]] <- as.numeric(df[[top_col]])
-df[[bottom_col]] <- as.numeric(df[[bottom_col]])
+df[[top_col]] <- coerce_to_numeric(df[[top_col]], top_col)$vec
+df[[bottom_col]] <- coerce_to_numeric(df[[bottom_col]], bottom_col)$vec
 
 # Fix inverted depths if top > bottom
 inverted_mask <- !is.na(df[[top_col]]) & !is.na(df[[bottom_col]]) & (df[[top_col]] > df[[bottom_col]])
@@ -96,22 +140,23 @@ n_invalid <- sum(invalid_mask)
 # Filter valid horizons
 df_valid <- df[!invalid_mask, , drop = FALSE]
 
-report_path <- file.path(reports_dir, "13_pedological.txt")
-rep_con <- file(report_path, open = "wt", encoding = "UTF-8")
+id_col <- resolve_col(if (is_str(cfg$roles$profile_id)) as.character(cfg$roles$profile_id) else "profile_id")
+x_col <- resolve_col(if (is_str(cfg$roles$x)) as.character(cfg$roles$x) else "x")
+y_col <- resolve_col(if (is_str(cfg$roles$y)) as.character(cfg$roles$y) else "y")
+non_prop_cols <- unique(c(id_col, x_col, y_col, top_col, bottom_col))
 
-log_out <- function(...) {
-  line <- paste0(...)
-  cat(line, "\n")
-  cat(line, "\n", file = rep_con)
+# Convert any non-numeric property columns in df_valid to numeric and report conversions
+for (cn in setdiff(names(df_valid), non_prop_cols)) {
+  col_cat <- as.character(cfg$categories[[cn]] %||% cfg$columns[[cn]] %||% "")
+  is_prop_cat <- col_cat %in% c("texture", "chemistry", "salts and conductivity", "nutrients", "organic matter and density")
+  is_prop_role <- cn %in% unlist(cfg$roles[c("bulk_density", "organic_carbon", "organic_matter")])
+  if (is_prop_cat || is_prop_role) {
+    if (!is.numeric(df_valid[[cn]])) {
+      df_valid[[cn]] <- coerce_to_numeric(df_valid[[cn]], cn)$vec
+    }
+  }
 }
 
-log_out("================================================================================")
-log_out(msg("ped_header", lang, repo_root = repo_root))
-log_out("================================================================================")
-log_out(msg("ped_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
-log_out(msg("ped_project", lang, project, repo_root = repo_root))
-log_out(msg("ped_input_file", lang, repo_root = repo_root))
-log_out(msg("ped_total_records", lang, n_initial, repo_root = repo_root))
 log_out(msg("ped_inverted_swapped", lang, n_inverted, repo_root = repo_root))
 log_out(msg("ped_invalid_omitted", lang, n_invalid, repo_root = repo_root))
 log_out(msg("ped_valid_retained", lang, nrow(df_valid), repo_root = repo_root))
@@ -218,8 +263,22 @@ fit_local_models <- function(df_val, om_full) {
   best_name <- names(which.min(rmse_list))
   best_cand <- candidates[[best_name]]
   
+  best_name_trans <- if (lang == "es") {
+    switch(best_name,
+      "Linear" = "Lineal",
+      "Logarithmic" = "Logarítmico",
+      "Reciprocal" = "Recíproco",
+      "Exponential" = "Exponencial",
+      "Power" = "Potencial",
+      "Polynomial" = "Polinomial",
+      best_name
+    )
+  } else {
+    best_name
+  }
+  
   list(
-    name = msg("ped_bd_local", lang, best_name, repo_root = repo_root),
+    name = msg("ped_bd_local", lang, best_name_trans, repo_root = repo_root),
     formula = best_cand$formula,
     pred_val = best_cand$pred_val,
     pred_all = best_cand$pred_all

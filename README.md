@@ -56,7 +56,7 @@ projects/<name>/
 2. Initialize a new project and load the runner:
    ```r
    source("run_step.R")
-   new_project("MyProject")
+   new_project("MyProject", language = "es")  # or language = "en"
    ```
 3. Place your raw dataset inside `projects/MyProject/data/`.
 4. Run Step 0 to profile your data:

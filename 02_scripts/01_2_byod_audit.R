@@ -134,11 +134,12 @@ if (!is_str(source_crs)) {
     repo_root = repo_root
   )
   
-  cat(crs_msg, "\n")
+  step_status <- "pending_crs"
   # Do NOT write 02_spatial.csv
 } else {
   crs_str <- as.character(source_crs)
-  log_out("\n", msg("spatial_configured_crs", lang, crs_str, repo_root = repo_root))
+  crs_display <- if (grepl("^(?i)epsg:", crs_str)) crs_str else paste0("EPSG:", crs_str)
+  log_out("\n", msg("spatial_configured_crs", lang, crs_display, repo_root = repo_root))
   
   is_crs_geo <- grepl("4326|wgs84|crs84", tolower(crs_str))
   
@@ -165,7 +166,7 @@ if (!is_str(source_crs)) {
     res_lon_min <- min(geo_coords[, 1]); res_lon_max <- max(geo_coords[, 1])
     res_lat_min <- min(geo_coords[, 2]); res_lat_max <- max(geo_coords[, 2])
     
-    log_out(msg("spatial_reprojected", lang, crs_str, res_lon_min, res_lon_max, res_lat_min, res_lat_max, repo_root = repo_root))
+    log_out(msg("spatial_reprojected", lang, crs_display, res_lon_min, res_lon_max, res_lat_min, res_lat_max, repo_root = repo_root))
   }
   
   log_out("\n", msg("spatial_res_lon", lang, res_lon_min, res_lon_max, repo_root = repo_root))
