@@ -12,6 +12,13 @@ test_that("Step 1.1 handles duplicate keys according to strategy", {
     project = proj_dup_none,
     input_file = "data/profiles_data.xlsx",
     sheets = list("profiles", "horizons"),
+    base_table = "horizons",
+    joins = list(
+      list(
+        table = "profiles",
+        by = list(id = "id")
+      )
+    ),
     roles = list(
       profile_id = "id",
       x = "x",

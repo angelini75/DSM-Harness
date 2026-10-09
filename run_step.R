@@ -47,15 +47,18 @@ find_repo_root <- function(start_dir = getwd()) {
   mapping[[step_str]]
 }
 
-new_project <- function(name, repo_root = NULL) {
+new_project <- function(name, language = "en", repo_root = NULL) {
   if (missing(name) || !nzchar(name)) {
-    cat("[ERROR] Project name must be provided: new_project(\"my_project\")\n")
+    cat("[ERROR] Project name must be provided: new_project(\"my_project\", language = \"en\")\n")
     return(invisible(FALSE))
   }
   
   if (is.null(repo_root)) {
     repo_root <- find_repo_root()
   }
+  .ensure_i18n(repo_root)
+  
+  lang <- if (language %in% c("en", "es")) language else "en"
   
   proj_dir <- file.path(repo_root, "projects", name)
   dirs_to_create <- c(
@@ -72,7 +75,22 @@ new_project <- function(name, repo_root = NULL) {
     }
   }
   
-  cat(sprintf("[INFO] Project '%s' initialized at: %s\n", name, proj_dir))
+  # Initialize minimal config.json if not present
+  config_path <- file.path(proj_dir, "config.json")
+  if (!file.exists(config_path)) {
+    initial_cfg <- list(
+      project = name,
+      language = lang
+    )
+    jsonlite::write_json(initial_cfg, config_path, auto_unbox = TRUE, pretty = TRUE)
+  }
+  
+  info_msg <- if (lang == "es") {
+    sprintf("[INFO] Proyecto '%s' inicializado (idioma: %s) en: %s", name, lang, proj_dir)
+  } else {
+    sprintf("[INFO] Project '%s' initialized (language: %s) at: %s", name, lang, proj_dir)
+  }
+  cat(info_msg, "\n")
   invisible(TRUE)
 }
 
@@ -80,7 +98,6 @@ run_step <- function(step, project) {
   repo_root <- find_repo_root()
   .ensure_i18n(repo_root)
   
-  # Default language for pre-config messages
   default_lang <- "en"
   
   # 1. Validate project argument
@@ -99,7 +116,6 @@ run_step <- function(step, project) {
   # 2. Map step to script file
   script_filename <- .step_to_script(step)
   if (is.null(script_filename)) {
-    # Check if a file matching step name exists directly in 02_scripts
     candidate <- file.path(repo_root, "02_scripts", paste0(step, ".R"))
     if (file.exists(candidate)) {
       script_filename <- paste0(step, ".R")
@@ -109,7 +125,7 @@ run_step <- function(step, project) {
     }
   }
   
-  # 3. Check config.json (required for step >= 1.1)
+  # 3. Check config.json
   config_path <- file.path(proj_root, "config.json")
   cfg <- NULL
   lang <- default_lang
@@ -156,7 +172,7 @@ run_step <- function(step, project) {
     return(invisible(FALSE))
   }
   
-  # 5. Execute in fresh environment via sys.source
+  # 5. Execute in fresh environment via sys.source with full error & traceback capture
   env <- new.env(parent = globalenv())
   env$project <- project
   env$proj_root <- proj_root
@@ -165,17 +181,58 @@ run_step <- function(step, project) {
   env$lang <- lang
   env$step <- step
   
-  # Announce step execution
   cat(msg("step_running", lang, step, project, repo_root = repo_root), "\n")
   
+  err_call <- NULL
+  err_trace <- NULL
   success <- TRUE
+  
   tryCatch(
-    {
-      sys.source(script_path, envir = env)
-    },
+    withCallingHandlers(
+      sys.source(script_path, envir = env),
+      error = function(e) {
+        err_call <<- conditionCall(e)
+        err_trace <<- sys.calls()
+      }
+    ),
     error = function(e) {
-      cat("[ERROR] ", msg("step_error", lang, e$message, repo_root = repo_root), "\n", sep = "")
       success <<- FALSE
+      
+      # Write error report with call and traceback to reports/<step>_error.txt
+      rep_dir <- file.path(proj_root, "reports")
+      if (!dir.exists(rep_dir)) dir.create(rep_dir, recursive = TRUE)
+      
+      step_clean <- gsub("[^A-Za-z0-9._-]", "_", as.character(step))
+      err_file <- file.path(rep_dir, paste0(step_clean, "_error.txt"))
+      err_con <- file(err_file, open = "wt", encoding = "UTF-8")
+      
+      cat("================================================================================\n", file = err_con)
+      cat("  DSM-HARNESS: STEP EXECUTION ERROR REPORT\n", file = err_con)
+      cat("================================================================================\n", file = err_con)
+      cat("Timestamp:    ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n", file = err_con)
+      cat("Project:      ", project, "\n", file = err_con)
+      cat("Step:         ", as.character(step), "\n", file = err_con)
+      cat("Script:       ", script_path, "\n", file = err_con)
+      cat("Error:        ", conditionMessage(e), "\n", file = err_con)
+      if (!is.null(err_call)) {
+        cat("Failing Call: ", paste(deparse(err_call), collapse = "\n              "), "\n", file = err_con)
+      }
+      cat("--------------------------------------------------------------------------------\n", file = err_con)
+      cat("TRACEBACK:\n", file = err_con)
+      if (!is.null(err_trace) && length(err_trace) > 0) {
+        # Format traceback lines cleanly
+        for (idx in seq_along(err_trace)) {
+          c_str <- paste(deparse(err_trace[[idx]]), collapse = " ")
+          cat(sprintf("[%02d] %s\n", idx, c_str), file = err_con)
+        }
+      } else {
+        cat("No traceback calls captured.\n", file = err_con)
+      }
+      cat("================================================================================\n", file = err_con)
+      close(err_con)
+      
+      cat("[ERROR] ", msg("step_error", lang, conditionMessage(e), repo_root = repo_root), "\n", sep = "")
+      cat(msg("step_error_saved", lang, err_file, repo_root = repo_root), "\n", sep = "")
     }
   )
   

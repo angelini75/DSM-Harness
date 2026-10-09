@@ -1,6 +1,6 @@
 # ==============================================================================
 # DSM-Harness v2 | validate_config.R
-# Configuration validator enforcing roles, categories, enums, and relative paths
+# Configuration validator enforcing roles, categories, enums, shapes, and paths
 # ==============================================================================
 
 # Ensure %||% is available
@@ -15,6 +15,9 @@ ALLOWED_CONFIG_KEYS <- c(
   "project",
   "input_file",
   "sheets",
+  "tables",
+  "base_table",
+  "joins",
   "roles",
   "columns",
   "categories",
@@ -62,6 +65,11 @@ ALLOWED_DUP_STRATEGIES <- c(
   "keep_first"
 )
 
+ALLOWED_LANGUAGES <- c(
+  "en",
+  "es"
+)
+
 validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_root = NULL) {
   if (is.null(repo_root)) {
     if (exists("find_repo_root", mode = "function")) {
@@ -87,10 +95,22 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     }
   }
   
-  # 2. Check required top-level fields
-  for (req in c("project", "input_file")) {
-    if (is.null(cfg[[req]]) || !nzchar(as.character(cfg[[req]]))) {
+  # 2. Check required top-level fields: project, language, input_file
+  for (req in c("project", "language", "input_file")) {
+    if (is.null(cfg[[req]]) || length(cfg[[req]]) == 0 || !nzchar(as.character(cfg[[req]][1]))) {
       errors <- c(errors, msg("val_missing_field", lang, req, repo_root = repo_root))
+    }
+  }
+  
+  # Check language is valid enum
+  if (!is.null(cfg$language)) {
+    l_val <- as.character(cfg$language)
+    if (!(l_val %in% ALLOWED_LANGUAGES)) {
+      errors <- c(errors, msg(
+        "val_invalid_enum", lang, l_val, "language",
+        paste(ALLOWED_LANGUAGES, collapse = " | "),
+        repo_root = repo_root
+      ))
     }
   }
   
@@ -140,37 +160,50 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     }
   }
   
-  # 6. Check categories
+  # 6. Check categories shape and values
   cat_map <- cfg$categories %||% cfg$columns
   if (!is.null(cat_map) && length(cat_map) > 0) {
+    # Validate shape: must be named list where each value is a single scalar character string
+    shape_error_reported <- FALSE
     for (col in names(cat_map)) {
-      cat_val <- as.character(cat_map[[col]])
-      if (!(cat_val %in% ALLOWED_CATEGORIES)) {
-        errors <- c(errors, msg(
-          "val_invalid_category", lang, cat_val, col,
-          paste(ALLOWED_CATEGORIES, collapse = ", "),
-          repo_root = repo_root
-        ))
+      val <- cat_map[[col]]
+      if (is.null(val) || length(val) != 1 || is.list(val) || !is.atomic(val)) {
+        if (!shape_error_reported) {
+          errors <- c(errors, msg("val_invalid_cat_shape", lang, repo_root = repo_root))
+          shape_error_reported <- TRUE
+        }
+      } else {
+        cat_val <- as.character(val)
+        if (!(cat_val %in% ALLOWED_CATEGORIES)) {
+          errors <- c(errors, msg(
+            "val_invalid_category", lang, cat_val, col,
+            paste(ALLOWED_CATEGORIES, collapse = ", "),
+            repo_root = repo_root
+          ))
+        }
       }
     }
   }
   
   # 7. Check configured columns against dataset columns (if provided)
   if (!is.null(data_cols) && length(data_cols) > 0) {
-    # Check roles
+    # Check roles (supporting table.column syntax)
     if (!is.null(cfg$roles)) {
       for (r in names(cfg$roles)) {
         col_name <- as.character(cfg$roles[[r]])
-        if (!(col_name %in% data_cols)) {
+        # match exact col_name or stripped table prefix (e.g. "profiles.x" -> "x")
+        col_bare <- sub("^[^.]+\\.", "", col_name)
+        if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
           errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
         }
       }
     }
     
     # Check category mappings
-    if (!is.null(cat_map)) {
+    if (!is.null(cat_map) && !isTRUE(shape_error_reported)) {
       for (col_name in names(cat_map)) {
-        if (!(col_name %in% data_cols)) {
+        col_bare <- sub("^[^.]+\\.", "", col_name)
+        if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
           errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
         }
       }

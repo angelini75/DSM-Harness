@@ -24,11 +24,21 @@ if (!exists("record_decision", mode = "function")) {
 }
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
-  stop("Step 0 must be run within a project context (e.g., run_step('0', project = 'myproj'))")
+  stop(msg("step_context_missing", "en", "0", "0", repo_root = repo_root), call. = FALSE)
 }
 
 proj_root <- file.path(repo_root, "projects", project)
-lang <- if (exists("lang", inherits = FALSE) && !is.null(lang)) lang else "en"
+
+# Detect language from config.json if present
+if (!exists("lang", inherits = FALSE) || is.null(lang)) {
+  cfg_file <- file.path(proj_root, "config.json")
+  if (file.exists(cfg_file)) {
+    c_data <- tryCatch(jsonlite::fromJSON(cfg_file, simplifyVector = FALSE), error = function(e) NULL)
+    lang <- c_data$language %||% "en"
+  } else {
+    lang <- "en"
+  }
+}
 
 # Locate raw input file
 data_dir <- file.path(proj_root, "data")
@@ -43,7 +53,6 @@ if (exists("cfg", inherits = FALSE) && !is.null(cfg) && !is.null(cfg$input_file)
 
 if (is.null(raw_file)) {
   avail <- list.files(data_dir, pattern = "\\.(xlsx|xls|csv|tsv|txt)$", full.names = TRUE, ignore.case = TRUE)
-  # Exclude fixed output files
   avail <- avail[!grepl("(01_mapped|02_spatial|03_clean|04_cov_.*)\\.csv$", avail, ignore.case = TRUE)]
   if (length(avail) > 0) {
     raw_file <- avail[1]
@@ -69,25 +78,25 @@ rel_input_file <- sub(paste0("^", normalizePath(proj_root, winslash = "/", mustW
 log_out("================================================================================")
 log_out(msg("inspect_header", lang, repo_root = repo_root))
 log_out("================================================================================")
-log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-log_out("Project: ", project)
-log_out("File: ", rel_input_file)
-log_out("Format: .", ext)
-log_out("File size: ", round(file.size(raw_file) / 1024, 2), " KB")
+log_out(msg("inspect_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
+log_out(msg("inspect_project", lang, project, repo_root = repo_root))
+log_out(msg("inspect_file", lang, rel_input_file, repo_root = repo_root))
+log_out(msg("inspect_format", lang, ext, repo_root = repo_root))
+log_out(msg("inspect_file_size", lang, round(file.size(raw_file) / 1024, 2), repo_root = repo_root))
 log_out("================================================================================\n")
 
 # Inspection helper
 inspect_table <- function(df, tbl_name) {
-  log_out(sprintf("--- Sheet / Table: %s ---", tbl_name))
-  log_out(sprintf("Dimensions: %d rows x %d columns\n", nrow(df), ncol(df)))
+  log_out(msg("inspect_sheet_summary", lang, tbl_name, repo_root = repo_root))
+  log_out(msg("inspect_dimensions", lang, nrow(df), ncol(df), repo_root = repo_root), "\n")
   
   if (nrow(df) == 0 || ncol(df) == 0) {
-    log_out("Table is empty (0 rows or 0 columns).\n")
+    log_out(msg("inspect_empty_table", lang, repo_root = repo_root), "\n")
     return()
   }
   
   col_names <- names(df)
-  log_out(sprintf("%-30s | %-12s | %-10s | %s", "Column Name", "Type", "% Missing", "Range / Distinct Samples"))
+  log_out(msg("inspect_col_header", lang, repo_root = repo_root))
   log_out(paste(rep("-", 80), collapse = ""))
   
   for (cn in col_names) {
@@ -101,16 +110,16 @@ inspect_table <- function(df, tbl_name) {
       if (length(non_na) > 0) {
         val_sample <- sprintf("[%g, %g]", min(non_na), max(non_na))
       } else {
-        val_sample <- "[All NA]"
+        val_sample <- msg("inspect_all_na", lang, repo_root = repo_root)
       }
     } else {
       non_na <- as.character(col_data[!is.na(col_data) & nzchar(trimws(as.character(col_data)))])
       n_distinct <- length(unique(non_na))
       if (n_distinct > 0) {
         first_few <- paste(utils::head(unique(non_na), 3), collapse = ", ")
-        val_sample <- sprintf("%d distinct (e.g. %s)", n_distinct, first_few)
+        val_sample <- msg("inspect_distinct_sample", lang, n_distinct, first_few, repo_root = repo_root)
       } else {
-        val_sample <- "[All NA/empty]"
+        val_sample <- msg("inspect_all_empty", lang, repo_root = repo_root)
       }
     }
     
@@ -122,12 +131,12 @@ inspect_table <- function(df, tbl_name) {
 # Inspect according to format
 if (ext %in% c("xlsx", "xls")) {
   sheets <- readxl::excel_sheets(raw_file)
-  log_out("Detected sheets (", length(sheets), "): ", paste(sheets, collapse = ", "), "\n")
+  log_out(msg("inspect_sheets_found", lang, length(sheets), paste(sheets, collapse = ", "), repo_root = repo_root), "\n")
   for (sh in sheets) {
     df_sheet <- tryCatch(
       as.data.frame(readxl::read_excel(raw_file, sheet = sh, guess_max = 100000)),
       error = function(e) {
-        log_out(sprintf("Error reading sheet '%s': %s\n", sh, e$message))
+        log_out(msg("inspect_read_error", lang, sh, e$message, repo_root = repo_root), "\n")
         NULL
       }
     )

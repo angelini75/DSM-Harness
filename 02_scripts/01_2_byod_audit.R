@@ -24,7 +24,7 @@ if (!exists("record_decision", mode = "function")) {
 }
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
-  stop("Step 1.2 must be run within a project context (e.g., run_step('1.2', project = 'myproj'))")
+  stop(msg("step_context_missing", "en", "1.2", "1.2", repo_root = repo_root), call. = FALSE)
 }
 
 proj_root <- file.path(repo_root, "projects", project)
@@ -58,10 +58,20 @@ if (!file.exists(in_csv)) {
 
 df <- as.data.frame(readr::read_csv(in_csv, show_col_types = FALSE))
 
-x_col <- if (is_str(cfg$roles$x)) as.character(cfg$roles$x) else NULL
-y_col <- if (is_str(cfg$roles$y)) as.character(cfg$roles$y) else NULL
+resolve_col <- function(col_name) {
+  if (is.null(col_name) || !nzchar(col_name)) return(NULL)
+  if (col_name %in% names(df)) return(col_name)
+  matches <- grep(paste0("\\.", col_name, "$"), names(df), value = TRUE)
+  if (length(matches) == 1) return(matches[1])
+  bare <- sub("^[^.]+\\.", "", col_name)
+  if (bare %in% names(df)) return(bare)
+  NULL
+}
 
-if (is.null(x_col) || is.null(y_col) || !x_col %in% names(df) || !y_col %in% names(df)) {
+x_col <- resolve_col(if (is_str(cfg$roles$x)) as.character(cfg$roles$x) else NULL)
+y_col <- resolve_col(if (is_str(cfg$roles$y)) as.character(cfg$roles$y) else NULL)
+
+if (is.null(x_col) || is.null(y_col)) {
   err_msg <- msg("spatial_coords_missing", lang, repo_root = repo_root)
   stop(err_msg, call. = FALSE)
 }
@@ -73,7 +83,7 @@ x_valid <- x_vals[!is.na(x_vals)]
 y_valid <- y_vals[!is.na(y_vals)]
 
 if (length(x_valid) == 0 || length(y_valid) == 0) {
-  stop("No non-NA coordinates found in dataset.", call. = FALSE)
+  stop(msg("spatial_no_coords", lang, repo_root = repo_root), call. = FALSE)
 }
 
 x_min <- min(x_valid); x_max <- max(x_valid)
@@ -92,20 +102,21 @@ log_out <- function(...) {
 }
 
 log_out("================================================================================")
-log_out("  DSM-HARNESS: STEP 1.2 SPATIAL AUDIT & CRS DIAGNOSIS")
+log_out(msg("spatial_header", lang, repo_root = repo_root))
 log_out("================================================================================")
-log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-log_out("Project: ", project)
-log_out("Input File: data/01_mapped.csv (", nrow(df), " rows)")
-log_out("Coordinate columns: X = '", x_col, "', Y = '", y_col, "'")
-log_out(sprintf("Raw X range: [%.4f, %.4f]", x_min, x_max))
-log_out(sprintf("Raw Y range: [%.4f, %.4f]\n", y_min, y_max))
+log_out(msg("spatial_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
+log_out(msg("spatial_project", lang, project, repo_root = repo_root))
+log_out(msg("spatial_input_info", lang, nrow(df), repo_root = repo_root))
+log_out(msg("spatial_coord_cols", lang, x_col, y_col, repo_root = repo_root))
+log_out(msg("spatial_raw_x", lang, x_min, x_max, repo_root = repo_root))
+log_out(msg("spatial_raw_y", lang, y_min, y_max, repo_root = repo_root), "\n")
 
 if (is_geo) {
-  log_out("Diagnostic: ", msg("spatial_looks_geographic", lang, x_min, x_max, y_min, y_max, repo_root = repo_root))
+  diag_txt <- msg("spatial_looks_geographic", lang, x_min, x_max, y_min, y_max, repo_root = repo_root)
 } else {
-  log_out("Diagnostic: ", msg("spatial_looks_projected", lang, x_min, x_max, y_min, y_max, repo_root = repo_root))
+  diag_txt <- msg("spatial_looks_projected", lang, x_min, x_max, y_min, y_max, repo_root = repo_root)
 }
+log_out(msg("spatial_diagnostic", lang, diag_txt, repo_root = repo_root))
 
 source_crs <- cfg$source_crs
 
@@ -127,18 +138,15 @@ if (!is_str(source_crs)) {
   # Do NOT write 02_spatial.csv
 } else {
   crs_str <- as.character(source_crs)
-  log_out("\nConfigured source_crs: ", crs_str)
+  log_out("\n", msg("spatial_configured_crs", lang, crs_str, repo_root = repo_root))
   
-  # Check if CRS is already geographic (EPSG:4326 / WGS84)
   is_crs_geo <- grepl("4326|wgs84|crs84", tolower(crs_str))
   
   if (is_crs_geo || is_geo) {
-    # Geographic coordinates pass through
-    log_out("Coordinates are geographic (EPSG:4326). Passing through without reprojection.")
+    log_out(msg("spatial_geo_passthrough", lang, repo_root = repo_root))
     res_lon_min <- x_min; res_lon_max <- x_max
     res_lat_min <- y_min; res_lat_max <- y_max
   } else {
-    # Projected coordinates -> reproject to EPSG:4326
     crs_arg <- crs_str
     if (grepl("^[0-9]+$", crs_str)) {
       crs_arg <- as.integer(crs_str)
@@ -160,8 +168,8 @@ if (!is_str(source_crs)) {
     log_out(msg("spatial_reprojected", lang, crs_str, res_lon_min, res_lon_max, res_lat_min, res_lat_max, repo_root = repo_root))
   }
   
-  log_out(sprintf("\nResulting Lon range: [%.4f, %.4f]", res_lon_min, res_lon_max))
-  log_out(sprintf("Resulting Lat range: [%.4f, %.4f]\n", res_lat_min, res_lat_max))
+  log_out("\n", msg("spatial_res_lon", lang, res_lon_min, res_lon_max, repo_root = repo_root))
+  log_out(msg("spatial_res_lat", lang, res_lat_min, res_lat_max, repo_root = repo_root), "\n")
   
   out_csv <- file.path(data_dir, "02_spatial.csv")
   readr::write_csv(df, out_csv)

@@ -24,7 +24,7 @@ if (!exists("record_decision", mode = "function")) {
 }
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
-  stop("Step 1.3 must be run within a project context (e.g., run_step('1.3', project = 'myproj'))")
+  stop(msg("step_context_missing", "en", "1.3", "1.3", repo_root = repo_root), call. = FALSE)
 }
 
 proj_root <- file.path(repo_root, "projects", project)
@@ -59,12 +59,22 @@ if (!file.exists(in_csv)) {
 df <- as.data.frame(readr::read_csv(in_csv, show_col_types = FALSE))
 n_initial <- nrow(df)
 
-# Depths validation
-top_col <- if (is_str(cfg$roles$top)) as.character(cfg$roles$top) else "top"
-bottom_col <- if (is_str(cfg$roles$bottom)) as.character(cfg$roles$bottom) else "bottom"
+resolve_col <- function(col_name) {
+  if (is.null(col_name) || !nzchar(col_name)) return(NULL)
+  if (col_name %in% names(df)) return(col_name)
+  matches <- grep(paste0("\\.", col_name, "$"), names(df), value = TRUE)
+  if (length(matches) == 1) return(matches[1])
+  bare <- sub("^[^.]+\\.", "", col_name)
+  if (bare %in% names(df)) return(bare)
+  NULL
+}
 
-if (!top_col %in% names(df) || !bottom_col %in% names(df)) {
-  stop(sprintf("Depth columns '%s' and/or '%s' not found in dataset.", top_col, bottom_col), call. = FALSE)
+# Depths validation
+top_col <- resolve_col(if (is_str(cfg$roles$top)) as.character(cfg$roles$top) else "top")
+bottom_col <- resolve_col(if (is_str(cfg$roles$bottom)) as.character(cfg$roles$bottom) else "bottom")
+
+if (is.null(top_col) || is.null(bottom_col)) {
+  stop(msg("ped_depth_missing", lang, cfg$roles$top %||% "top", cfg$roles$bottom %||% "bottom", repo_root = repo_root), call. = FALSE)
 }
 
 df[[top_col]] <- as.numeric(df[[top_col]])
@@ -96,15 +106,15 @@ log_out <- function(...) {
 }
 
 log_out("================================================================================")
-log_out("  DSM-HARNESS: STEP 1.3 PEDOLOGICAL AUDIT & BULK DENSITY MODELING")
+log_out(msg("ped_header", lang, repo_root = repo_root))
 log_out("================================================================================")
-log_out("Date: ", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-log_out("Project: ", project)
-log_out("Input File: data/02_spatial.csv")
-log_out("Total input records: ", n_initial)
-log_out("Inverted depths swapped: ", n_inverted)
-log_out("Invalid depth intervals omitted: ", n_invalid)
-log_out("Valid horizons retained: ", nrow(df_valid))
+log_out(msg("ped_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
+log_out(msg("ped_project", lang, project, repo_root = repo_root))
+log_out(msg("ped_input_file", lang, repo_root = repo_root))
+log_out(msg("ped_total_records", lang, n_initial, repo_root = repo_root))
+log_out(msg("ped_inverted_swapped", lang, n_inverted, repo_root = repo_root))
+log_out(msg("ped_invalid_omitted", lang, n_invalid, repo_root = repo_root))
+log_out(msg("ped_valid_retained", lang, nrow(df_valid), repo_root = repo_root))
 log_out("================================================================================\n")
 
 # PTF Reference Functions
@@ -209,7 +219,7 @@ fit_local_models <- function(df_val, om_full) {
   best_cand <- candidates[[best_name]]
   
   list(
-    name = paste("Simple local fit (", best_name, ")", sep = ""),
+    name = msg("ped_bd_local", lang, best_name, repo_root = repo_root),
     formula = best_cand$formula,
     pred_val = best_cand$pred_val,
     pred_all = best_cand$pred_all
@@ -217,20 +227,19 @@ fit_local_models <- function(df_val, om_full) {
 }
 
 # Determine Bulk Density and Organic Matter columns
-bd_col <- if (is_str(cfg$roles$bulk_density)) as.character(cfg$roles$bulk_density) else NULL
-soc_col <- if (is_str(cfg$roles$organic_carbon)) as.character(cfg$roles$organic_carbon) else NULL
-om_col <- if (is_str(cfg$roles$organic_matter)) as.character(cfg$roles$organic_matter) else NULL
+bd_col <- resolve_col(if (is_str(cfg$roles$bulk_density)) as.character(cfg$roles$bulk_density) else NULL)
+soc_col <- resolve_col(if (is_str(cfg$roles$organic_carbon)) as.character(cfg$roles$organic_carbon) else NULL)
+om_col <- resolve_col(if (is_str(cfg$roles$organic_matter)) as.character(cfg$roles$organic_matter) else NULL)
 
-has_bd <- !is.null(bd_col) && (bd_col %in% names(df_valid))
-has_soc <- !is.null(soc_col) && (soc_col %in% names(df_valid))
-has_om <- !is.null(om_col) && (om_col %in% names(df_valid))
+has_bd <- !is.null(bd_col)
+has_soc <- !is.null(soc_col)
+has_om <- !is.null(om_col)
 
 # Derive OM vector
 om_vec <- NULL
 if (has_om) {
   om_vec <- as.numeric(df_valid[[om_col]])
 } else if (has_soc) {
-  # van Bemmelen factor
   om_vec <- as.numeric(df_valid[[soc_col]]) * 1.724
 }
 
@@ -243,7 +252,7 @@ if (!is.null(om_vec) && sum(!is.na(om_vec)) > 0) {
   ptf_catalogue <- calc_reference_ptfs(om_vec)
 }
 
-log_out("--- BULK DENSITY (BD) CONTRAST & PTF EVALUATION ---")
+log_out(msg("ped_bd_section", lang, repo_root = repo_root))
 
 eval_table <- data.frame(
   PTF = character(0),
@@ -259,7 +268,7 @@ if (has_bd && !is.null(om_vec)) {
   val_mask <- !is.na(bd_vec) & (bd_vec >= 0.2) & (bd_vec <= 2.65) & !is.na(om_vec) & (om_vec > 0)
   n_val <- sum(val_mask)
   
-  log_out(sprintf("Valid paired observations (measured BD and OM): n = %d", n_val))
+  log_out(msg("ped_paired_obs", lang, n_val, repo_root = repo_root))
   
   if (n_val > 0 && !is.null(ptf_catalogue)) {
     for (p_name in names(ptf_catalogue)) {
@@ -281,7 +290,6 @@ if (has_bd && !is.null(om_vec)) {
     }
   }
   
-  # Local fit evaluation if n >= threshold (default 30)
   local_threshold <- 30
   if (n_val >= local_threshold) {
     df_val_sub <- data.frame(BD = bd_vec[val_mask], OM = om_vec[val_mask])
@@ -305,7 +313,7 @@ if (has_bd && !is.null(om_vec)) {
     log_out(msg("ped_bd_no_local", lang, n_val, local_threshold, repo_root = repo_root))
   }
 } else {
-  log_out("No measured BD column or OM/SOC available for contrast.")
+  log_out(msg("ped_no_bd_data", lang, repo_root = repo_root))
 }
 
 # Print evaluation table to report
@@ -320,7 +328,6 @@ if (nrow(eval_table) > 0) {
   }
   log_out("")
   
-  # Pick best model based on minimum RMSE
   best_idx <- which.min(eval_table$RMSE)
   chosen_ptf_name <- eval_table$PTF[best_idx]
   if (!is.null(local_fit_res) && chosen_ptf_name == local_fit_res$name) {
@@ -331,20 +338,19 @@ if (nrow(eval_table) > 0) {
 } else if (!is.null(ptf_catalogue)) {
   chosen_ptf_name <- "Saini (1996)"
   chosen_ptf_pred <- ptf_catalogue[[chosen_ptf_name]]$pred
-  log_out(sprintf("No measured BD available. Default reference PTF: %s", chosen_ptf_name))
+  log_out(msg("ped_default_ptf", lang, chosen_ptf_name, repo_root = repo_root))
 }
 
 # Imputation Decision
 impute_req <- isTRUE(cfg$impute_bulk_density)
 
 if (impute_req && !is.null(chosen_ptf_pred)) {
-  # Impute only into separate column bd_imputed, NEVER overwrite original
   df_valid$bd_imputed <- chosen_ptf_pred
   n_imputed <- sum(!is.na(chosen_ptf_pred))
-  log_out(sprintf("\n[IMPUTATION APPLIED] %s", msg("ped_bd_imputed", lang, chosen_ptf_name, repo_root = repo_root)))
-  log_out(sprintf("Populated 'bd_imputed' with %d values.", n_imputed))
+  log_out(sprintf("\n%s", msg("ped_imputed_notice", lang, msg("ped_bd_imputed", lang, chosen_ptf_name, repo_root = repo_root), repo_root = repo_root)))
+  log_out(msg("ped_imputed_count", lang, n_imputed, repo_root = repo_root))
 } else {
-  log_out(sprintf("\n[NOTICE] %s", msg("ped_bd_not_imputed", lang, repo_root = repo_root)))
+  log_out(sprintf("\n%s", msg("ped_not_imputed_notice", lang, msg("ped_bd_not_imputed", lang, repo_root = repo_root), repo_root = repo_root)))
 }
 
 out_csv <- file.path(data_dir, "03_clean.csv")
