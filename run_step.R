@@ -35,14 +35,21 @@ find_repo_root <- function(start_dir = getwd()) {
 .step_to_script <- function(step) {
   step_str <- as.character(step)
   mapping <- list(
-    "0"   = "00_inspect_data.R",
-    "00"  = "00_inspect_data.R",
-    "1.1" = "01_1_byod_audit.R",
-    "01_1"= "01_1_byod_audit.R",
-    "1.2" = "01_2_byod_audit.R",
-    "01_2"= "01_2_byod_audit.R",
-    "1.3" = "01_3_byod_audit.R",
-    "01_3"= "01_3_byod_audit.R"
+    "0"    = "00_inspect_data.R",
+    "00"   = "00_inspect_data.R",
+    "1.1"  = "01_1_byod_audit.R",
+    "01_1" = "01_1_byod_audit.R",
+    "1.2"  = "01_2_byod_audit.R",
+    "01_2" = "01_2_byod_audit.R",
+    "1.3"  = "01_3_byod_audit.R",
+    "01_3" = "01_3_byod_audit.R",
+    "2"    = "02_covariates.R",
+    "02"   = "02_covariates.R",
+    "3"    = "03_model.R",
+    "03"   = "03_model.R",
+    "3b"   = "03_b_resources.R",
+    "03_b" = "03_b_resources.R",
+    "03b"  = "03_b_resources.R"
   )
   mapping[[step_str]]
 }
@@ -115,7 +122,7 @@ new_project <- function(name, language = "en", repo_root = NULL) {
   invisible(TRUE)
 }
 
-run_step <- function(step, project) {
+run_step <- function(step, project, targets = NULL, refit = FALSE, ...) {
   repo_root <- find_repo_root()
   .ensure_i18n(repo_root)
   
@@ -201,6 +208,8 @@ run_step <- function(step, project) {
   env$cfg <- cfg
   env$lang <- lang
   env$step <- step
+  env$targets <- targets
+  env$refit <- refit
   
   cat(msg("step_running", lang, step, project, repo_root = repo_root), "\n")
   

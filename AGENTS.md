@@ -27,6 +27,9 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 | **1.1 Map** | Raw data file | `data/01_mapped.csv`, `reports/11_mapping.txt` | Base table, joins, roles, categories, duplicate key strategy |
 | **1.2 Spatial** | `data/01_mapped.csv` | `data/02_spatial.csv`, `reports/12_spatial.txt` | Source CRS (from candidates); resulting lon/lat bounding box |
 | **1.3 Pedological** | `data/02_spatial.csv` | `data/03_clean.csv`, `reports/13_pedological.txt` | Bulk density estimation option; exclusions |
+| **2 Covariates** | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`, `reports/20_covariates_<prop>_<d1>_<d2>.txt` | Target properties and depth intervals |
+| **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics |
+| **3b Resources** | models, rasters | `reports/3b_resources.txt` | Number of tiles; groups of properties to predict |
 
 ---
 
@@ -69,3 +72,14 @@ Stored at `projects/<name>/config.json`. Validated before each execution.
 - **`duplicate_key_strategy`**: `"fail"`, `"average"`, or `"keep_first"`.
 - **`source_crs`**: Target coordinate reference system (e.g. `"EPSG:32642"` or `"EPSG:4326"`).
 - **`impute_bulk_density`**: `true` or `false`. If true, estimates are written to separate column `bd_imputed`.
+- **`targets`**: Array of target objects defining property and depth intervals:
+  ```json
+  [
+    { "property": "clay", "d1": 0, "d2": 30 },
+    { "property": "clay", "d1": 30, "d2": 60 },
+    { "property": "soc", "d1": 0, "d2": 30 }
+  ]
+  ```
+- **`boruta_max_runs`**: Maximum iterations for Boruta feature selection (integer, default 100).
+- **`min_support`**: Minimum profile support thickness in cm for depth standardisation (numeric, default 5).
+

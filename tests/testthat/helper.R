@@ -109,3 +109,37 @@ create_synthetic_dataset <- function(proj_name, format = "csv", dup_keys = FALSE
   
   rel_path
 }
+
+create_synthetic_covariates <- function(proj_name, crs = "EPSG:4326", n_layers = 3, mismatch = FALSE) {
+  proj_dir <- file.path(repo_root, "projects", proj_name)
+  cov_dir <- file.path(proj_dir, "covariates")
+  if (!dir.exists(cov_dir)) dir.create(cov_dir, recursive = TRUE)
+  
+  if (crs == "EPSG:4326") {
+    # Extent covering 74.0 to 76.0, 41.0 to 43.0
+    r <- terra::rast(nrows = 20, ncols = 20, xmin = 74.0, xmax = 76.0, ymin = 41.0, ymax = 43.0, crs = "EPSG:4326")
+  } else {
+    # Projected UTM zone 42N
+    r <- terra::rast(nrows = 20, ncols = 20, xmin = 440000, xmax = 470000, ymin = 4590000, ymax = 4620000, crs = "EPSG:32642")
+  }
+  
+  lyrs <- list()
+  for (i in seq_len(n_layers)) {
+    ri <- r
+    terra::values(ri) <- seq(10 * i, 100 * i, length.out = terra::ncell(r)) + runif(terra::ncell(r), 0, 1)
+    names(ri) <- sprintf("cov_%02d", i)
+    lyrs[[i]] <- ri
+  }
+  cov_stack <- terra::rast(lyrs)
+  out_file <- file.path(cov_dir, "covariates_stack.tif")
+  terra::writeRaster(cov_stack, out_file, overwrite = TRUE)
+  
+  if (mismatch) {
+    r_bad <- terra::rast(nrows = 10, ncols = 10, xmin = 0, xmax = 10, ymin = 0, ymax = 10, crs = "EPSG:4326")
+    terra::values(r_bad) <- runif(terra::ncell(r_bad))
+    names(r_bad) <- "cov_bad"
+    terra::writeRaster(r_bad, file.path(cov_dir, "covariates_mismatch.tif"), overwrite = TRUE)
+  }
+  
+  cov_dir
+}

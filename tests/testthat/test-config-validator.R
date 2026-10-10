@@ -90,4 +90,33 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   v_miss_col <- validate_config(base_valid_cfg, data_cols = data_cols, stop_on_error = FALSE, repo_root = repo_root)
   expect_false(v_miss_col$valid)
   expect_true(any(grepl("clay", v_miss_col$errors)))
+
+  # 11. Valid targets array passes
+  cfg_targets <- base_valid_cfg
+  cfg_targets$targets <- list(
+    list(property = "clay", d1 = 0, d2 = 30),
+    list(property = "clay", d1 = 30, d2 = 60, enabled = TRUE)
+  )
+  v_targets <- validate_config(cfg_targets, stop_on_error = FALSE, repo_root = repo_root)
+  expect_true(v_targets$valid)
+
+  # 12. Invalid target item (missing d2) rejected
+  cfg_bad_tgt <- base_valid_cfg
+  cfg_bad_tgt$targets <- list(list(property = "clay", d1 = 0))
+  v_bad_tgt <- validate_config(cfg_bad_tgt, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_tgt$valid)
+
+  # 13. Invalid target depth order (d1 >= d2) rejected
+  cfg_inverted_tgt <- base_valid_cfg
+  cfg_inverted_tgt$targets <- list(list(property = "clay", d1 = 30, d2 = 0))
+  v_inv_tgt <- validate_config(cfg_inverted_tgt, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_inv_tgt$valid)
+
+  # 14. Target property not found in data_cols rejected
+  cfg_unknown_prop <- base_valid_cfg
+  cfg_unknown_prop$targets <- list(list(property = "unknown_nutrient", d1 = 0, d2 = 30))
+  v_unk_prop <- validate_config(cfg_unknown_prop, data_cols = c("id", "x", "y", "upper", "lower", "clay"), stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_unk_prop$valid)
+  expect_true(any(grepl("unknown_nutrient", v_unk_prop$errors)))
 })
+

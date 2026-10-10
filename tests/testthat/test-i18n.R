@@ -20,7 +20,10 @@ test_that("Static check: no uncatalogued literal strings in script outputs or er
     file.path(repo_root, "02_scripts", "00_inspect_data.R"),
     file.path(repo_root, "02_scripts", "01_1_byod_audit.R"),
     file.path(repo_root, "02_scripts", "01_2_byod_audit.R"),
-    file.path(repo_root, "02_scripts", "01_3_byod_audit.R")
+    file.path(repo_root, "02_scripts", "01_3_byod_audit.R"),
+    file.path(repo_root, "02_scripts", "02_covariates.R"),
+    file.path(repo_root, "02_scripts", "03_model.R"),
+    file.path(repo_root, "02_scripts", "03_b_resources.R")
   )
   
   # 1. Verify that stop() calls in scripts do NOT take hardcoded literal strings

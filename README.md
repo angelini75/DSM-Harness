@@ -16,7 +16,7 @@ DSM-Harness guides soil scientists and participants through reproducible, standa
 
 ---
 
-## 📋 Pipeline Steps (Milestone M1)
+## 📋 Pipeline Steps (Milestones M1 & M2)
 
 | Step | Function Call | Reads | Writes | Purpose |
 | :--- | :--- | :--- | :--- | :--- |
@@ -24,6 +24,9 @@ DSM-Harness guides soil scientists and participants through reproducible, standa
 | **1.1 Map** | `run_step("1.1", project = "<name>")` | Raw data + `config.json` | `data/01_mapped.csv`<br>`reports/11_mapping.txt` | Variable selection, relational sheet join, duplicate key resolution |
 | **1.2 Spatial** | `run_step("1.2", project = "<name>")` | `data/01_mapped.csv` | `data/02_spatial.csv`<br>`reports/12_spatial.txt` | Coordinate range audit, projected vs geographic diagnosis, reprojection to EPSG:4326 |
 | **1.3 Pedological** | `run_step("1.3", project = "<name>")` | `data/02_spatial.csv` | `data/03_clean.csv`<br>`reports/13_pedological.txt` | Horizon depth validity, PTF bulk density contrast, optional local calibration |
+| **2 Covariates** | `run_step("2", project = "<name>")` | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`<br>`reports/20_covariates_<prop>_<d1>_<d2>.txt` | Depth standardisation (thickness-weighted mean) and spatial covariate extraction |
+| **3 Model** | `run_step("3", project = "<name>")` | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`<br>`outputs/models/metrics_<prop>_<d1>_<d2>.json`<br>`reports/30_modelling_<prop>_<d1>_<d2>.txt` | Feature selection (Boruta) and Quantile Regression Forest (ranger) with repeated CV |
+| **3b Resources** | `run_step("3b", project = "<name>")` | Models & rasters | `reports/3b_resources.txt` | Hardware diagnosis, raster volume assessment, and memory-safe tiling advisory |
 
 ---
 
@@ -31,20 +34,25 @@ DSM-Harness guides soil scientists and participants through reproducible, standa
 
 ```text
 projects/<name>/
-├── config.json          # Project configuration (roles, categories, CRS, etc.)
+├── config.json          # Project configuration (roles, categories, CRS, targets, etc.)
 ├── decisions_log.csv    # Automatically logged audit decisions
 ├── data/
 │   ├── raw_dataset.*    # User's input file (CSV or multi-sheet Excel)
 │   ├── 01_mapped.csv    # Output of Step 1.1
 │   ├── 02_spatial.csv   # Output of Step 1.2
-│   └── 03_clean.csv     # Output of Step 1.3
+│   ├── 03_clean.csv     # Output of Step 1.3
+│   └── 04_cov_*.csv     # Output of Step 2 (per target & depth)
 ├── reports/
 │   ├── 00_inspection.txt
 │   ├── 11_mapping.txt
 │   ├── 12_spatial.txt
-│   └── 13_pedological.txt
-├── covariates/          # Environmental covariates (Rasters/COGs)
-├── outputs/             # Models and predicted GeoTIFF maps
+│   ├── 13_pedological.txt
+│   ├── 20_covariates_*.txt
+│   ├── 30_modelling_*.txt
+│   └── 3b_resources.txt
+├── covariates/          # Environmental covariates (Rasters/COGs: *.tif)
+├── outputs/
+│   └── models/          # Fitted models (*.rds) and validation metrics (*.json)
 └── custom/              # Optional local step override scripts (<step>.R)
 ```
 

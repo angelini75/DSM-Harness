@@ -25,7 +25,13 @@ ALLOWED_CONFIG_KEYS <- c(
   "excluded_columns",
   "duplicate_key_strategy",
   "source_crs",
-  "impute_bulk_density"
+  "impute_bulk_density",
+  "targets",
+  "boruta_max_runs",
+  "min_support",
+  "refit",
+  "cv_folds",
+  "cv_repeats"
 )
 
 ALLOWED_ROLES <- c(
@@ -185,6 +191,26 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     }
   }
   
+  # 6b. Check targets shape and values
+  if (!is.null(cfg$targets)) {
+    if (!is.list(cfg$targets)) {
+      errors <- c(errors, msg("val_invalid_targets", lang, repo_root = repo_root))
+    } else {
+      for (idx in seq_along(cfg$targets)) {
+        tgt <- cfg$targets[[idx]]
+        if (!is.list(tgt) || is.null(tgt$property) || is.null(tgt$d1) || is.null(tgt$d2)) {
+          errors <- c(errors, msg("val_invalid_target_item", lang, idx, repo_root = repo_root))
+        } else {
+          d1_val <- suppressWarnings(as.numeric(tgt$d1))
+          d2_val <- suppressWarnings(as.numeric(tgt$d2))
+          if (is.na(d1_val) || is.na(d2_val) || d1_val >= d2_val) {
+            errors <- c(errors, msg("val_target_depths_order", lang, idx, repo_root = repo_root))
+          }
+        }
+      }
+    }
+  }
+
   # 7. Check configured columns against dataset columns (if provided)
   if (!is.null(data_cols) && length(data_cols) > 0) {
     # Check roles (supporting table.column syntax)
@@ -205,6 +231,19 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
         col_bare <- sub("^[^.]+\\.", "", col_name)
         if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
           errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+        }
+      }
+    }
+
+    # Check target properties
+    if (!is.null(cfg$targets) && is.list(cfg$targets)) {
+      for (tgt in cfg$targets) {
+        if (is.list(tgt) && !is.null(tgt$property)) {
+          col_name <- as.character(tgt$property)
+          col_bare <- sub("^[^.]+\\.", "", col_name)
+          if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
+            errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+          }
         }
       }
     }
