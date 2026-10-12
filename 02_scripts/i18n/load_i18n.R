@@ -40,7 +40,17 @@ load_catalog <- function(lang = "en", repo_root = NULL) {
   }
   
   if (file.exists(cat_file)) {
-    cat_data <- yaml::read_yaml(cat_file)
+    cat_data <- tryCatch(
+      {
+        con <- file(cat_file, encoding = "UTF-8")
+        on.exit(close(con), add = TRUE)
+        lines <- readLines(con, warn = FALSE, encoding = "UTF-8")
+        yaml::yaml.load(paste(lines, collapse = "\n"))
+      },
+      error = function(e) {
+        yaml::read_yaml(cat_file, fileEncoding = "UTF-8")
+      }
+    )
     assign(lang, cat_data, envir = .i18n_cache)
     return(cat_data)
   }

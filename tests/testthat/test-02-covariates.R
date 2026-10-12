@@ -133,3 +133,71 @@ test_that("Step 2 standardises depth, extracts covariates, and strictly isolates
   
   cleanup_test_project(proj_name)
 })
+
+test_that("Step 2 stops with validation error when target has d1 >= d2", {
+  proj_name <- "test_cov_invalid_depths"
+  cleanup_test_project(proj_name)
+  create_synthetic_dataset(proj_name, format = "csv", coords_type = "geographic")
+  create_synthetic_covariates(proj_name, crs = "EPSG:4326", n_layers = 1, mismatch = FALSE)
+  
+  cfg_path <- file.path(repo_root, "projects", proj_name, "config.json")
+  cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = FALSE)
+  cfg$input_file <- "data/profiles_data.csv"
+  cfg$roles <- list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower")
+  cfg$source_crs <- "EPSG:4326"
+  # Initially valid targets for steps 1.1 - 1.3
+  cfg$targets <- list(list(property = "soc", d1 = 0, d2 = 30))
+  jsonlite::write_json(cfg, cfg_path, auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("1.1", proj_name))
+  expect_true(run_step("1.2", proj_name))
+  expect_true(run_step("1.3", proj_name))
+  
+  # Now set inverted depths for Step 2: d1 >= d2 (30 >= 0)
+  cfg$targets <- list(list(property = "soc", d1 = 30, d2 = 0))
+  jsonlite::write_json(cfg, cfg_path, auto_unbox = TRUE, pretty = TRUE)
+  
+  success <- run_step("2", proj_name)
+  expect_false(success)
+  
+  err_file <- file.path(repo_root, "projects", proj_name, "reports", "20_error.txt")
+  expect_true(file.exists(err_file))
+  err_content <- readLines(err_file)
+  # Must contain validation message for target depth order (val_target_depths_order)
+  expect_true(any(grepl("d1 < d2|d1.*menor.*d2", err_content)))
+  
+  cleanup_test_project(proj_name)
+})
+
+test_that("Step 2 does not reject config entries for columns excluded in Step 1.1", {
+  proj_name <- "test_cov_excluded_cols"
+  cleanup_test_project(proj_name)
+  create_synthetic_dataset(proj_name, format = "csv", n_profiles = 20, coords_type = "geographic")
+  create_synthetic_covariates(proj_name, crs = "EPSG:4326", n_layers = 1, mismatch = FALSE)
+  
+  cfg_path <- file.path(repo_root, "projects", proj_name, "config.json")
+  cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = FALSE)
+  cfg$input_file <- "data/profiles_data.csv"
+  cfg$roles <- list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower")
+  cfg$source_crs <- "EPSG:4326"
+  # Category with excluded category and column
+  cfg$categories <- list(soc = "organic matter and density", clay = "texture", ph = "chemistry")
+  cfg$excluded_categories <- list("chemistry")
+  cfg$excluded_columns <- list("ph")
+  cfg$targets <- list(list(property = "soc", d1 = 0, d2 = 30))
+  jsonlite::write_json(cfg, cfg_path, auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("1.1", proj_name))
+  expect_true(run_step("1.2", proj_name))
+  expect_true(run_step("1.3", proj_name))
+  
+  # Step 2 must run cleanly without error despite ph not being in 03_clean.csv
+  success <- run_step("2", proj_name)
+  expect_true(success)
+  
+  out_csv <- file.path(repo_root, "projects", proj_name, "data", "04_cov_soc_0_30.csv")
+  expect_true(file.exists(out_csv))
+  
+  cleanup_test_project(proj_name)
+})
+

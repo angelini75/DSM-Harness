@@ -22,6 +22,9 @@ if (!exists("msg", mode = "function")) {
 if (!exists("record_decision", mode = "function")) {
   source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
 }
+if (!exists("validate_config", mode = "function")) {
+  source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "3", "3", repo_root = repo_root), call. = FALSE)
@@ -46,15 +49,55 @@ if (!exists("cfg", inherits = FALSE) || is.null(cfg)) {
 }
 lang <- cfg$language %||% "en"
 
+# Validate configuration
+clean_csv <- file.path(data_dir, "03_clean.csv")
+if (file.exists(clean_csv)) {
+  clean_cols <- names(readr::read_csv(clean_csv, n_max = 1, show_col_types = FALSE))
+  validate_config(cfg, data_cols = clean_cols, stop_on_error = TRUE, repo_root = repo_root, target_cols_only = TRUE)
+} else {
+  validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
+}
+
 # Targets selection
 all_targets <- cfg$targets
 if (is.null(all_targets) || length(all_targets) == 0) {
   stop(msg("model_no_targets", lang, repo_root = repo_root), call. = FALSE)
 }
 
+valid_target_ids <- character(0)
+for (tgt in all_targets) {
+  p <- as.character(tgt$property)
+  sp <- gsub("[^A-Za-z0-9_-]", "_", p)
+  tid <- sprintf("%s_%.0f_%.0f", sp, as.numeric(tgt$d1), as.numeric(tgt$d2))
+  valid_target_ids <- c(valid_target_ids, tid)
+}
+
 filter_targets <- NULL
 if (exists("targets", inherits = FALSE) && !is.null(targets)) {
   filter_targets <- as.character(targets)
+}
+
+if (!is.null(filter_targets)) {
+  matching_indices <- which(sapply(all_targets, function(tgt) {
+    p <- as.character(tgt$property)
+    sp <- gsub("[^A-Za-z0-9_-]", "_", p)
+    tid <- sprintf("%s_%.0f_%.0f", sp, as.numeric(tgt$d1), as.numeric(tgt$d2))
+    (p %in% filter_targets) || (sp %in% filter_targets) || (tid %in% filter_targets)
+  }))
+  if (length(matching_indices) == 0) {
+    err_msg <- msg(
+      "model_no_matching_targets", lang,
+      paste(filter_targets, collapse = ", "),
+      paste(valid_target_ids, collapse = ", "),
+      repo_root = repo_root
+    )
+    stop(err_msg, call. = FALSE)
+  }
+} else {
+  matching_indices <- which(sapply(all_targets, function(tgt) isTRUE(tgt$enabled %||% TRUE)))
+  if (length(matching_indices) == 0) {
+    stop(msg("model_no_targets", lang, repo_root = repo_root), call. = FALSE)
+  }
 }
 
 refit_flag <- isTRUE(if (exists("refit", inherits = FALSE)) refit else cfg$refit %||% FALSE)
@@ -99,23 +142,17 @@ calc_accuracy <- function(pred, obs) {
 processed_count <- 0
 
 for (idx in seq_along(all_targets)) {
+  if (!(idx %in% matching_indices)) {
+    next
+  }
+  
   tgt <- all_targets[[idx]]
   prop <- as.character(tgt$property)
   d1 <- as.numeric(tgt$d1)
   d2 <- as.numeric(tgt$d2)
-  is_enabled <- isTRUE(tgt$enabled %||% TRUE)
   
   safe_prop <- gsub("[^A-Za-z0-9_-]", "_", prop)
   target_id <- sprintf("%s_%.0f_%.0f", safe_prop, d1, d2)
-  
-  # Check if excluded by filter_targets
-  if (!is.null(filter_targets)) {
-    if (!(prop %in% filter_targets) && !(safe_prop %in% filter_targets) && !(target_id %in% filter_targets)) {
-      next
-    }
-  } else if (!is_enabled) {
-    next
-  }
   
   model_file <- file.path(models_dir, sprintf("%s.rds", target_id))
   metrics_file <- file.path(models_dir, sprintf("metrics_%s.json", target_id))
@@ -165,6 +202,7 @@ for (idx in seq_along(all_targets)) {
   # Training dataset preparation
   d <- dat_cov[, c(prop, candidate_preds), drop = FALSE]
   d <- na.omit(d)
+  log_out(msg("model_training_rows", lang, nrow(d), repo_root = repo_root))
   
   # Feature selection with Boruta
   max_runs <- as.integer(cfg$boruta_max_runs %||% 100)
@@ -177,6 +215,12 @@ for (idx in seq_along(all_targets)) {
     maxRuns = max_runs,
     doTrace = 0
   )
+  
+  decisions <- boruta_res$finalDecision
+  n_confirmed <- sum(decisions == "Confirmed")
+  n_tentative <- sum(decisions == "Tentative")
+  n_rejected <- sum(decisions == "Rejected")
+  log_out(msg("model_boruta_decisions", lang, n_confirmed, n_tentative, n_rejected, repo_root = repo_root))
   
   selected_features <- Boruta::getSelectedAttributes(boruta_res, withTentative = TRUE)
   if (length(selected_features) == 0) {

@@ -76,7 +76,7 @@ ALLOWED_LANGUAGES <- c(
   "es"
 )
 
-validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_root = NULL) {
+validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_root = NULL, target_cols_only = FALSE) {
   if (is.null(repo_root)) {
     if (exists("find_repo_root", mode = "function")) {
       repo_root <- find_repo_root()
@@ -213,29 +213,37 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
 
   # 7. Check configured columns against dataset columns (if provided)
   if (!is.null(data_cols) && length(data_cols) > 0) {
-    # Check roles (supporting table.column syntax)
-    if (!is.null(cfg$roles)) {
-      for (r in names(cfg$roles)) {
-        col_name <- as.character(cfg$roles[[r]])
-        # match exact col_name or stripped table prefix (e.g. "profiles.x" -> "x")
-        col_bare <- sub("^[^.]+\\.", "", col_name)
-        if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
-          errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+    if (!target_cols_only) {
+      # Check roles (supporting table.column syntax)
+      if (!is.null(cfg$roles)) {
+        for (r in names(cfg$roles)) {
+          col_name <- as.character(cfg$roles[[r]])
+          # match exact col_name or stripped table prefix (e.g. "profiles.x" -> "x")
+          col_bare <- sub("^[^.]+\\.", "", col_name)
+          if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
+            errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+          }
         }
       }
-    }
-    
-    # Check category mappings
-    if (!is.null(cat_map) && !isTRUE(shape_error_reported)) {
-      for (col_name in names(cat_map)) {
-        col_bare <- sub("^[^.]+\\.", "", col_name)
-        if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
-          errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+      
+      # Check category mappings (skipping columns dropped in excluded_categories or excluded_columns)
+      if (!is.null(cat_map) && !isTRUE(shape_error_reported)) {
+        excluded_cats <- unlist(cfg$excluded_categories %||% list())
+        excluded_cols <- unlist(cfg$excluded_columns %||% list())
+        for (col_name in names(cat_map)) {
+          cat_val <- as.character(cat_map[[col_name]])
+          if (cat_val %in% excluded_cats || col_name %in% excluded_cols) {
+            next
+          }
+          col_bare <- sub("^[^.]+\\.", "", col_name)
+          if (!(col_name %in% data_cols) && !(col_bare %in% data_cols)) {
+            errors <- c(errors, msg("val_col_not_found", lang, col_name, repo_root = repo_root))
+          }
         }
       }
     }
 
-    # Check target properties
+    # Check target properties (always checked against data_cols)
     if (!is.null(cfg$targets) && is.list(cfg$targets)) {
       for (tgt in cfg$targets) {
         if (is.list(tgt) && !is.null(tgt$property)) {

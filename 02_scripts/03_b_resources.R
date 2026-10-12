@@ -22,6 +22,9 @@ if (!exists("msg", mode = "function")) {
 if (!exists("record_decision", mode = "function")) {
   source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
 }
+if (!exists("validate_config", mode = "function")) {
+  source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "3b", "3b", repo_root = repo_root), call. = FALSE)
@@ -43,6 +46,9 @@ if (!exists("cfg", inherits = FALSE) || is.null(cfg)) {
   cfg <- jsonlite::fromJSON(config_path, simplifyVector = FALSE)
 }
 lang <- cfg$language %||% "en"
+
+# Validate configuration
+validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
 
 # 1. Hardware Inspection
 cores_total <- parallel::detectCores()
@@ -134,25 +140,25 @@ log_out("=======================================================================
 log_out(msg("res_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root = repo_root))
 log_out(msg("res_project", lang, project, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
-log_out("HARDWARE ENVIRONMENT:")
+log_out(msg("res_sec_hardware", lang, repo_root = repo_root))
 log_out(msg("res_hw_cores", lang, cores_total, worker_threads, repo_root = repo_root))
 log_out(msg("res_hw_ram", lang, ram_total_gb, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
-log_out("COVARIATE RASTER VOLUME:")
+log_out(msg("res_sec_raster", lang, repo_root = repo_root))
 log_out(msg("res_raster_dims", lang, r_cols, r_rows, r_cells, repo_root = repo_root))
 log_out(msg("res_raster_layers", lang, r_layers, repo_root = repo_root))
 log_out(msg("res_raster_extent", lang, r_ext[1], r_ext[2], r_ext[3], r_ext[4], repo_root = repo_root))
 log_out(msg("res_raster_res", lang, r_res[1], r_res[2], repo_root = repo_root))
 log_out(msg("res_raster_memory", lang, uncompressed_mb, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
-log_out("MODEL ARTIFACTS:")
+log_out(msg("res_sec_models", lang, repo_root = repo_root))
 if (length(model_files) > 0) {
   log_out(msg("res_models_found", lang, length(model_files), model_names, repo_root = repo_root))
 } else {
   log_out(msg("res_no_models", lang, repo_root = repo_root))
 }
 log_out("--------------------------------------------------------------------------------")
-log_out("STEP 4 TILING ADVISORY:")
+log_out(msg("res_sec_tiling", lang, repo_root = repo_root))
 log_out(msg("res_tiling_proposal", lang, total_tiles, tile_cols, tile_rows, tile_mb, repo_root = repo_root))
 log_out("================================================================================")
 log_out(msg("res_report_written", lang, report_file, repo_root = repo_root))

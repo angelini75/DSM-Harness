@@ -28,7 +28,7 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 | **1.2 Spatial** | `data/01_mapped.csv` | `data/02_spatial.csv`, `reports/12_spatial.txt` | Source CRS (from candidates); resulting lon/lat bounding box |
 | **1.3 Pedological** | `data/02_spatial.csv` | `data/03_clean.csv`, `reports/13_pedological.txt` | Bulk density estimation option; exclusions |
 | **2 Covariates** | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`, `reports/20_covariates_<prop>_<d1>_<d2>.txt` | Target properties and depth intervals |
-| **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics |
+| **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 | **3b Resources** | models, rasters | `reports/3b_resources.txt` | Number of tiles; groups of properties to predict |
 
 ---
@@ -69,17 +69,23 @@ Stored at `projects/<name>/config.json`. Validated before each execution.
   ```
   Allowed categories: `identification`, `location`, `depth`, `texture`, `organic matter and density`, `chemistry`, `salts and conductivity`, `nutrients`, `other`.
 - **`excluded_categories`**: Optional list of categories to drop.
+- **`excluded_columns`**: Optional list of column names to drop.
 - **`duplicate_key_strategy`**: `"fail"`, `"average"`, or `"keep_first"`.
 - **`source_crs`**: Target coordinate reference system (e.g. `"EPSG:32642"` or `"EPSG:4326"`).
 - **`impute_bulk_density`**: `true` or `false`. If true, estimates are written to separate column `bd_imputed`.
 - **`targets`**: Array of target objects defining property and depth intervals:
   ```json
   [
-    { "property": "clay", "d1": 0, "d2": 30 },
-    { "property": "clay", "d1": 30, "d2": 60 },
-    { "property": "soc", "d1": 0, "d2": 30 }
+    { "property": "clay", "d1": 0, "d2": 30, "enabled": true },
+    { "property": "clay", "d1": 30, "d2": 60, "enabled": true },
+    { "property": "soc", "d1": 0, "d2": 30, "enabled": false }
   ]
   ```
+  Each target specifies `property`, `d1` (top depth), `d2` (bottom depth, strictly $d1 < d2$), and optional `enabled` (boolean, default `true`). Disabled targets are skipped during Step 3 unless explicitly requested via `run_step("3", targets = c(...))`.
 - **`boruta_max_runs`**: Maximum iterations for Boruta feature selection (integer, default 100).
 - **`min_support`**: Minimum profile support thickness in cm for depth standardisation (numeric, default 5).
+- **`refit`**: Global default flag (`true` or `false`, default `false`) indicating whether existing models should be retrained and overwritten in Step 3. Can be overridden per run via `run_step("3", refit = TRUE)`.
+- **`cv_folds`**: Number of cross-validation folds for model tuning in Step 3 (integer, default 5).
+- **`cv_repeats`**: Number of cross-validation repeats for Repeated CV in Step 3 (integer, default 5).
+
 

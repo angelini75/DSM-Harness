@@ -22,6 +22,9 @@ if (!exists("msg", mode = "function")) {
 if (!exists("record_decision", mode = "function")) {
   source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
 }
+if (!exists("validate_config", mode = "function")) {
+  source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "2", "2", repo_root = repo_root), call. = FALSE)
@@ -59,6 +62,9 @@ if (!file.exists(in_csv)) {
 }
 
 df <- as.data.frame(readr::read_csv(in_csv, show_col_types = FALSE))
+
+# Validate configuration against 03_clean.csv columns
+validate_config(cfg, data_cols = names(df), stop_on_error = TRUE, repo_root = repo_root, target_cols_only = TRUE)
 
 resolve_col <- function(col_name) {
   if (is.null(col_name) || !nzchar(col_name)) return(NULL)
@@ -114,13 +120,13 @@ if (length(cov_files) > 1) {
     
     file_diffs <- character(0)
     if (!identical(crs1, crsi)) {
-      file_diffs <- c(file_diffs, sprintf("CRS mismatch: '%s' vs '%s'", crs1, crsi))
+      file_diffs <- c(file_diffs, msg("cov_diff_crs", lang, crs1, crsi, repo_root = repo_root))
     }
     if (!all(abs(res1 - resi) < 1e-6)) {
-      file_diffs <- c(file_diffs, sprintf("Resolution mismatch: [%s] vs [%s]", paste(res1, collapse = ", "), paste(resi, collapse = ", ")))
+      file_diffs <- c(file_diffs, msg("cov_diff_res", lang, paste(res1, collapse = ", "), paste(resi, collapse = ", "), repo_root = repo_root))
     }
     if (!all(abs(ext1 - exti) < 1e-4)) {
-      file_diffs <- c(file_diffs, sprintf("Extent mismatch: [%s] vs [%s]", paste(ext1, collapse = ", "), paste(exti, collapse = ", ")))
+      file_diffs <- c(file_diffs, msg("cov_diff_ext", lang, paste(ext1, collapse = ", "), paste(exti, collapse = ", "), repo_root = repo_root))
     }
     if (length(file_diffs) > 0) {
       mismatches <- c(mismatches, sprintf("  * %s vs %s: %s", basename(cov_files[1]), basename(cov_files[i]), paste(file_diffs, collapse = "; ")))
@@ -229,7 +235,7 @@ for (idx in seq_along(targets)) {
   
   if (n_valid_support == 0) {
     close(rep_con)
-    err_msg <- msg("cov_no_targets", lang, repo_root = repo_root)
+    err_msg <- msg("cov_no_profiles_support", lang, min_support_cfg, prop, d1, d2, repo_root = repo_root)
     stop(err_msg, call. = FALSE)
   }
   

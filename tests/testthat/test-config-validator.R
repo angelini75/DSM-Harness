@@ -118,5 +118,24 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   v_unk_prop <- validate_config(cfg_unknown_prop, data_cols = c("id", "x", "y", "upper", "lower", "clay"), stop_on_error = FALSE, repo_root = repo_root)
   expect_false(v_unk_prop$valid)
   expect_true(any(grepl("unknown_nutrient", v_unk_prop$errors)))
+
+  # 15. Config with excluded columns / categories is not rejected even if absent from data_cols
+  cfg_with_excluded <- base_valid_cfg
+  cfg_with_excluded$categories$dropped_var <- "other"
+  cfg_with_excluded$excluded_categories <- list("other")
+  cfg_with_excluded$excluded_columns <- list("dropped_var")
+  cfg_with_excluded$targets <- list(list(property = "clay", d1 = 0, d2 = 30))
+  # data_cols has clay but NOT dropped_var
+  v_excluded <- validate_config(cfg_with_excluded, data_cols = c("id", "x", "y", "upper", "lower", "clay"), stop_on_error = FALSE, repo_root = repo_root)
+  expect_true(v_excluded$valid)
+
+  # 16. In clean/covariates stage (target_cols_only = TRUE), categories missing from data_cols are ignored
+  cfg_clean_stage <- base_valid_cfg
+  cfg_clean_stage$categories$raw_only_col <- "texture" # not in clean data
+  cfg_clean_stage$targets <- list(list(property = "clay", d1 = 0, d2 = 30))
+  # With target_cols_only = TRUE, missing raw_only_col does not cause error
+  v_clean_stage <- validate_config(cfg_clean_stage, data_cols = c("id", "x", "y", "upper", "lower", "clay"), stop_on_error = FALSE, repo_root = repo_root, target_cols_only = TRUE)
+  expect_true(v_clean_stage$valid)
 })
+
 

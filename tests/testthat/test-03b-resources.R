@@ -55,6 +55,10 @@ test_that("Step 3b diagnoses hardware/raster volume and writes tiling advisory r
   expect_true(file.exists(rep_file))
   
   lines <- readLines(rep_file)
+  expect_true(any(grepl("HARDWARE ENVIRONMENT:|ENTORNO DE HARDWARE:", lines)))
+  expect_true(any(grepl("COVARIATE RASTER VOLUME:|VOLUMEN DE RÁSTER COVARIABLE:", lines)))
+  expect_true(any(grepl("MODEL ARTIFACTS:|ARTEFACTOS DE MODELOS:", lines)))
+  expect_true(any(grepl("STEP 4 TILING ADVISORY:|ASESORÍA DE TESELADO PARA PASO 4:", lines)))
   expect_true(any(grepl("CPU Cores|Núcleos de CPU", lines, ignore.case = TRUE)))
   expect_true(any(grepl("RAM", lines, ignore.case = TRUE)))
   expect_true(any(grepl("Raster Dimensions|Dimensiones del ráster", lines, ignore.case = TRUE)))

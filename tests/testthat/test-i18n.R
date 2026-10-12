@@ -43,7 +43,30 @@ test_that("Static check: no uncatalogued literal strings in script outputs or er
     }
   }
   
-  # 2. Patterns of English sentences that should be catalogued instead of hard-coded
+  # 2. Verify that log_out() calls only pass dividers or standard tag prefixes if using literal strings
+  for (sf in script_files) {
+    lines <- readLines(sf)
+    for (i in seq_along(lines)) {
+      l <- lines[i]
+      if (grepl("^\\s*#", l)) next
+      if (grepl("log_out\\s*\\(", l)) {
+        lit_match <- regmatches(l, regexpr('log_out\\s*\\(\\s*["\'][^"\']+["\']', l))
+        if (length(lit_match) > 0) {
+          content <- gsub('^log_out\\s*\\(\\s*["\']|["\']$', '', lit_match)
+          content_clean <- gsub('\\\\n', '', content)
+          is_allowed <- (nchar(content_clean) == 0) ||
+                        grepl('^[= -]+$', content_clean) ||
+                        grepl('^\\[(ERROR|NOTICE|INFO|IMPUTACI..N)\\] ?$', content_clean)
+          expect_true(
+            is_allowed,
+            info = sprintf("Non-divider literal string in log_out() at %s:%d: %s", basename(sf), i, l)
+          )
+        }
+      }
+    }
+  }
+
+  # 3. Patterns of English sentences that should be catalogued instead of hard-coded
   suspicious_patterns <- c(
     "Inspection completed",
     "Mapping completed",
@@ -57,7 +80,15 @@ test_that("Static check: no uncatalogued literal strings in script outputs or er
     "Join key error",
     "No non-NA coordinates",
     "Depth columns.*not found",
-    "must be run within a project context"
+    "must be run within a project context",
+    "HARDWARE ENVIRONMENT:",
+    "COVARIATE RASTER VOLUME:",
+    "MODEL ARTIFACTS:",
+    "STEP 4 TILING ADVISORY:",
+    "CRS mismatch",
+    "Resolution mismatch",
+    "Extent mismatch",
+    "No profiles have sufficient depth support"
   )
   
   for (sf in script_files) {
@@ -72,3 +103,27 @@ test_that("Static check: no uncatalogued literal strings in script outputs or er
     }
   }
 })
+
+test_that("es.yml loads correctly with UTF-8 encoding even when LC_CTYPE is C", {
+  old_lc <- Sys.getlocale("LC_CTYPE")
+  on.exit(try(Sys.setlocale("LC_CTYPE", old_lc), silent = TRUE), add = TRUE)
+  try(Sys.setlocale("LC_CTYPE", "C"), silent = TRUE)
+  
+  # Clear cache to force fresh disk reload
+  if (exists(".i18n_cache", mode = "environment")) {
+    rm(list = ls(envir = .i18n_cache), envir = .i18n_cache)
+  }
+  
+  cat_es <- load_catalog("es", repo_root = repo_root)
+  expect_true(is.list(cat_es))
+  expect_true(length(cat_es) > 0)
+  
+  # Check Spanish accented characters decode intact
+  expect_true(grepl("SELECCIÓN", cat_es$model_header, fixed = TRUE))
+  expect_true(grepl("ENTORNO DE HARDWARE:", cat_es$res_sec_hardware, fixed = TRUE))
+  expect_true(grepl("Categoría", cat_es$val_invalid_category, fixed = TRUE))
+  expect_true(grepl("inválida", cat_es$val_invalid_category, fixed = TRUE))
+  expect_true(grepl("extensión", cat_es$cov_outside_raster, fixed = TRUE))
+})
+
+
