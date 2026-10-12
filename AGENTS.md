@@ -30,6 +30,8 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 | **2 Covariates** | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`, `reports/20_covariates_<prop>_<d1>_<d2>.txt` | Target properties and depth intervals |
 | **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 | **3b Resources** | models, rasters | `reports/3b_resources.txt` | Number of tiles; groups of properties to predict |
+| **4 Predict** | models, `covariates/*.tif` | `outputs/maps/<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif`, `sd.tif`, `reports/40_prediction_<prop>_<d1>_<d2>.txt` | Tile scheme (`tiles: {cols, rows}`), `country_code`, `project_code`. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
+| **5 Report** | `data/04_cov_*.csv`, models, maps | `reports/report_<prop>_<d1>_<d2>.html`, `reports/50_report_<prop>_<d1>_<d2>.txt` | None; reviews HTML report. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 
 ---
 
@@ -87,5 +89,8 @@ Stored at `projects/<name>/config.json`. Validated before each execution.
 - **`refit`**: Global default flag (`true` or `false`, default `false`) indicating whether existing models should be retrained and overwritten in Step 3. Can be overridden per run via `run_step("3", refit = TRUE)`.
 - **`cv_folds`**: Number of cross-validation folds for model tuning in Step 3 (integer, default 5).
 - **`cv_repeats`**: Number of cross-validation repeats for Repeated CV in Step 3 (integer, default 5).
+- **`tiles`**: User-confirmed spatial tiling grid configuration for Step 4 prediction (object with positive integers `cols` and `rows`, matching scheme confirmed from `reports/3b_resources.txt`).
+- **`country_code`**: ISO 3166-1 alpha-3 code required for standard OpenNSIS raster product filenames in Step 4.
+- **`project_code`**: Project acronym required for standard OpenNSIS raster product filenames in Step 4.
 
 

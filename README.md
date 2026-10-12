@@ -80,6 +80,8 @@ projects/<name>/
    run_step("2", project = "MyProject")
    run_step("3", project = "MyProject", targets = c("clay", "soc_0_30"), refit = TRUE)
    run_step("3b", project = "MyProject")
+   run_step("4", project = "MyProject", targets = c("clay", "soc_0_30"), refit = TRUE)
+   run_step("5", project = "MyProject")
    ```
 
 ---

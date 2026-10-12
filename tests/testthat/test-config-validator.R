@@ -136,6 +136,31 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   # With target_cols_only = TRUE, missing raw_only_col does not cause error
   v_clean_stage <- validate_config(cfg_clean_stage, data_cols = c("id", "x", "y", "upper", "lower", "clay"), stop_on_error = FALSE, repo_root = repo_root, target_cols_only = TRUE)
   expect_true(v_clean_stage$valid)
+
+  # 17. Valid tiles, country_code, and project_code pass
+  cfg_m3 <- base_valid_cfg
+  cfg_m3$tiles <- list(cols = 4, rows = 4)
+  cfg_m3$country_code <- "TST"
+  cfg_m3$project_code <- "DEMO"
+  v_m3 <- validate_config(cfg_m3, stop_on_error = FALSE, repo_root = repo_root)
+  expect_true(v_m3$valid)
+
+  # 18. Invalid tiles rejected
+  cfg_bad_tiles1 <- base_valid_cfg
+  cfg_bad_tiles1$tiles <- list(cols = 4) # missing rows
+  v_bad_tiles1 <- validate_config(cfg_bad_tiles1, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_tiles1$valid)
+
+  cfg_bad_tiles2 <- base_valid_cfg
+  cfg_bad_tiles2$tiles <- list(cols = 0, rows = 4) # cols < 1
+  v_bad_tiles2 <- validate_config(cfg_bad_tiles2, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_tiles2$valid)
+
+  # 19. Empty country_code and project_code rejected
+  cfg_bad_code <- base_valid_cfg
+  cfg_bad_code$country_code <- ""
+  v_bad_code <- validate_config(cfg_bad_code, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_code$valid)
 })
 
 

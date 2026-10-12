@@ -5,6 +5,7 @@
 .RData
 .Rproj.user/
 .Ruserdata/
+Rplots.pdf
 
 # Temporary and heavy cache files
 terra_tmp/

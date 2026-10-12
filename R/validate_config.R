@@ -31,7 +31,10 @@ ALLOWED_CONFIG_KEYS <- c(
   "min_support",
   "refit",
   "cv_folds",
-  "cv_repeats"
+  "cv_repeats",
+  "tiles",
+  "country_code",
+  "project_code"
 )
 
 ALLOWED_ROLES <- c(
@@ -208,6 +211,31 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
           }
         }
       }
+    }
+  }
+
+  # 6c. Check tiles if present
+  if (!is.null(cfg$tiles)) {
+    if (!is.list(cfg$tiles) || is.null(cfg$tiles$cols) || is.null(cfg$tiles$rows)) {
+      errors <- c(errors, msg("val_invalid_tiles_shape", lang, repo_root = repo_root))
+    } else {
+      cols_val <- suppressWarnings(as.numeric(cfg$tiles$cols))
+      rows_val <- suppressWarnings(as.numeric(cfg$tiles$rows))
+      if (is.na(cols_val) || cols_val < 1 || is.na(rows_val) || rows_val < 1) {
+        errors <- c(errors, msg("val_invalid_tiles_values", lang, repo_root = repo_root))
+      }
+    }
+  }
+
+  # 6d. Check country_code and project_code if present
+  if (!is.null(cfg$country_code)) {
+    if (!is.character(cfg$country_code) || length(cfg$country_code) != 1 || !nzchar(trimws(cfg$country_code))) {
+      errors <- c(errors, msg("val_invalid_code_field", lang, "country_code", repo_root = repo_root))
+    }
+  }
+  if (!is.null(cfg$project_code)) {
+    if (!is.character(cfg$project_code) || length(cfg$project_code) != 1 || !nzchar(trimws(cfg$project_code))) {
+      errors <- c(errors, msg("val_invalid_code_field", lang, "project_code", repo_root = repo_root))
     }
   }
 

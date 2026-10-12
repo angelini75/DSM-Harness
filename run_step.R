@@ -49,7 +49,11 @@ find_repo_root <- function(start_dir = getwd()) {
     "03"   = "03_model.R",
     "3b"   = "03_b_resources.R",
     "03_b" = "03_b_resources.R",
-    "03b"  = "03_b_resources.R"
+    "03b"  = "03_b_resources.R",
+    "4"    = "04_predict.R",
+    "04"   = "04_predict.R",
+    "5"    = "05_report.R",
+    "05"   = "05_report.R"
   )
   mapping[[step_str]]
 }
@@ -94,6 +98,8 @@ new_project <- function(name, language = "en", repo_root = NULL) {
     file.path(proj_dir, "reports"),
     file.path(proj_dir, "covariates"),
     file.path(proj_dir, "outputs"),
+    file.path(proj_dir, "outputs", "models"),
+    file.path(proj_dir, "outputs", "maps"),
     file.path(proj_dir, "custom")
   )
   
