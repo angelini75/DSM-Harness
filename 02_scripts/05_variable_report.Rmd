@@ -32,6 +32,11 @@ if (!exists("msg", mode = "function")) {
   if (file.exists(i18n_path)) source(i18n_path, local = FALSE)
 }
 
+if (!exists("parse_cog_attributes", mode = "function")) {
+  targets_path <- file.path(params$repo_root, "R", "targets.R")
+  if (file.exists(targets_path)) source(targets_path, local = FALSE)
+}
+
 tr <- function(key, ...) {
   msg(key, params$lang, ..., repo_root = params$repo_root)
 }
@@ -63,12 +68,13 @@ sd_r   <- if (file.exists(params$sd_map_path)) terra::rast(params$sd_map_path) e
 
 ```{r obs_plots}
 if (!is.null(dat) && "x" %in% names(dat) && "y" %in% names(dat)) {
-  par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+  par(mfrow = c(1, 2), mar = c(4, 4, 3.5, 1))
   plot(
     dat$x, dat$y,
     pch = 19, cex = 0.8, col = "#2c3e50",
-    xlab = "X", ylab = "Y",
-    main = tr("rmd_obs_map_title")
+    xlab = tr("rmd_lbl_coord_x"), ylab = tr("rmd_lbl_coord_y"),
+    main = tr("rmd_obs_map_title"),
+    cex.main = 0.85
   )
   grid()
   
@@ -80,7 +86,9 @@ if (!is.null(dat) && "x" %in% names(dat) && "y" %in% names(dat)) {
       vals,
       col = "#3498db", border = "white",
       xlab = params$property,
-      main = tr("rmd_obs_hist_title")
+      ylab = tr("rmd_lbl_frequency"),
+      main = tr("rmd_obs_hist_title"),
+      cex.main = 0.85
     )
   }
 }
@@ -90,18 +98,29 @@ if (!is.null(dat) && "x" %in% names(dat) && "y" %in% names(dat)) {
 
 ## `r tr("rmd_sec_model")`
 
+### `r tr("rmd_sec_model_spec")`
+
+- **`r tr("rmd_lbl_algorithm")`:** `r if (!is.null(metrics_obj$algorithm)) metrics_obj$algorithm else tr("rmd_val_not_evaluated")`
+- **`r tr("rmd_lbl_train_rows")`:** `r if (!is.null(metrics_obj$training_rows)) sprintf("n = %d", as.integer(metrics_obj$training_rows)) else tr("rmd_val_not_evaluated")`
+- **`r tr("rmd_lbl_boruta_decisions")`:** `r if (!is.null(metrics_obj$boruta_confirmed)) sprintf(tr("model_boruta_decisions"), as.integer(metrics_obj$boruta_confirmed), as.integer(metrics_obj$boruta_tentative), as.integer(metrics_obj$boruta_rejected)) else tr("rmd_val_not_evaluated")`
+- **`r tr("rmd_lbl_hyperparams")`:** `r if (!is.null(metrics_obj$hyperparameters) && !is.null(metrics_obj$hyperparameters$mtry)) sprintf("mtry = %d, splitrule = '%s', min.node.size = %d", as.integer(metrics_obj$hyperparameters$mtry), as.character(metrics_obj$hyperparameters$splitrule), as.integer(metrics_obj$hyperparameters$min_node_size)) else tr("rmd_val_not_evaluated")`
+- **`r tr("rmd_lbl_cores_time")`:** `r if (!is.null(metrics_obj$cores_used) && !is.null(metrics_obj$elapsed_seconds)) sprintf(tr("model_cores_time"), as.integer(metrics_obj$cores_used), as.numeric(metrics_obj$elapsed_seconds)) else tr("rmd_val_not_evaluated")`
+
 ### `r tr("rmd_cv_title")`
 
 ```{r cv_metrics_table}
 if (!is.null(metrics_obj)) {
+  fmt_val <- function(val) {
+    if (is.null(val) || length(val) == 0 || is.na(val)) tr("rmd_val_not_evaluated") else sprintf("%.4f", as.numeric(val))
+  }
   metrics_df <- data.frame(
-    ME = round(metrics_obj$ME, 4),
-    MAE = round(metrics_obj$MAE, 4),
-    RMSE = round(metrics_obj$RMSE, 4),
-    R2 = round(metrics_obj$r2, 4),
-    MEC = round(metrics_obj$MEC, 4),
-    CCC = round(metrics_obj$rhoC, 4),
-    Cb = round(metrics_obj$Cb, 4)
+    ME = fmt_val(metrics_obj$ME %||% metrics_obj$me),
+    MAE = fmt_val(metrics_obj$MAE %||% metrics_obj$mae),
+    RMSE = fmt_val(metrics_obj$RMSE %||% metrics_obj$rmse),
+    R2 = fmt_val(metrics_obj$r2 %||% metrics_obj$R2),
+    MEC = fmt_val(metrics_obj$MEC %||% metrics_obj$mec),
+    CCC = fmt_val(metrics_obj$rhoC %||% metrics_obj$CCC),
+    Cb = fmt_val(metrics_obj$Cb %||% metrics_obj$cb)
   )
   knitr::kable(metrics_df, format = "html", table.attr = "class='table table-striped table-bordered'")
 }
@@ -127,8 +146,9 @@ if (!is.null(model_obj) && !is.null(model_obj$pred)) {
       preds_df$obs, preds_df$pred,
       pch = 19, cex = 0.8, col = rgb(0.17, 0.24, 0.31, 0.5),
       xlim = lims, ylim = lims,
-      xlab = "Observed", ylab = "Predicted",
-      main = tr("rmd_scatter_title")
+      xlab = tr("rmd_lbl_observed"), ylab = tr("rmd_lbl_predicted"),
+      main = tr("rmd_scatter_title"),
+      cex.main = 0.85
     )
     abline(a = 0, b = 1, col = "red", lwd = 2, lty = 2)
     grid()
@@ -159,7 +179,8 @@ if (!is.null(ranger_mod) && !is.null(ranger_mod$variable.importance)) {
     imp_top,
     horiz = TRUE, las = 1,
     col = "#1abc9c", border = "white",
-    xlab = "Importance"
+    xlab = tr("rmd_lbl_importance"),
+    cex.main = 0.85
   )
   grid(nx = NULL, ny = NA)
 }
@@ -190,7 +211,9 @@ if (!is.null(sd_r)) {
 ## `r tr("rmd_sec_cog")`
 
 ```{r cog_info}
-cog_status <- "Unknown"
+mean_attrs <- parse_cog_attributes(params$mean_map_path)
+sd_attrs   <- parse_cog_attributes(params$sd_map_path)
+
 mean_crs <- "Unknown"
 mean_res <- "Unknown"
 
@@ -201,17 +224,12 @@ if (!is.null(mean_r)) {
   mean_res <- sprintf("%.6f, %.6f", res_vals[1], res_vals[2])
 }
 
-if (file.exists(params$mean_map_path)) {
-  desc <- terra::describe(params$mean_map_path)
-  if (any(grepl("LAYOUT=COG", desc))) {
-    cog_status <- tr("pred_cog_verified")
-  } else {
-    cog_status <- tr("pred_cog_fallback")
-  }
-}
+is_both_cog <- isTRUE(mean_attrs$is_cog) && isTRUE(sd_attrs$is_cog)
+format_display <- if (is_both_cog) tr("rmd_format_cog") else tr("rmd_format_geotiff")
 ```
 
-- **`r tr("rmd_cog_format")`:** Cloud-Optimized GeoTIFF (OpenNSIS / GloSIS Profile)
-- **`r tr("rmd_cog_verification")`:** `r cog_status`
+- **`r tr("rmd_cog_format")`:** `r format_display`
+- **`r tr("rmd_lbl_mean_map")` (`r basename(params$mean_map_path)`):** `r if (!is.null(mean_attrs)) sprintf("LAYOUT=%s, COMPRESSION=%s, BLOCK=%s, PREDICTOR=%s, NoData=%s", mean_attrs$layout, mean_attrs$compression, mean_attrs$block, mean_attrs$predictor, mean_attrs$nodata) else "Unknown"`
+- **`r tr("rmd_lbl_sd_map")` (`r basename(params$sd_map_path)`):** `r if (!is.null(sd_attrs)) sprintf("LAYOUT=%s, COMPRESSION=%s, BLOCK=%s, PREDICTOR=%s, NoData=%s", sd_attrs$layout, sd_attrs$compression, sd_attrs$block, sd_attrs$predictor, sd_attrs$nodata) else "Unknown"`
 - **`r tr("rmd_cog_res")`:** `r mean_res`
 - **`r tr("rmd_cog_crs")`:** `r mean_crs`

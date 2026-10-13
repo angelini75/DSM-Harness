@@ -45,6 +45,10 @@ if (!exists("proj_root") || is.null(proj_root)) {
 decisions_path <- file.path(repo_root, "R", "decisions.R")
 if (file.exists(decisions_path)) source(decisions_path, local = FALSE)
 
+# Load targets helper
+targets_path <- file.path(repo_root, "R", "targets.R")
+if (file.exists(targets_path)) source(targets_path, local = FALSE)
+
 # Load config validator
 val_path <- file.path(repo_root, "R", "validate_config.R")
 if (file.exists(val_path)) source(val_path, local = FALSE)
@@ -58,6 +62,12 @@ if (!file.exists(config_file)) {
 cfg <- jsonlite::fromJSON(config_file, simplifyVector = FALSE)
 lang <- cfg$language %||% "en"
 project <- cfg$project %||% basename(proj_root)
+
+# Ensure ranger namespace is loaded for predict.ranger S3 method
+if (!requireNamespace("ranger", quietly = TRUE)) {
+  stop(msg("pred_ranger_required", lang, repo_root = repo_root), call. = FALSE)
+}
+loadNamespace("ranger")
 
 # Validate config against clean data columns
 clean_file <- file.path(proj_root, "data", "03_clean.csv")
@@ -112,7 +122,20 @@ if (length(configured_targets) == 0) {
   stop(msg("pred_no_targets", lang, repo_root = repo_root), call. = FALSE)
 }
 
-# Build valid target IDs
+# Precision 2: Per-target code is required when Step 4 starts (no defaults, no example codes)
+missing_code_targets <- character(0)
+for (idx in seq_along(configured_targets)) {
+  tgt <- configured_targets[[idx]]
+  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
+    tgt_id <- get_target_id(tgt$property %||% paste0("target_", idx), tgt$d1 %||% 0, tgt$d2 %||% 0)
+    missing_code_targets <- c(missing_code_targets, tgt_id)
+  }
+}
+if (length(missing_code_targets) > 0) {
+  stop(msg("pred_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
+}
+
+# Build valid target IDs using canonical get_target_id
 all_target_specs <- list()
 all_target_ids <- character(0)
 
@@ -121,18 +144,14 @@ for (idx in seq_along(configured_targets)) {
   prop <- tgt$property
   d1 <- tgt$d1
   d2 <- tgt$d2
-  safe_prop <- make.names(prop)
-  d1_str <- gsub("\\.", "_", as.character(d1))
-  d2_str <- gsub("\\.", "_", as.character(d2))
-  safe_id <- sprintf("%s_%s_%s", safe_prop, d1_str, d2_str)
-  alt_id <- sprintf("%s_%s_%s", prop, d1_str, d2_str)
+  target_id <- get_target_id(prop, d1, d2)
   
-  tgt$safe_id <- safe_id
-  tgt$alt_id <- alt_id
+  tgt$target_id <- target_id
+  tgt$safe_id <- target_id
   tgt$idx <- idx
   
   all_target_specs[[idx]] <- tgt
-  all_target_ids <- c(all_target_ids, safe_id)
+  all_target_ids <- c(all_target_ids, target_id)
 }
 
 # Filter by runner argument 'targets' if provided
@@ -141,7 +160,7 @@ runner_targets <- if (exists("targets") && !is.null(targets)) targets else NULL
 
 if (!is.null(runner_targets) && length(runner_targets) > 0) {
   for (tgt in all_target_specs) {
-    if (tgt$safe_id %in% runner_targets || tgt$alt_id %in% runner_targets || tgt$property %in% runner_targets) {
+    if (tgt$target_id %in% runner_targets || tgt$property %in% runner_targets || (!is.null(tgt$code) && tgt$code %in% runner_targets)) {
       selected_targets[[length(selected_targets) + 1]] <- tgt
     }
   }
@@ -208,23 +227,22 @@ write_and_verify_cog <- function(rast_obj, out_path, lang, repo_root) {
   }
   unlink(tmp_tif)
   
-  # Step 3: Verify COG layout
-  desc <- terra::describe(out_path)
-  is_real_cog <- any(grepl("LAYOUT=COG", desc))
+  # Step 3: Verify COG layout and extract dynamic attributes (Item 5)
+  attrs <- parse_cog_attributes(out_path)
+  fname <- basename(out_path)
+  status_tag <- if (isTRUE(attrs$is_cog)) "VERIFIED_COG" else "FALLBACK_GEOTIFF"
   
-  if (is_real_cog) {
-    list(
-      status = "VERIFIED_COG",
-      is_cog = TRUE,
-      text = msg("pred_cog_verified", lang, repo_root = repo_root)
-    )
-  } else {
-    list(
-      status = "FALLBACK_GEOTIFF",
-      is_cog = FALSE,
-      text = msg("pred_cog_fallback", lang, repo_root = repo_root)
-    )
-  }
+  log_line <- sprintf(
+    "%s: %s (LAYOUT=%s, COMPRESSION=%s, BLOCK=%s, PREDICTOR=%s, NoData=%s)",
+    fname, status_tag, attrs$layout, attrs$compression, attrs$block, attrs$predictor, attrs$nodata
+  )
+  
+  list(
+    status = status_tag,
+    is_cog = isTRUE(attrs$is_cog),
+    attributes = attrs,
+    text = log_line
+  )
 }
 
 # Prediction function for Quantile Regression Forest
@@ -237,14 +255,18 @@ for (tgt in selected_targets) {
   prop <- tgt$property
   d1 <- tgt$d1
   d2 <- tgt$d2
-  safe_id <- tgt$safe_id
+  target_id <- tgt$target_id
+  safe_id <- target_id
   
-  d1_int <- as.character(d1)
-  d2_int <- as.character(d2)
+  d1_num <- as.numeric(d1)
+  d2_num <- as.numeric(d2)
+  d1_str <- if (d1_num == floor(d1_num)) sprintf("%.0f", d1_num) else gsub("\\.", "_", as.character(d1_num))
+  d2_str <- if (d2_num == floor(d2_num)) sprintf("%.0f", d2_num) else gsub("\\.", "_", as.character(d2_num))
   
-  # Standard OpenNSIS filenames
-  mean_filename <- sprintf("%s-%s-%s-%s-%s-mean.tif", country_code, project_code, toupper(prop), d1_int, d2_int)
-  sd_filename   <- sprintf("%s-%s-%s-%s-%s-sd.tif",   country_code, project_code, toupper(prop), d1_int, d2_int)
+  # Standard OpenNSIS filenames using user-confirmed 'code' AS TYPED (no toupper, Precision 2)
+  prop_code <- as.character(tgt$code)
+  mean_filename <- sprintf("%s-%s-%s-%s-%s-mean.tif", country_code, project_code, prop_code, d1_str, d2_str)
+  sd_filename   <- sprintf("%s-%s-%s-%s-%s-sd.tif",   country_code, project_code, prop_code, d1_str, d2_str)
   mean_path     <- file.path(maps_dir, mean_filename)
   sd_path       <- file.path(maps_dir, sd_filename)
   
@@ -259,12 +281,7 @@ for (tgt in selected_targets) {
   # Locate trained model
   model_file <- file.path(proj_root, "outputs", "models", paste0(safe_id, ".rds"))
   if (!file.exists(model_file)) {
-    fallback_file <- file.path(proj_root, "outputs", "models", sprintf("%s_%s_%s.rds", prop, gsub("\\.", "_", as.character(d1)), gsub("\\.", "_", as.character(d2))))
-    if (file.exists(fallback_file)) {
-      model_file <- fallback_file
-    } else {
-      stop(msg("pred_missing_model", lang, safe_id, model_file, repo_root = repo_root), call. = FALSE)
-    }
+    stop(msg("pred_missing_model", lang, safe_id, model_file, repo_root = repo_root), call. = FALSE)
   }
   
   model <- readRDS(model_file)
@@ -358,6 +375,9 @@ for (tgt in selected_targets) {
   
   sd_cog <- write_and_verify_cog(sd_mosaic, sd_path, lang, repo_root)
   log_out(sd_cog$text)
+  
+  # Precision 2: Print final filenames to console
+  cat(sprintf(msg("pred_files_generated", lang, repo_root = repo_root), mean_filename, sd_filename), "\n")
   
   # Clean up tile temporary directory
   unlink(tile_dir, recursive = TRUE)

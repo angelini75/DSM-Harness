@@ -93,6 +93,11 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     if (file.exists(i18n_path)) source(i18n_path, local = FALSE)
   }
   
+  if (!exists("get_target_id", mode = "function")) {
+    targets_path <- file.path(repo_root, "R", "targets.R")
+    if (file.exists(targets_path)) source(targets_path, local = FALSE)
+  }
+  
   lang <- cfg$language %||% "en"
   errors <- character(0)
   
@@ -199,6 +204,9 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     if (!is.list(cfg$targets)) {
       errors <- c(errors, msg("val_invalid_targets", lang, repo_root = repo_root))
     } else {
+      target_ids <- character(0)
+      target_code_tuples <- character(0)
+
       for (idx in seq_along(cfg$targets)) {
         tgt <- cfg$targets[[idx]]
         if (!is.list(tgt) || is.null(tgt$property) || is.null(tgt$d1) || is.null(tgt$d2)) {
@@ -208,8 +216,38 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
           d2_val <- suppressWarnings(as.numeric(tgt$d2))
           if (is.na(d1_val) || is.na(d2_val) || d1_val >= d2_val) {
             errors <- c(errors, msg("val_target_depths_order", lang, idx, repo_root = repo_root))
+          } else {
+            # Collect canonical target ID
+            tid <- get_target_id(tgt$property, d1_val, d2_val)
+            target_ids <- c(target_ids, tid)
+
+            # Format validation for per-target code whenever present
+            if (!is.null(tgt$code)) {
+              c_val <- as.character(tgt$code)
+              if (length(tgt$code) != 1 || !nzchar(c_val) || !grepl("^[A-Za-z0-9_]+$", c_val)) {
+                errors <- c(errors, msg("val_invalid_target_code", lang, idx, c_val, repo_root = repo_root))
+              } else {
+                # Tuple for code + d1 + d2 uniqueness
+                d1_str <- gsub("\\.", "_", as.character(d1_val))
+                d2_str <- gsub("\\.", "_", as.character(d2_val))
+                code_tuple <- sprintf("%s_%s_%s", c_val, d1_str, d2_str)
+                target_code_tuples <- c(target_code_tuples, code_tuple)
+              }
+            }
           }
         }
+      }
+
+      # Validate target_ids uniqueness across targets
+      if (length(target_ids) > 0 && any(duplicated(target_ids))) {
+        dup_ids <- unique(target_ids[duplicated(target_ids)])
+        errors <- c(errors, msg("val_duplicate_target_id", lang, paste(dup_ids, collapse = ", "), repo_root = repo_root))
+      }
+
+      # Validate that no two targets share the same code + d1 + d2
+      if (length(target_code_tuples) > 0 && any(duplicated(target_code_tuples))) {
+        dup_codes <- unique(target_code_tuples[duplicated(target_code_tuples)])
+        errors <- c(errors, msg("val_duplicate_target_code", lang, paste(dup_codes, collapse = ", "), repo_root = repo_root))
       }
     }
   }

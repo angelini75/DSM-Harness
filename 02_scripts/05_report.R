@@ -45,6 +45,10 @@ if (!exists("proj_root") || is.null(proj_root)) {
 decisions_path <- file.path(repo_root, "R", "decisions.R")
 if (file.exists(decisions_path)) source(decisions_path, local = FALSE)
 
+# Load targets helper
+targets_path <- file.path(repo_root, "R", "targets.R")
+if (file.exists(targets_path)) source(targets_path, local = FALSE)
+
 # Load config validator
 val_path <- file.path(repo_root, "R", "validate_config.R")
 if (file.exists(val_path)) source(val_path, local = FALSE)
@@ -87,7 +91,20 @@ if (length(configured_targets) == 0) {
   stop(msg("report_no_targets", lang, repo_root = repo_root), call. = FALSE)
 }
 
-# Build valid target IDs
+# Precision 2: Per-target code is required when Step 5 starts (no defaults, no example codes)
+missing_code_targets <- character(0)
+for (idx in seq_along(configured_targets)) {
+  tgt <- configured_targets[[idx]]
+  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
+    tgt_id <- get_target_id(tgt$property %||% paste0("target_", idx), tgt$d1 %||% 0, tgt$d2 %||% 0)
+    missing_code_targets <- c(missing_code_targets, tgt_id)
+  }
+}
+if (length(missing_code_targets) > 0) {
+  stop(msg("report_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
+}
+
+# Build valid target IDs using canonical get_target_id
 all_target_specs <- list()
 all_target_ids <- character(0)
 
@@ -96,18 +113,14 @@ for (idx in seq_along(configured_targets)) {
   prop <- tgt$property
   d1 <- tgt$d1
   d2 <- tgt$d2
-  safe_prop <- make.names(prop)
-  d1_str <- gsub("\\.", "_", as.character(d1))
-  d2_str <- gsub("\\.", "_", as.character(d2))
-  safe_id <- sprintf("%s_%s_%s", safe_prop, d1_str, d2_str)
-  alt_id <- sprintf("%s_%s_%s", prop, d1_str, d2_str)
+  target_id <- get_target_id(prop, d1, d2)
   
-  tgt$safe_id <- safe_id
-  tgt$alt_id <- alt_id
+  tgt$target_id <- target_id
+  tgt$safe_id <- target_id
   tgt$idx <- idx
   
   all_target_specs[[idx]] <- tgt
-  all_target_ids <- c(all_target_ids, safe_id)
+  all_target_ids <- c(all_target_ids, target_id)
 }
 
 # Filter by runner argument 'targets' if provided
@@ -116,7 +129,7 @@ runner_targets <- if (exists("targets") && !is.null(targets)) targets else NULL
 
 if (!is.null(runner_targets) && length(runner_targets) > 0) {
   for (tgt in all_target_specs) {
-    if (tgt$safe_id %in% runner_targets || tgt$alt_id %in% runner_targets || tgt$property %in% runner_targets) {
+    if (tgt$target_id %in% runner_targets || tgt$property %in% runner_targets || (!is.null(tgt$code) && tgt$code %in% runner_targets)) {
       selected_targets[[length(selected_targets) + 1]] <- tgt
     }
   }
@@ -147,34 +160,38 @@ for (tgt in selected_targets) {
   prop <- tgt$property
   d1 <- tgt$d1
   d2 <- tgt$d2
-  safe_id <- tgt$safe_id
+  target_id <- tgt$target_id
+  safe_id <- target_id
   
-  d1_int <- as.character(d1)
-  d2_int <- as.character(d2)
+  d1_num <- as.numeric(d1)
+  d2_num <- as.numeric(d2)
+  d1_str <- if (d1_num == floor(d1_num)) sprintf("%.0f", d1_num) else gsub("\\.", "_", as.character(d1_num))
+  d2_str <- if (d2_num == floor(d2_num)) sprintf("%.0f", d2_num) else gsub("\\.", "_", as.character(d2_num))
   
-  html_file   <- file.path(rep_dir, sprintf("report_%s.html", safe_id))
-  report_file <- file.path(rep_dir, sprintf("50_report_%s.txt", safe_id))
+  html_file   <- file.path(rep_dir, sprintf("report_%s.html", target_id))
+  report_file <- file.path(rep_dir, sprintf("50_report_%s.txt", target_id))
   
   # Precision 3: Skip existing reports unless refit
   if (file.exists(html_file) && !refit_flag) {
-    cat(sprintf(msg("report_skipping_existing", lang, repo_root = repo_root), safe_id, safe_id), "\n")
+    cat(sprintf(msg("report_skipping_existing", lang, repo_root = repo_root), target_id, target_id), "\n")
     next
   }
   
-  # Check prediction maps
-  mean_filename <- sprintf("%s-%s-%s-%s-%s-mean.tif", country_code, project_code, toupper(prop), d1_int, d2_int)
-  sd_filename   <- sprintf("%s-%s-%s-%s-%s-sd.tif",   country_code, project_code, toupper(prop), d1_int, d2_int)
+  # Check prediction maps using user-confirmed 'code' AS TYPED (no toupper, Precision 2)
+  prop_code <- as.character(tgt$code)
+  mean_filename <- sprintf("%s-%s-%s-%s-%s-mean.tif", country_code, project_code, prop_code, d1_str, d2_str)
+  sd_filename   <- sprintf("%s-%s-%s-%s-%s-sd.tif",   country_code, project_code, prop_code, d1_str, d2_str)
   mean_path     <- file.path(maps_dir, mean_filename)
   sd_path       <- file.path(maps_dir, sd_filename)
   
   if (!file.exists(mean_path) || !file.exists(sd_path)) {
-    stop(msg("report_missing_maps", lang, safe_id, repo_root = repo_root), call. = FALSE)
+    stop(msg("report_missing_maps", lang, target_id, repo_root = repo_root), call. = FALSE)
   }
   
   # Check model and data files
-  cov_data_file <- file.path(proj_root, "data", sprintf("04_cov_%s.csv", safe_id))
-  model_file    <- file.path(proj_root, "outputs", "models", paste0(safe_id, ".rds"))
-  metrics_file  <- file.path(proj_root, "outputs", "models", paste0("metrics_", safe_id, ".json"))
+  cov_data_file <- file.path(proj_root, "data", sprintf("04_cov_%s.csv", target_id))
+  model_file    <- file.path(proj_root, "outputs", "models", paste0(target_id, ".rds"))
+  metrics_file  <- file.path(proj_root, "outputs", "models", paste0("metrics_", target_id, ".json"))
   
   rep_con <- file(report_file, open = "wt", encoding = "UTF-8")
   log_out <- function(txt) {

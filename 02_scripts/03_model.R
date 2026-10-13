@@ -25,6 +25,9 @@ if (!exists("record_decision", mode = "function")) {
 if (!exists("validate_config", mode = "function")) {
   source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
 }
+if (!exists("get_target_id", mode = "function")) {
+  source(file.path(repo_root, "R", "targets.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "3", "3", repo_root = repo_root), call. = FALSE)
@@ -66,9 +69,7 @@ if (is.null(all_targets) || length(all_targets) == 0) {
 
 valid_target_ids <- character(0)
 for (tgt in all_targets) {
-  p <- as.character(tgt$property)
-  sp <- gsub("[^A-Za-z0-9_-]", "_", p)
-  tid <- sprintf("%s_%.0f_%.0f", sp, as.numeric(tgt$d1), as.numeric(tgt$d2))
+  tid <- get_target_id(tgt$property, tgt$d1, tgt$d2)
   valid_target_ids <- c(valid_target_ids, tid)
 }
 
@@ -81,7 +82,7 @@ if (!is.null(filter_targets)) {
   matching_indices <- which(sapply(all_targets, function(tgt) {
     p <- as.character(tgt$property)
     sp <- gsub("[^A-Za-z0-9_-]", "_", p)
-    tid <- sprintf("%s_%.0f_%.0f", sp, as.numeric(tgt$d1), as.numeric(tgt$d2))
+    tid <- get_target_id(tgt$property, tgt$d1, tgt$d2)
     (p %in% filter_targets) || (sp %in% filter_targets) || (tid %in% filter_targets)
   }))
   if (length(matching_indices) == 0) {
@@ -152,7 +153,7 @@ for (idx in seq_along(all_targets)) {
   d2 <- as.numeric(tgt$d2)
   
   safe_prop <- gsub("[^A-Za-z0-9_-]", "_", prop)
-  target_id <- sprintf("%s_%.0f_%.0f", safe_prop, d1, d2)
+  target_id <- get_target_id(prop, d1, d2)
   
   model_file <- file.path(models_dir, sprintf("%s.rds", target_id))
   metrics_file <- file.path(models_dir, sprintf("metrics_%s.json", target_id))
@@ -287,6 +288,20 @@ for (idx in seq_along(all_targets)) {
   log_out(msg("model_metrics_header", lang, repo_root = repo_root))
   log_out(msg("model_metrics_table", lang, metrics$ME, metrics$MAE, metrics$RMSE, metrics$r2, metrics$MEC, metrics$rhoC, metrics$Cb, repo_root = repo_root))
   
+  # Enrich metrics with model facts (Precision 3)
+  metrics$training_rows <- nrow(d)
+  metrics$boruta_confirmed <- as.integer(n_confirmed)
+  metrics$boruta_tentative <- as.integer(n_tentative)
+  metrics$boruta_rejected <- as.integer(n_rejected)
+  metrics$hyperparameters <- list(
+    mtry = as.integer(best_tune$mtry),
+    splitrule = as.character(best_tune$splitrule),
+    min_node_size = as.integer(best_tune$min.node.size)
+  )
+  metrics$cores_used <- as.integer(num_threads)
+  metrics$elapsed_seconds <- round(elapsed_sec, 2)
+  metrics$algorithm <- "Quantile Regression Forest (ranger)"
+
   # Save fitted model & metrics JSON
   saveRDS(model, model_file)
   jsonlite::write_json(metrics, metrics_file, auto_unbox = TRUE, pretty = TRUE)

@@ -161,6 +161,36 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   cfg_bad_code$country_code <- ""
   v_bad_code <- validate_config(cfg_bad_code, stop_on_error = FALSE, repo_root = repo_root)
   expect_false(v_bad_code$valid)
+
+  # 20. Duplicate target IDs rejected (Precision 1)
+  cfg_dup_tid <- base_valid_cfg
+  cfg_dup_tid$targets <- list(
+    list(property = "clay", d1 = 0, d2 = 30),
+    list(property = "clay", d1 = 0, d2 = 30)
+  )
+  v_dup_tid <- validate_config(cfg_dup_tid, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_dup_tid$valid)
+  expect_true(any(grepl("clay_0_30", v_dup_tid$errors)))
+
+  # 21. Invalid target code format rejected (Precision 2)
+  cfg_bad_tcode <- base_valid_cfg
+  cfg_bad_tcode$targets <- list(
+    list(property = "clay", d1 = 0, d2 = 30, code = "CLAY-TOP!")
+  )
+  v_bad_tcode <- validate_config(cfg_bad_tcode, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_tcode$valid)
+  expect_true(any(grepl("CLAY-TOP!", v_bad_tcode$errors)))
+
+  # 22. Duplicate (code + d1 + d2) rejected across targets (Precision 1)
+  cfg_dup_tcode <- base_valid_cfg
+  cfg_dup_tcode$categories$clay_pct <- "texture"
+  cfg_dup_tcode$targets <- list(
+    list(property = "clay", d1 = 0, d2 = 30, code = "CLAY"),
+    list(property = "clay_pct", d1 = 0, d2 = 30, code = "CLAY")
+  )
+  v_dup_tcode <- validate_config(cfg_dup_tcode, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_dup_tcode$valid)
+  expect_true(any(grepl("CLAY_0_30", v_dup_tcode$errors)))
 })
 
 

@@ -83,7 +83,7 @@ Stored at `projects/<name>/config.json`. Validated before each execution.
     { "property": "soc", "d1": 0, "d2": 30, "enabled": false }
   ]
   ```
-  Each target specifies `property`, `d1` (top depth), `d2` (bottom depth, strictly $d1 < d2$), and optional `enabled` (boolean, default `true`). Disabled targets are skipped during Step 3 unless explicitly requested via `run_step("3", targets = c(...))`.
+  Each target specifies `property`, `d1` (top depth), `d2` (bottom depth, strictly $d1 < d2$), optional `enabled` (boolean, default `true`), and `code` (string of alphanumeric characters and underscores, required at the start of Steps 4 and 5 for OpenNSIS raster filenames, used as typed with no defaults). Disabled targets are skipped during Step 3 unless explicitly requested via `run_step("3", targets = c(...))`.
 - **`boruta_max_runs`**: Maximum iterations for Boruta feature selection (integer, default 100).
 - **`min_support`**: Minimum profile support thickness in cm for depth standardisation (numeric, default 5).
 - **`refit`**: Global default flag (`true` or `false`, default `false`) indicating whether existing models should be retrained and overwritten in Step 3. Can be overridden per run via `run_step("3", refit = TRUE)`.

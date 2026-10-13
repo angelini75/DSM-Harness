@@ -31,6 +31,14 @@ find_repo_root <- function(start_dir = getwd()) {
   }
 }
 
+.ensure_helpers <- function(repo_root) {
+  .ensure_i18n(repo_root)
+  targets_path <- file.path(repo_root, "R", "targets.R")
+  if (file.exists(targets_path) && !exists("get_target_id", mode = "function")) {
+    source(targets_path, local = FALSE)
+  }
+}
+
 # Step to script mapping
 .step_to_script <- function(step) {
   step_str <- as.character(step)
@@ -88,7 +96,7 @@ new_project <- function(name, language = "en", repo_root = NULL) {
   if (is.null(repo_root)) {
     repo_root <- find_repo_root()
   }
-  .ensure_i18n(repo_root)
+  .ensure_helpers(repo_root)
   
   lang <- if (language %in% c("en", "es")) language else "en"
   
@@ -130,7 +138,7 @@ new_project <- function(name, language = "en", repo_root = NULL) {
 
 run_step <- function(step, project, targets = NULL, refit = FALSE, ...) {
   repo_root <- find_repo_root()
-  .ensure_i18n(repo_root)
+  .ensure_helpers(repo_root)
   
   default_lang <- "en"
   

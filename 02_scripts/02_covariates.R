@@ -25,6 +25,9 @@ if (!exists("record_decision", mode = "function")) {
 if (!exists("validate_config", mode = "function")) {
   source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
 }
+if (!exists("get_target_id", mode = "function")) {
+  source(file.path(repo_root, "R", "targets.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "2", "2", repo_root = repo_root), call. = FALSE)
@@ -166,9 +169,10 @@ for (idx in seq_along(targets)) {
   }
   
   active_count <- active_count + 1
+  target_id <- get_target_id(prop, d1, d2)
   safe_prop <- gsub("[^A-Za-z0-9_-]", "_", prop)
   
-  report_file <- file.path(reports_dir, sprintf("20_covariates_%s_%.0f_%.0f.txt", safe_prop, d1, d2))
+  report_file <- file.path(reports_dir, sprintf("20_covariates_%s.txt", target_id))
   rep_con <- file(report_file, open = "wt", encoding = "UTF-8")
   
   log_out <- function(...) {
@@ -275,7 +279,7 @@ for (idx in seq_along(targets)) {
     target_df[[cn]] <- extracted_clean[[cn]]
   }
   
-  out_csv <- file.path(data_dir, sprintf("04_cov_%s_%.0f_%.0f.csv", safe_prop, d1, d2))
+  out_csv <- file.path(data_dir, sprintf("04_cov_%s.csv", target_id))
   readr::write_csv(target_df, out_csv)
   
   log_out("================================================================================")

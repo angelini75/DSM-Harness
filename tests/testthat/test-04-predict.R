@@ -22,7 +22,7 @@ test_that("Step 4 stops if 'tiles' is missing from config.json pointing to repor
     country_code = "TST",
     project_code = "PROJ",
     targets = list(
-      list(property = "soc", d1 = 0, d2 = 30)
+      list(property = "soc", d1 = 0, d2 = 30, code = "SOC")
     )
   )
   jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -56,7 +56,7 @@ test_that("Step 4 stops if country_code or project_code is missing without defau
     source_crs = "EPSG:4326",
     project_code = "PROJ",
     tiles = list(cols = 2, rows = 2),
-    targets = list(list(property = "soc", d1 = 0, d2 = 30))
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC"))
   )
   jsonlite::write_json(cfg_no_country, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   
@@ -78,7 +78,7 @@ test_that("Step 4 stops if country_code or project_code is missing without defau
     source_crs = "EPSG:4326",
     country_code = "TST",
     tiles = list(cols = 2, rows = 2),
-    targets = list(list(property = "soc", d1 = 0, d2 = 30))
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC"))
   )
   jsonlite::write_json(cfg_no_proj, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   
@@ -87,6 +87,40 @@ test_that("Step 4 stops if country_code or project_code is missing without defau
   err_msg <- grep("^Error:\\s*", err_lines, value = TRUE)
   expect_true(grepl("project_code", err_msg))
   expect_false(grepl("URY|SOILFER|GTM|CRI", err_msg))
+})
+
+test_that("Step 4 stops if target code is missing from config.json (Precision 2)", {
+  proj_name <- "test_pred_missing_target_code"
+  cleanup_test_project(proj_name)
+  on.exit(cleanup_test_project(proj_name), add = TRUE)
+  
+  rel_path <- create_synthetic_dataset(proj_name, format = "csv", coords_type = "geographic", n_profiles = 20)
+  create_synthetic_covariates(proj_name)
+  
+  proj_dir <- file.path(repo_root, "projects", proj_name)
+  cfg <- list(
+    project = proj_name,
+    language = "en",
+    input_file = rel_path,
+    base_table = "profiles_data",
+    roles = list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower"),
+    source_crs = "EPSG:4326",
+    country_code = "TST",
+    project_code = "PROJ",
+    tiles = list(cols = 2, rows = 2),
+    targets = list(
+      list(property = "soc", d1 = 0, d2 = 30) # no code!
+    )
+  )
+  jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  res <- run_step("4", project = proj_name)
+  expect_false(res)
+  
+  err_file <- file.path(proj_dir, "reports", "40_error.txt")
+  expect_true(file.exists(err_file))
+  err_content <- paste(readLines(err_file, warn = FALSE), collapse = " ")
+  expect_true(grepl("code", err_content))
 })
 
 test_that("Step 4 compares forest features with raster layers and names missing layers in error", {
@@ -108,7 +142,7 @@ test_that("Step 4 compares forest features with raster layers and names missing 
     country_code = "TST",
     project_code = "DEMO",
     tiles = list(cols = 2, rows = 2),
-    targets = list(list(property = "soc", d1 = 0, d2 = 30))
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC"))
   )
   jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   
@@ -149,7 +183,7 @@ test_that("Step 4 performs tiled spatial prediction, exports verified COG, and r
     country_code = "TST",
     project_code = "DEMO",
     tiles = list(cols = 2, rows = 2),
-    targets = list(list(property = "soc", d1 = 0, d2 = 30, enabled = TRUE))
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
   )
   jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
   
@@ -195,6 +229,52 @@ test_that("Step 4 performs tiled spatial prediction, exports verified COG, and r
   expect_true(run_step("4", project = proj_name, refit = FALSE))
   mtime_after <- file.info(mean_tif)$mtime
   expect_equal(mtime_before, mtime_after)
+})
+
+test_that("Step 4 executes predict.ranger correctly in a fresh R process via system2(Rscript) (Precision 4)", {
+  proj_name <- "test_pred_fresh_process"
+  cleanup_test_project(proj_name)
+  on.exit(cleanup_test_project(proj_name), add = TRUE)
+  
+  rel_path <- create_synthetic_dataset(proj_name, format = "csv", coords_type = "geographic", n_profiles = 25)
+  create_synthetic_covariates(proj_name, n_layers = 3)
+  
+  proj_dir <- file.path(repo_root, "projects", proj_name)
+  cfg <- list(
+    project = proj_name,
+    language = "en",
+    input_file = rel_path,
+    base_table = "profiles_data",
+    roles = list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower"),
+    source_crs = "EPSG:4326",
+    country_code = "TST",
+    project_code = "DEMO",
+    tiles = list(cols = 2, rows = 2),
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
+  )
+  jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  # Run pipeline up to Step 3 in current session
+  expect_true(run_step("1.1", project = proj_name))
+  expect_true(run_step("1.2", project = proj_name))
+  expect_true(run_step("1.3", project = proj_name))
+  expect_true(run_step("2", project = proj_name))
+  expect_true(run_step("3", project = proj_name))
+  
+  # Execute Step 4 in a completely fresh R process using system2("Rscript", ...)
+  rscript_bin <- file.path(R.home("bin"), "Rscript")
+  code <- sprintf('source("%s"); res <- run_step("4", project = "%s"); if (!isTRUE(res)) quit(status = 1)',
+                  gsub("\\\\", "/", file.path(repo_root, "run_step.R")),
+                  proj_name)
+  
+  out <- system2(rscript_bin, args = c("--vanilla", "-e", shQuote(code)), stdout = TRUE, stderr = TRUE)
+  status <- attr(out, "status")
+  if (is.null(status)) status <- 0
+  
+  expect_equal(status, 0, info = paste(out, collapse = "\n"))
+  
+  mean_tif <- file.path(proj_dir, "outputs", "maps", "TST-DEMO-SOC-0-30-mean.tif")
+  expect_true(file.exists(mean_tif))
 })
 
 test_that("Step 4 COG check detects and reports fallback when file lacks COG layout (Precision 2 & 8)", {

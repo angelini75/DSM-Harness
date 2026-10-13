@@ -128,4 +128,21 @@ test_that("es.yml loads correctly with UTF-8 encoding even when LC_CTYPE is C", 
   expect_true(grepl("extensión", cat_es$cov_outside_raster, fixed = TRUE))
 })
 
+test_that("Static check: 05_variable_report.Rmd plot labels and headers are catalogue-driven", {
+  rmd_file <- file.path(repo_root, "02_scripts", "05_variable_report.Rmd")
+  expect_true(file.exists(rmd_file))
+  lines <- readLines(rmd_file, encoding = "UTF-8")
+  
+  # Ensure no hardcoded plot labels in Rmd chunks
+  hardcoded_plot_labels <- c(
+    'xlab\\s*=\\s*["\'](X|Y|Observed|Predicted|Importance|Frequency)["\']',
+    'ylab\\s*=\\s*["\'](X|Y|Observed|Predicted|Importance|Frequency)["\']'
+  )
+  for (pat in hardcoded_plot_labels) {
+    matches <- grep(pat, lines, value = TRUE, ignore.case = TRUE)
+    expect_equal(length(matches), 0, info = sprintf("Found hardcoded plot label '%s' in 05_variable_report.Rmd: %s", pat, paste(matches, collapse = "; ")))
+  }
+})
+
+
 

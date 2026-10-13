@@ -15,6 +15,7 @@ if (!file.exists(file.path(repo_root, "DSM-Harness.Rproj"))) {
 
 source(file.path(repo_root, "run_step.R"), local = FALSE)
 source(file.path(repo_root, "R", "decisions.R"), local = FALSE)
+source(file.path(repo_root, "R", "targets.R"), local = FALSE)
 source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
 source(file.path(repo_root, "02_scripts", "i18n", "load_i18n.R"), local = FALSE)
 

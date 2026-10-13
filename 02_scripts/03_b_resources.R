@@ -25,6 +25,9 @@ if (!exists("record_decision", mode = "function")) {
 if (!exists("validate_config", mode = "function")) {
   source(file.path(repo_root, "R", "validate_config.R"), local = FALSE)
 }
+if (!exists("get_target_id", mode = "function")) {
+  source(file.path(repo_root, "R", "targets.R"), local = FALSE)
+}
 
 if (!exists("project", inherits = FALSE) || is.null(project)) {
   stop(msg("step_context_missing", "en", "3b", "3b", repo_root = repo_root), call. = FALSE)
