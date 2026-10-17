@@ -58,11 +58,11 @@ validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
 cores_cfg <- cfg$cores
 ram_gb_cfg <- cfg$ram_gb
 
-hw_configured <- !is.null(cores_cfg) && is.numeric(cores_cfg) && cores_cfg >= 1 &&
-                 !is.null(ram_gb_cfg) && is.numeric(ram_gb_cfg) && ram_gb_cfg > 0
+cores_configured <- !is.null(cores_cfg) && is.numeric(cores_cfg) && cores_cfg >= 1
+ram_configured   <- !is.null(ram_gb_cfg) && is.numeric(ram_gb_cfg) && ram_gb_cfg > 0
 
-cores_val <- if (hw_configured) as.integer(cores_cfg) else NA_integer_
-ram_gb_val <- if (hw_configured) as.numeric(ram_gb_cfg) else NA_real_
+cores_val <- if (cores_configured) as.integer(cores_cfg) else NA_integer_
+ram_gb_val <- if (ram_configured) as.numeric(ram_gb_cfg) else NA_real_
 ram_share <- if (!is.null(cfg$ram_share) && is.numeric(cfg$ram_share) && cfg$ram_share > 0 && cfg$ram_share <= 1) {
   as.numeric(cfg$ram_share)
 } else {
@@ -108,10 +108,13 @@ if (has_training_rows) {
   bytes_per_pixel <- 8 * r_layers
 }
 
-# 4. Vertical Strip Tiling Calculation (Comment 6233883917)
+# 4. Vertical Strip Tiling Calculation (Comment 6233883917, Audit Fix 6235734418)
 # Formula: max_pixels_per_tile = floor(ram_share * ram_gb * 1024^3 / bytes_per_pixel)
 #          cols = ceil(total_pixels / max_pixels_per_tile), rows = 1
-if (hw_configured) {
+# When training_rows is present and ram_gb is configured, we compute the proposal.
+# When training_rows is missing (no model or metrics lack training_rows),
+# the proposal is NOT EVALUATED, but we show the covariates-only lower bound footprint.
+if (ram_configured && has_training_rows) {
   max_pixels_per_tile <- max(1, floor((ram_share * ram_gb_val * (1024^3)) / bytes_per_pixel))
   tile_cols <- max(1, ceiling(r_cells / max_pixels_per_tile))
   tile_rows <- 1
@@ -141,8 +144,12 @@ log_out(msg("res_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root
 log_out(msg("res_project", lang, project, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_hardware", lang, repo_root = repo_root))
-if (hw_configured) {
+if (cores_configured) {
   log_out(msg("res_hw_cores", lang, cores_val, repo_root = repo_root))
+} else {
+  log_out(msg("res_hw_cores_unspecified", lang, repo_root = repo_root))
+}
+if (ram_configured) {
   log_out(msg("res_hw_ram", lang, ram_gb_val, ram_share, repo_root = repo_root))
 } else {
   log_out(msg("res_hw_missing_config", lang, repo_root = repo_root))
@@ -162,28 +169,36 @@ if (length(model_files) > 0) {
   log_out(msg("res_no_models", lang, repo_root = repo_root))
 }
 if (has_training_rows) {
-  log_out(msg("res_pred_memory_training_rows", lang, max_training_rows, length(metrics_files), repo_root = repo_root))
+  log_out(msg("res_pred_memory_training_rows", lang, max_training_rows, length(training_rows_vec), repo_root = repo_root))
 } else {
   log_out(msg("res_pred_memory_not_evaluated", lang, repo_root = repo_root))
 }
 log_out(msg("res_formula_explanation", lang, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_tiling", lang, repo_root = repo_root))
-if (hw_configured) {
+if (!ram_configured) {
+  log_out(msg("res_tiling_not_evaluated", lang, repo_root = repo_root))
+} else if (!has_training_rows) {
+  cov_lower_bound_mb <- round((r_cells * bytes_per_pixel) / (1024^2), 2)
+  log_out(msg("res_tiling_lower_bound", lang, cov_lower_bound_mb, repo_root = repo_root))
+} else {
   max_pix_str <- format(max_pixels_per_tile, scientific = FALSE, big.mark = ",")
   log_out(msg("res_tiling_proposal", lang, total_tiles, tile_cols, max_pix_str, tile_mb, repo_root = repo_root))
-} else {
-  log_out(msg("res_tiling_not_evaluated", lang, repo_root = repo_root))
 }
 log_out("================================================================================")
 log_out(msg("res_report_written", lang, report_file, repo_root = repo_root))
 close(rep_con)
 
-decision_details <- if (hw_configured) {
-  sprintf("Cores: %d, RAM: %.2f GB (share: %.2f), Raster: %dx%d (%d cells, %d layers). Proposed vertical tiling: %d cols (1 row, %.2f MB/tile). Written %s",
-          cores_val, ram_gb_val, ram_share, r_cols, r_rows, r_cells, r_layers, tile_cols, tile_mb, report_file)
+decision_details <- if (!ram_configured) {
+  sprintf("RAM unconfigured in config.json ('ram_gb' missing). Proposed tiling: NO EVALUADO. Written %s", report_file)
+} else if (!has_training_rows) {
+  cov_lower_bound_mb <- round((r_cells * bytes_per_pixel) / (1024^2), 2)
+  sprintf("RAM: %.2f GB (share: %.2f), Raster: %dx%d (%d cells, %d layers). Prediction memory unavailable (training_rows missing). Proposed tiling: NO EVALUADO (covariates lower bound: %.2f MB). Written %s",
+          ram_gb_val, ram_share, r_cols, r_rows, r_cells, r_layers, cov_lower_bound_mb, report_file)
 } else {
-  sprintf("Hardware unconfigured in config.json ('cores' and/or 'ram_gb' missing). Proposed tiling: NO EVALUADO. Written %s", report_file)
+  cores_str <- if (cores_configured) sprintf("%d", cores_val) else "unspecified"
+  sprintf("Cores: %s, RAM: %.2f GB (share: %.2f), Raster: %dx%d (%d cells, %d layers). Proposed vertical tiling: %d cols (1 row, %.2f MB/tile). Written %s",
+          cores_str, ram_gb_val, ram_share, r_cols, r_rows, r_cells, r_layers, tile_cols, tile_mb, report_file)
 }
 
 record_decision(
