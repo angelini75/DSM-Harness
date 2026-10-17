@@ -53,35 +53,21 @@ lang <- cfg$language %||% "en"
 # Validate configuration
 validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
 
-# 1. Hardware Inspection
-cores_total <- parallel::detectCores()
-worker_threads <- max(1, cores_total - 1)
+# 1. User-Stated Hardware Configuration (Comment 6233883917)
+# The user states cores and ram_gb in config.json (no OS RAM detection, no silent 8 GB fallback).
+cores_cfg <- cfg$cores
+ram_gb_cfg <- cfg$ram_gb
 
-detect_ram_gb <- function() {
-  ram_gb <- NA_real_
-  if (.Platform$OS.type == "windows") {
-    out <- tryCatch(
-      system2("powershell", c("-NoProfile", "-Command", "[Math]::Round((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB, 2)"), stdout = TRUE),
-      error = function(e) NULL
-    )
-    if (!is.null(out) && length(out) > 0) {
-      val <- suppressWarnings(as.numeric(trimws(out[1])))
-      if (!is.na(val) && val > 0) ram_gb <- val
-    }
-  } else {
-    mem_info <- tryCatch(readLines("/proc/meminfo"), error = function(e) NULL)
-    if (!is.null(mem_info)) {
-      line <- grep("^MemTotal:", mem_info, value = TRUE)
-      if (length(line) > 0) {
-        kb <- as.numeric(gsub("[^0-9]", "", line))
-        ram_gb <- round(kb / (1024^2), 2)
-      }
-    }
-  }
-  if (is.na(ram_gb)) ram_gb <- 8.0
-  ram_gb
+hw_configured <- !is.null(cores_cfg) && is.numeric(cores_cfg) && cores_cfg >= 1 &&
+                 !is.null(ram_gb_cfg) && is.numeric(ram_gb_cfg) && ram_gb_cfg > 0
+
+cores_val <- if (hw_configured) as.integer(cores_cfg) else NA_integer_
+ram_gb_val <- if (hw_configured) as.numeric(ram_gb_cfg) else NA_real_
+ram_share <- if (!is.null(cfg$ram_share) && is.numeric(cfg$ram_share) && cfg$ram_share > 0 && cfg$ram_share <= 1) {
+  as.numeric(cfg$ram_share)
+} else {
+  0.25
 }
-ram_total_gb <- detect_ram_gb()
 
 # 2. Covariate Raster Inspection
 cov_files <- list.files(cov_dir, pattern = "\\.tif$", full.names = TRUE, ignore.case = TRUE)
@@ -97,37 +83,48 @@ r_layers <- terra::nlyr(cov_stack)
 r_ext <- as.vector(terra::ext(cov_stack))
 r_res <- terra::res(cov_stack)
 
-# Memory footprint calculation (8 bytes per double precision cell per layer)
+# Uncompressed raster stack footprint (8 bytes per double precision cell per layer)
 uncompressed_mb <- round((r_cells * r_layers * 8) / (1024^2), 2)
 
-# 3. Model Inspection
+# 3. Model Inspection & Training Rows for Prediction Memory
 model_files <- list.files(models_dir, pattern = "\\.rds$", full.names = FALSE)
 model_names <- if (length(model_files) > 0) paste(gsub("\\.rds$", "", model_files), collapse = ", ") else "none"
 
-# 4. Tiling Calculation
-# Target footprint per tile between 20 MB and 100 MB
-target_tile_mb <- 50.0
-calc_tiles <- max(1, ceiling(uncompressed_mb / target_tile_mb))
-
-# Choose clean cols x rows split
-if (calc_tiles <= 1) {
-  tile_cols <- 1
-  tile_rows <- 1
-} else if (calc_tiles <= 4) {
-  tile_cols <- 2
-  tile_rows <- 2
-} else if (calc_tiles <= 12) {
-  tile_cols <- 4
-  tile_rows <- 3
-} else if (calc_tiles <= 25) {
-  tile_cols <- 5
-  tile_rows <- 5
-} else {
-  tile_cols <- 10
-  tile_rows <- ceiling(calc_tiles / 10)
+metrics_files <- list.files(models_dir, pattern = "^metrics_.*\\.json$", full.names = TRUE)
+training_rows_vec <- integer(0)
+for (mf in metrics_files) {
+  met <- tryCatch(jsonlite::fromJSON(mf, simplifyVector = FALSE), error = function(e) NULL)
+  if (!is.null(met) && !is.null(met$training_rows) && is.numeric(met$training_rows) && met$training_rows > 0) {
+    training_rows_vec <- c(training_rows_vec, as.integer(met$training_rows))
+  }
 }
-total_tiles <- tile_cols * tile_rows
-tile_mb <- round(uncompressed_mb / total_tiles, 2)
+
+has_training_rows <- length(training_rows_vec) > 0
+if (has_training_rows) {
+  max_training_rows <- max(training_rows_vec)
+  bytes_per_pixel <- 8 * (r_layers + max_training_rows)
+} else {
+  max_training_rows <- NA_integer_
+  bytes_per_pixel <- 8 * r_layers
+}
+
+# 4. Vertical Strip Tiling Calculation (Comment 6233883917)
+# Formula: max_pixels_per_tile = floor(ram_share * ram_gb * 1024^3 / bytes_per_pixel)
+#          cols = ceil(total_pixels / max_pixels_per_tile), rows = 1
+if (hw_configured) {
+  max_pixels_per_tile <- max(1, floor((ram_share * ram_gb_val * (1024^3)) / bytes_per_pixel))
+  tile_cols <- max(1, ceiling(r_cells / max_pixels_per_tile))
+  tile_rows <- 1
+  total_tiles <- tile_cols * tile_rows
+  cells_per_tile <- ceiling(r_cells / total_tiles)
+  tile_mb <- round((cells_per_tile * bytes_per_pixel) / (1024^2), 2)
+} else {
+  max_pixels_per_tile <- NA_real_
+  tile_cols <- NA_integer_
+  tile_rows <- NA_integer_
+  total_tiles <- NA_integer_
+  tile_mb <- NA_real_
+}
 
 report_file <- file.path(reports_dir, "3b_resources.txt")
 rep_con <- file(report_file, open = "wt", encoding = "UTF-8")
@@ -144,8 +141,12 @@ log_out(msg("res_date", lang, format(Sys.time(), "%Y-%m-%d %H:%M:%S"), repo_root
 log_out(msg("res_project", lang, project, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_hardware", lang, repo_root = repo_root))
-log_out(msg("res_hw_cores", lang, cores_total, worker_threads, repo_root = repo_root))
-log_out(msg("res_hw_ram", lang, ram_total_gb, repo_root = repo_root))
+if (hw_configured) {
+  log_out(msg("res_hw_cores", lang, cores_val, repo_root = repo_root))
+  log_out(msg("res_hw_ram", lang, ram_gb_val, ram_share, repo_root = repo_root))
+} else {
+  log_out(msg("res_hw_missing_config", lang, repo_root = repo_root))
+}
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_raster", lang, repo_root = repo_root))
 log_out(msg("res_raster_dims", lang, r_cols, r_rows, r_cells, repo_root = repo_root))
@@ -160,19 +161,36 @@ if (length(model_files) > 0) {
 } else {
   log_out(msg("res_no_models", lang, repo_root = repo_root))
 }
+if (has_training_rows) {
+  log_out(msg("res_pred_memory_training_rows", lang, max_training_rows, length(metrics_files), repo_root = repo_root))
+} else {
+  log_out(msg("res_pred_memory_not_evaluated", lang, repo_root = repo_root))
+}
+log_out(msg("res_formula_explanation", lang, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_tiling", lang, repo_root = repo_root))
-log_out(msg("res_tiling_proposal", lang, total_tiles, tile_cols, tile_rows, tile_mb, repo_root = repo_root))
+if (hw_configured) {
+  max_pix_str <- format(max_pixels_per_tile, scientific = FALSE, big.mark = ",")
+  log_out(msg("res_tiling_proposal", lang, total_tiles, tile_cols, max_pix_str, tile_mb, repo_root = repo_root))
+} else {
+  log_out(msg("res_tiling_not_evaluated", lang, repo_root = repo_root))
+}
 log_out("================================================================================")
 log_out(msg("res_report_written", lang, report_file, repo_root = repo_root))
 close(rep_con)
 
+decision_details <- if (hw_configured) {
+  sprintf("Cores: %d, RAM: %.2f GB (share: %.2f), Raster: %dx%d (%d cells, %d layers). Proposed vertical tiling: %d cols (1 row, %.2f MB/tile). Written %s",
+          cores_val, ram_gb_val, ram_share, r_cols, r_rows, r_cells, r_layers, tile_cols, tile_mb, report_file)
+} else {
+  sprintf("Hardware unconfigured in config.json ('cores' and/or 'ram_gb' missing). Proposed tiling: NO EVALUADO. Written %s", report_file)
+}
+
 record_decision(
   project = project,
   step = "3b",
-  decision = "Hardware and raster resource diagnosis and tiling advisory",
-  details = sprintf("Cores: %d, RAM: %.2f GB, Raster: %dx%d (%d cells, %d layers, %.2f MB). Proposed tiling: %d tiles (%dx%d, %.2f MB/tile). Written %s",
-                    cores_total, ram_total_gb, r_cols, r_rows, r_cells, r_layers, uncompressed_mb, total_tiles, tile_cols, tile_rows, tile_mb, report_file),
+  decision = "Hardware and raster resource diagnosis and vertical strip tiling advisory",
+  details = decision_details,
   repo_root = repo_root
 )
 

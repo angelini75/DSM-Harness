@@ -256,7 +256,11 @@ for (idx in seq_along(all_targets)) {
     splitrule = c("variance", "extratrees")
   )
   
-  num_threads <- max(1, parallel::detectCores() - 1)
+  num_threads <- if (!is.null(cfg$cores) && is.numeric(cfg$cores) && cfg$cores >= 1) {
+    as.integer(cfg$cores)
+  } else {
+    max(1, parallel::detectCores() - 1)
+  }
   
   t_start <- proc.time()
   model <- suppressWarnings(caret::train(

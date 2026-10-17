@@ -91,19 +91,6 @@ if (length(configured_targets) == 0) {
   stop(msg("report_no_targets", lang, repo_root = repo_root), call. = FALSE)
 }
 
-# Precision 2: Per-target code is required when Step 5 starts (no defaults, no example codes)
-missing_code_targets <- character(0)
-for (idx in seq_along(configured_targets)) {
-  tgt <- configured_targets[[idx]]
-  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
-    tgt_id <- get_target_id(tgt$property %||% paste0("target_", idx), tgt$d1 %||% 0, tgt$d2 %||% 0)
-    missing_code_targets <- c(missing_code_targets, tgt_id)
-  }
-}
-if (length(missing_code_targets) > 0) {
-  stop(msg("report_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
-}
-
 # Build valid target IDs using canonical get_target_id
 all_target_specs <- list()
 all_target_ids <- character(0)
@@ -146,6 +133,17 @@ if (!is.null(runner_targets) && length(runner_targets) > 0) {
   if (length(selected_targets) == 0) {
     stop(msg("report_no_targets", lang, repo_root = repo_root), call. = FALSE)
   }
+}
+
+# Precision 2 / M3 re-audit: Require user-confirmed 'code' ONLY for targets selected in this run
+missing_code_targets <- character(0)
+for (tgt in selected_targets) {
+  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
+    missing_code_targets <- c(missing_code_targets, tgt$target_id)
+  }
+}
+if (length(missing_code_targets) > 0) {
+  stop(msg("report_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
 }
 
 refit_flag <- if (exists("refit") && !is.null(refit)) isTRUE(refit) else isTRUE(cfg$refit)

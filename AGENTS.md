@@ -8,7 +8,7 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 
 1. **Repository Files First**: Always read project files locally in the repository (e.g., `projects/<name>/reports/*.txt`). Never search the web or external paths for them.
 2. **Fixed Files, No Shared State**: Each step reads fixed input files and writes fixed output files, in order. Steps share nothing through the R session; state lives only in files (`data/*.csv`, `reports/*.txt`, `config.json`).
-3. **Evidence and Neutral Options**: State only what a report or the user has established; if something was not computed, say so. When the user must choose (CRS, duplicates, bulk density, targets), list the options with their consequences, without recommending or ranking them. Ask for facts the reports do not contain, such as the study area, instead of inferring them from the data.
+3. **Evidence and Neutral Options**: State only what a report or the user has established; if something was not computed, say so. When the user must choose (CRS, duplicates, bulk density, targets), list the options with their consequences, without recommending or ranking them. Ask for facts the reports do not contain, such as the study area, instead of inferring them from the data. You may suggest values for facts only the user can confirm (for example a code), labelled as suggestions; write nothing to `config.json` until the user confirms.
 4. **Agent Writes Config, User Confirms**: The user never edits JSON directly. The agent interviews the user, writes `config.json`, and summarizes the actions in plain language for user confirmation.
 5. **No Invented Columns**: Every column in `config.json` must exist in the dataset inspected in Step 0.
 6. **Transparent Auditing & Decisions**: Scripts never prompt or guess for the user. Confirmed decisions are logged automatically to `projects/<name>/decisions_log.csv`.
@@ -29,8 +29,8 @@ Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines 
 | **1.3 Pedological** | `data/02_spatial.csv` | `data/03_clean.csv`, `reports/13_pedological.txt` | Bulk density estimation option; exclusions |
 | **2 Covariates** | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`, `reports/20_covariates_<prop>_<d1>_<d2>.txt` | Target properties and depth intervals |
 | **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
-| **3b Resources** | models, rasters | `reports/3b_resources.txt` | Number of tiles; groups of properties to predict |
-| **4 Predict** | models, `covariates/*.tif` | `outputs/maps/<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif`, `sd.tif`, `reports/40_prediction_<prop>_<d1>_<d2>.txt` | Tile scheme (`tiles: {cols, rows}`), `country_code`, `project_code`. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
+| **3b Resources** | models, rasters, user machine (`cores`, `ram_gb`) | `reports/3b_resources.txt` | User supplies `cores` and `ram_gb` (the agent asks for them); number of vertical tiles (`cols`) |
+| **4 Predict** | models, `covariates/*.tif` | `outputs/maps/<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif`, `sd.tif`, `reports/40_prediction_<prop>_<d1>_<d2>.txt` | Tile scheme (`tiles: {cols, rows}` with `rows: 1`), `country_code`, `project_code`. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 | **5 Report** | `data/04_cov_*.csv`, models, maps | `reports/report_<prop>_<d1>_<d2>.html`, `reports/50_report_<prop>_<d1>_<d2>.txt` | None; reviews HTML report. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 
 ---
@@ -89,7 +89,10 @@ Stored at `projects/<name>/config.json`. Validated before each execution.
 - **`refit`**: Global default flag (`true` or `false`, default `false`) indicating whether existing models should be retrained and overwritten in Step 3. Can be overridden per run via `run_step("3", refit = TRUE)`.
 - **`cv_folds`**: Number of cross-validation folds for model tuning in Step 3 (integer, default 5).
 - **`cv_repeats`**: Number of cross-validation repeats for Repeated CV in Step 3 (integer, default 5).
-- **`tiles`**: User-confirmed spatial tiling grid configuration for Step 4 prediction (object with positive integers `cols` and `rows`, matching scheme confirmed from `reports/3b_resources.txt`).
+- **`cores`**: Number of CPU worker threads allocated for Steps 3 and 4 (integer >= 1). The user supplies `cores`, so the agent asks for it.
+- **`ram_gb`**: RAM in GB available for spatial tiling calculations in Step 3b (numeric > 0). The user supplies `ram_gb`, so the agent asks for it.
+- **`ram_share`**: Optional fraction of `ram_gb` allocated per tile in Step 3b (numeric with 0 < ram_share <= 1, default 0.25).
+- **`tiles`**: User-confirmed spatial tiling grid configuration for Step 4 prediction (object with positive integer `cols` and strictly `rows: 1`, matching scheme confirmed from `reports/3b_resources.txt`).
 - **`country_code`**: ISO 3166-1 alpha-3 code required for standard OpenNSIS raster product filenames in Step 4.
 - **`project_code`**: Project acronym required for standard OpenNSIS raster product filenames in Step 4.
 

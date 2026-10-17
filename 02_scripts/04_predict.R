@@ -122,19 +122,6 @@ if (length(configured_targets) == 0) {
   stop(msg("pred_no_targets", lang, repo_root = repo_root), call. = FALSE)
 }
 
-# Precision 2: Per-target code is required when Step 4 starts (no defaults, no example codes)
-missing_code_targets <- character(0)
-for (idx in seq_along(configured_targets)) {
-  tgt <- configured_targets[[idx]]
-  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
-    tgt_id <- get_target_id(tgt$property %||% paste0("target_", idx), tgt$d1 %||% 0, tgt$d2 %||% 0)
-    missing_code_targets <- c(missing_code_targets, tgt_id)
-  }
-}
-if (length(missing_code_targets) > 0) {
-  stop(msg("pred_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
-}
-
 # Build valid target IDs using canonical get_target_id
 all_target_specs <- list()
 all_target_ids <- character(0)
@@ -177,6 +164,17 @@ if (!is.null(runner_targets) && length(runner_targets) > 0) {
   if (length(selected_targets) == 0) {
     stop(msg("pred_no_targets", lang, repo_root = repo_root), call. = FALSE)
   }
+}
+
+# Precision 2 / M3 re-audit: Require user-confirmed 'code' ONLY for targets selected in this run
+missing_code_targets <- character(0)
+for (tgt in selected_targets) {
+  if (is.null(tgt$code) || !is.character(tgt$code) || length(tgt$code) != 1 || !nzchar(trimws(tgt$code))) {
+    missing_code_targets <- c(missing_code_targets, tgt$target_id)
+  }
+}
+if (length(missing_code_targets) > 0) {
+  stop(msg("pred_missing_target_code", lang, paste(missing_code_targets, collapse = ", "), repo_root = repo_root), call. = FALSE)
 }
 
 refit_flag <- if (exists("refit") && !is.null(refit)) isTRUE(refit) else isTRUE(cfg$refit)
@@ -230,7 +228,11 @@ write_and_verify_cog <- function(rast_obj, out_path, lang, repo_root) {
   # Step 3: Verify COG layout and extract dynamic attributes (Item 5)
   attrs <- parse_cog_attributes(out_path)
   fname <- basename(out_path)
-  status_tag <- if (isTRUE(attrs$is_cog)) "VERIFIED_COG" else "FALLBACK_GEOTIFF"
+  status_tag <- if (isTRUE(attrs$is_cog)) {
+    msg("pred_status_verified_cog", lang, repo_root = repo_root)
+  } else {
+    msg("pred_status_fallback_geotiff", lang, repo_root = repo_root)
+  }
   
   log_line <- sprintf(
     "%s: %s (LAYOUT=%s, COMPRESSION=%s, BLOCK=%s, PREDICTOR=%s, NoData=%s)",
@@ -245,9 +247,17 @@ write_and_verify_cog <- function(rast_obj, out_path, lang, repo_root) {
   )
 }
 
+# Worker threads from user config
+cores_cfg <- cfg$cores
+num_threads <- if (!is.null(cores_cfg) && is.numeric(cores_cfg) && cores_cfg >= 1) {
+  as.integer(cores_cfg)
+} else {
+  max(1, parallel::detectCores() - 1)
+}
+
 # Prediction function for Quantile Regression Forest
 pfun <- function(...) {
-  predict(...)$predictions |> t()
+  predict(..., num.threads = num_threads)$predictions |> t()
 }
 
 # Main prediction loop across selected targets
@@ -319,7 +329,7 @@ for (tgt in selected_targets) {
   
   tile_files <- terra::makeTiles(cov_stack[[1]], tile_grid, filename = file.path(tile_dir, "tile_.tif"), overwrite = TRUE)
   
-  # Precision 3: Per-tile progress
+  # Precision 3: Per-tile progress and Precision 2 empty tile handling
   for (j in seq_along(tile_files)) {
     log_out(sprintf(msg("pred_tile_progress", lang, repo_root = repo_root), j, length(tile_files)))
     
@@ -329,29 +339,50 @@ for (tgt in selected_targets) {
     mean_tile_f <- file.path(tile_dir, sprintf("mean_%d.tif", j))
     sd_tile_f   <- file.path(tile_dir, sprintf("sd_%d.tif", j))
     
-    terra::interpolate(
-      cov_tile,
-      model = ranger_model,
-      fun = pfun,
-      na.rm = TRUE,
-      type = "quantiles",
-      what = mean,
-      filename = mean_tile_f,
-      overwrite = TRUE,
-      wopt = list(datatype = "FLT4S")
-    )
+    # Precision 2: Tile with no data = no cell with all covariate layers present
+    # A cell is complete iff no covariate layer is NA for that cell.
+    has_any_complete <- FALSE
+    tryCatch({
+      complete_cells <- !any(is.na(cov_tile))
+      cnt <- suppressWarnings(as.numeric(terra::global(complete_cells, "sum", na.rm = TRUE)[1, 1]))
+      if (!is.na(cnt) && cnt > 0) {
+        has_any_complete <- TRUE
+      }
+    }, error = function(e) {
+      has_any_complete <<- FALSE
+    })
     
-    terra::interpolate(
-      cov_tile,
-      model = ranger_model,
-      fun = pfun,
-      na.rm = TRUE,
-      type = "quantiles",
-      what = sd,
-      filename = sd_tile_f,
-      overwrite = TRUE,
-      wopt = list(datatype = "FLT4S")
-    )
+    if (!has_any_complete) {
+      log_out(sprintf(msg("pred_tile_all_na", lang, repo_root = repo_root), j, length(tile_files)))
+      empty_tile <- terra::rast(cov_tile[[1]])
+      terra::values(empty_tile) <- NA_real_
+      terra::writeRaster(empty_tile, mean_tile_f, overwrite = TRUE, datatype = "FLT4S", NAflag = -9999)
+      terra::writeRaster(empty_tile, sd_tile_f, overwrite = TRUE, datatype = "FLT4S", NAflag = -9999)
+    } else {
+      terra::interpolate(
+        cov_tile,
+        model = ranger_model,
+        fun = pfun,
+        na.rm = TRUE,
+        type = "quantiles",
+        what = mean,
+        filename = mean_tile_f,
+        overwrite = TRUE,
+        wopt = list(datatype = "FLT4S")
+      )
+      
+      terra::interpolate(
+        cov_tile,
+        model = ranger_model,
+        fun = pfun,
+        na.rm = TRUE,
+        type = "quantiles",
+        what = sd,
+        filename = sd_tile_f,
+        overwrite = TRUE,
+        wopt = list(datatype = "FLT4S")
+      )
+    }
   }
   
   # Mosaic tiles

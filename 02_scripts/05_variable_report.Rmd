@@ -48,6 +48,24 @@ metrics_obj <- if (file.exists(params$metrics_path)) jsonlite::fromJSON(params$m
 
 mean_r <- if (file.exists(params$mean_map_path)) terra::rast(params$mean_map_path) else NULL
 sd_r   <- if (file.exists(params$sd_map_path)) terra::rast(params$sd_map_path) else NULL
+
+detect_algorithm_str <- function(met_obj, mod_obj) {
+  if (!is.null(met_obj) && !is.null(met_obj$algorithm) && nzchar(as.character(met_obj$algorithm))) {
+    return(as.character(met_obj$algorithm))
+  }
+  if (!is.null(mod_obj)) {
+    is_qr <- isTRUE(mod_obj$dots$quantreg) ||
+             isTRUE(mod_obj$finalModel$quantreg) ||
+             isTRUE(mod_obj$quantreg) ||
+             (is.call(mod_obj$call) && isTRUE(as.logical(as.list(mod_obj$call)$quantreg)))
+    if (is_qr) {
+      return("Quantile Regression Forest (ranger)")
+    } else {
+      return(sprintf("ranger (quantile regression: %s)", tr("rmd_val_not_evaluated")))
+    }
+  }
+  tr("rmd_val_not_evaluated")
+}
 ```
 
 ## `r tr("rmd_sec_summary")`
@@ -100,7 +118,7 @@ if (!is.null(dat) && "x" %in% names(dat) && "y" %in% names(dat)) {
 
 ### `r tr("rmd_sec_model_spec")`
 
-- **`r tr("rmd_lbl_algorithm")`:** `r if (!is.null(metrics_obj$algorithm)) metrics_obj$algorithm else tr("rmd_val_not_evaluated")`
+- **`r tr("rmd_lbl_algorithm")`:** `r detect_algorithm_str(metrics_obj, model_obj)`
 - **`r tr("rmd_lbl_train_rows")`:** `r if (!is.null(metrics_obj$training_rows)) sprintf("n = %d", as.integer(metrics_obj$training_rows)) else tr("rmd_val_not_evaluated")`
 - **`r tr("rmd_lbl_boruta_decisions")`:** `r if (!is.null(metrics_obj$boruta_confirmed)) sprintf(tr("model_boruta_decisions"), as.integer(metrics_obj$boruta_confirmed), as.integer(metrics_obj$boruta_tentative), as.integer(metrics_obj$boruta_rejected)) else tr("rmd_val_not_evaluated")`
 - **`r tr("rmd_lbl_hyperparams")`:** `r if (!is.null(metrics_obj$hyperparameters) && !is.null(metrics_obj$hyperparameters$mtry)) sprintf("mtry = %d, splitrule = '%s', min.node.size = %d", as.integer(metrics_obj$hyperparameters$mtry), as.character(metrics_obj$hyperparameters$splitrule), as.integer(metrics_obj$hyperparameters$min_node_size)) else tr("rmd_val_not_evaluated")`

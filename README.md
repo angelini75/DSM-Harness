@@ -26,7 +26,7 @@ DSM-Harness guides soil scientists and participants through reproducible, standa
 | **1.3 Pedological** | `run_step("1.3", project = "<name>")` | `data/02_spatial.csv` | `data/03_clean.csv`<br>`reports/13_pedological.txt` | Horizon depth validity, PTF bulk density contrast, optional local calibration |
 | **2 Covariates** | `run_step("2", project = "<name>")` | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`<br>`reports/20_covariates_<prop>_<d1>_<d2>.txt` | Depth standardisation (thickness-weighted mean) and spatial covariate extraction |
 | **3 Model** | `run_step("3", project = "<name>", targets = c(...), refit = FALSE)` | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`<br>`outputs/models/metrics_<prop>_<d1>_<d2>.json`<br>`reports/30_modelling_<prop>_<d1>_<d2>.txt` | Feature selection (Boruta) and Quantile Regression Forest (ranger) with repeated CV |
-| **3b Resources** | `run_step("3b", project = "<name>")` | Models & rasters | `reports/3b_resources.txt` | Hardware diagnosis, raster volume assessment, and memory-safe tiling advisory |
+| **3b Resources** | `run_step("3b", project = "<name>")` | Models, rasters, config | `reports/3b_resources.txt` | Machine specs (`cores`, `ram_gb`) and vertical strip tiling advisory (`cols`) |
 
 ---
 

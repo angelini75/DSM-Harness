@@ -62,7 +62,7 @@ test_that("Step 5 stops if prediction maps are missing", {
     source_crs = "EPSG:4326",
     country_code = "TST",
     project_code = "DEMO",
-    tiles = list(cols = 2, rows = 2),
+    tiles = list(cols = 2, rows = 1),
     targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC"))
   )
   jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -92,7 +92,7 @@ test_that("Step 5 stops if target code is missing from config.json (Precision 2)
     source_crs = "EPSG:4326",
     country_code = "TST",
     project_code = "DEMO",
-    tiles = list(cols = 2, rows = 2),
+    tiles = list(cols = 2, rows = 1),
     targets = list(list(property = "soc", d1 = 0, d2 = 30)) # missing code
   )
   jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -127,7 +127,7 @@ test_that("Step 5 renders HTML report with observation sites, histogram, variabl
     source_crs = "EPSG:4326",
     country_code = "TST",
     project_code = "DEMO",
-    tiles = list(cols = 2, rows = 2),
+    tiles = list(cols = 2, rows = 1),
     targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
   )
   jsonlite::write_json(cfg_en, file.path(proj_dir_en, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -195,7 +195,7 @@ test_that("Step 5 renders HTML report with observation sites, histogram, variabl
     source_crs = "EPSG:4326",
     country_code = "TST",
     project_code = "DEMO",
-    tiles = list(cols = 2, rows = 2),
+    tiles = list(cols = 2, rows = 1),
     targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
   )
   jsonlite::write_json(cfg_es, file.path(proj_dir_es, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -255,7 +255,7 @@ test_that("Step 5 displays NO EVALUADO when metrics JSON lacks training metadata
     source_crs = "EPSG:4326",
     country_code = "TST",
     project_code = "DEMO",
-    tiles = list(cols = 2, rows = 2),
+    tiles = list(cols = 2, rows = 1),
     targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
   )
   jsonlite::write_json(cfg_es, file.path(proj_dir_es, "config.json"), auto_unbox = TRUE, pretty = TRUE)
@@ -280,4 +280,107 @@ test_that("Step 5 displays NO EVALUADO when metrics JSON lacks training metadata
   
   # Precision 3: verify NO EVALUADO is displayed
   expect_true(grepl("NO EVALUADO", html_text_es))
+})
+
+test_that("Step 5 runs successfully with one selected target with code and one unselected target without code (Precision 4)", {
+  skip_if(!rmarkdown::pandoc_available(), "Pandoc is required for Step 5 HTML rendering")
+  
+  proj_name <- "test_report_unselected_no_code"
+  cleanup_test_project(proj_name)
+  on.exit(cleanup_test_project(proj_name), add = TRUE)
+  
+  rel_path <- create_synthetic_dataset(proj_name, format = "csv", coords_type = "geographic", n_profiles = 25)
+  create_synthetic_covariates(proj_name, n_layers = 3)
+  
+  proj_dir <- file.path(repo_root, "projects", proj_name)
+  cfg <- list(
+    project = proj_name,
+    language = "en",
+    input_file = rel_path,
+    base_table = "profiles_data",
+    roles = list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower"),
+    source_crs = "EPSG:4326",
+    country_code = "TST",
+    project_code = "DEMO",
+    tiles = list(cols = 2, rows = 1),
+    targets = list(
+      list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE),
+      list(property = "clay", d1 = 0, d2 = 30, enabled = FALSE) # No code!
+    )
+  )
+  jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("1.1", project = proj_name))
+  expect_true(run_step("1.2", project = proj_name))
+  expect_true(run_step("1.3", project = proj_name))
+  expect_true(run_step("2", project = proj_name))
+  expect_true(run_step("3", project = proj_name))
+  expect_true(run_step("4", project = proj_name))
+  
+  # Step 5 runs cleanly because unselected target without code is not in selected run targets
+  expect_true(run_step("5", project = proj_name))
+  
+  html_f <- file.path(proj_dir, "reports", "report_soc_0_30.html")
+  expect_true(file.exists(html_f))
+})
+
+test_that("Step 5 algorithm detection for older models detects quantreg or marks NO EVALUADO (Precision 1)", {
+  skip_if(!rmarkdown::pandoc_available(), "Pandoc is required for Step 5 HTML rendering")
+  
+  proj_name <- "test_report_algo_detect"
+  cleanup_test_project(proj_name)
+  on.exit(cleanup_test_project(proj_name), add = TRUE)
+  
+  rel_path <- create_synthetic_dataset(proj_name, format = "csv", coords_type = "geographic", n_profiles = 25)
+  create_synthetic_covariates(proj_name, n_layers = 3)
+  
+  proj_dir <- file.path(repo_root, "projects", proj_name)
+  cfg <- list(
+    project = proj_name,
+    language = "en",
+    input_file = rel_path,
+    base_table = "profiles_data",
+    roles = list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower"),
+    source_crs = "EPSG:4326",
+    country_code = "TST",
+    project_code = "DEMO",
+    tiles = list(cols = 1, rows = 1),
+    targets = list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC", enabled = TRUE))
+  )
+  jsonlite::write_json(cfg, file.path(proj_dir, "config.json"), auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("1.1", project = proj_name))
+  expect_true(run_step("1.2", project = proj_name))
+  expect_true(run_step("1.3", project = proj_name))
+  expect_true(run_step("2", project = proj_name))
+  expect_true(run_step("3", project = proj_name))
+  expect_true(run_step("4", project = proj_name))
+  
+  # 1. Test case: model has quantreg in dots (older model without algorithm key in metrics JSON)
+  metrics_file <- file.path(proj_dir, "outputs", "models", "metrics_soc_0_30.json")
+  met <- jsonlite::fromJSON(metrics_file, simplifyVector = FALSE)
+  met$algorithm <- NULL # strip algorithm key
+  jsonlite::write_json(met, metrics_file, auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("5", project = proj_name, refit = TRUE))
+  html_f <- file.path(proj_dir, "reports", "report_soc_0_30.html")
+  html_text <- paste(readLines(html_f, warn = FALSE, encoding = "UTF-8"), collapse = " ")
+  expect_true(grepl("Quantile Regression Forest \\(ranger\\)", html_text))
+  
+  # 2. Test case: model has NO quantreg detected -> must output "ranger (quantile regression: NOT EVALUATED)"
+  # and never default to "Quantile Regression Forest" or caret's modelInfo$label ("Random Forest")
+  model_file <- file.path(proj_dir, "outputs", "models", "soc_0_30.rds")
+  mod <- readRDS(model_file)
+  mod$dots$quantreg <- NULL
+  mod$call <- quote(train(x, y)) # strip quantreg from call
+  if (!is.null(mod$finalModel)) {
+    mod$finalModel$quantreg <- NULL
+    mod$finalModel$call <- quote(ranger(x, y))
+  }
+  saveRDS(mod, model_file)
+  
+  expect_true(run_step("5", project = proj_name, refit = TRUE))
+  html_text2 <- paste(readLines(html_f, warn = FALSE, encoding = "UTF-8"), collapse = " ")
+  expect_true(grepl("ranger \\(quantile regression: NO EVALUADO\\)", html_text2, ignore.case = TRUE))
+  expect_false(grepl("Algorithm:</span> Random Forest", html_text2))
 })

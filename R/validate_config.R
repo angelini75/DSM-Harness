@@ -33,6 +33,9 @@ ALLOWED_CONFIG_KEYS <- c(
   "cv_folds",
   "cv_repeats",
   "tiles",
+  "cores",
+  "ram_gb",
+  "ram_share",
   "country_code",
   "project_code"
 )
@@ -261,11 +264,33 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
       rows_val <- suppressWarnings(as.numeric(cfg$tiles$rows))
       if (is.na(cols_val) || cols_val < 1 || is.na(rows_val) || rows_val < 1) {
         errors <- c(errors, msg("val_invalid_tiles_values", lang, repo_root = repo_root))
+      } else if (rows_val != 1) {
+        errors <- c(errors, msg("val_tiles_rows_not_one", lang, as.character(cfg$tiles$rows), repo_root = repo_root))
       }
     }
   }
 
-  # 6d. Check country_code and project_code if present
+  # 6d. Check hardware parameters if present: cores, ram_gb, ram_share
+  if (!is.null(cfg$cores)) {
+    c_val <- suppressWarnings(as.numeric(cfg$cores))
+    if (is.na(c_val) || c_val < 1 || c_val != as.integer(c_val)) {
+      errors <- c(errors, msg("val_invalid_cores", lang, repo_root = repo_root))
+    }
+  }
+  if (!is.null(cfg$ram_gb)) {
+    r_val <- suppressWarnings(as.numeric(cfg$ram_gb))
+    if (is.na(r_val) || r_val <= 0) {
+      errors <- c(errors, msg("val_invalid_ram_gb", lang, repo_root = repo_root))
+    }
+  }
+  if (!is.null(cfg$ram_share)) {
+    s_val <- suppressWarnings(as.numeric(cfg$ram_share))
+    if (is.na(s_val) || s_val <= 0 || s_val > 1) {
+      errors <- c(errors, msg("val_invalid_ram_share", lang, repo_root = repo_root))
+    }
+  }
+
+  # 6e. Check country_code and project_code if present
   if (!is.null(cfg$country_code)) {
     if (!is.character(cfg$country_code) || length(cfg$country_code) != 1 || !nzchar(trimws(cfg$country_code))) {
       errors <- c(errors, msg("val_invalid_code_field", lang, "country_code", repo_root = repo_root))

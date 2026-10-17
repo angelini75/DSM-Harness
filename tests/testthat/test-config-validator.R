@@ -139,9 +139,12 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
 
   # 17. Valid tiles, country_code, and project_code pass
   cfg_m3 <- base_valid_cfg
-  cfg_m3$tiles <- list(cols = 4, rows = 4)
+  cfg_m3$tiles <- list(cols = 4, rows = 1)
   cfg_m3$country_code <- "TST"
   cfg_m3$project_code <- "DEMO"
+  cfg_m3$cores <- 4
+  cfg_m3$ram_gb <- 16
+  cfg_m3$ram_share <- 0.25
   v_m3 <- validate_config(cfg_m3, stop_on_error = FALSE, repo_root = repo_root)
   expect_true(v_m3$valid)
 
@@ -152,9 +155,27 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   expect_false(v_bad_tiles1$valid)
 
   cfg_bad_tiles2 <- base_valid_cfg
-  cfg_bad_tiles2$tiles <- list(cols = 0, rows = 4) # cols < 1
+  cfg_bad_tiles2$tiles <- list(cols = 0, rows = 1) # cols < 1
   v_bad_tiles2 <- validate_config(cfg_bad_tiles2, stop_on_error = FALSE, repo_root = repo_root)
   expect_false(v_bad_tiles2$valid)
+
+  cfg_bad_tiles_rows <- base_valid_cfg
+  cfg_bad_tiles_rows$tiles <- list(cols = 4, rows = 2) # rows != 1
+  v_bad_tiles_rows <- validate_config(cfg_bad_tiles_rows, stop_on_error = FALSE, repo_root = repo_root)
+  expect_false(v_bad_tiles_rows$valid)
+
+  # 18b. Hardware specs validation (cores, ram_gb, ram_share)
+  cfg_bad_cores <- base_valid_cfg
+  cfg_bad_cores$cores <- 0
+  expect_false(validate_config(cfg_bad_cores, stop_on_error = FALSE, repo_root = repo_root)$valid)
+
+  cfg_bad_ram <- base_valid_cfg
+  cfg_bad_ram$ram_gb <- -5
+  expect_false(validate_config(cfg_bad_ram, stop_on_error = FALSE, repo_root = repo_root)$valid)
+
+  cfg_bad_ram_share <- base_valid_cfg
+  cfg_bad_ram_share$ram_share <- 1.5
+  expect_false(validate_config(cfg_bad_ram_share, stop_on_error = FALSE, repo_root = repo_root)$valid)
 
   # 19. Empty country_code and project_code rejected
   cfg_bad_code <- base_valid_cfg
