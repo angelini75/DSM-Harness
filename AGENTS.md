@@ -1,128 +1,99 @@
----
-title: AGENTS
-type: index
-status: active
-created: 2026-09-22
-updated: 2026-10-05
-tags: [dsm-harness, soil-mapping, opennsis, fao]
----
+# AGENTS (DSM-Harness v2 Runtime Index)
 
-# AGENTS (DSM-Harness Runtime Index)
-
-> Welcome to **DSM-Harness**. This document defines the operational directives, contracts, and interaction protocols governing AI assistants and human participants during FAO / SoilFER / OpenNSIS Digital Soil Mapping workflows.
+Welcome to **DSM-Harness v2** (FAO / SoilFER / OpenNSIS). This document defines the core principles and operational contract for AI assistants.
 
 ---
 
-## 1. Master Instructions for AI Assistants
+## 1. Core Principles (10 Principles)
 
-0. **Initial Workspace Greeting & Onboarding**:
-   - Deliver an immediate, structured onboarding message in the user's preferred language (default: **Spanish**).
-   - **Protocol**:
-     1. **Bienvenida**: Warm welcome to DSM-Harness (FAO / SoilFER / OpenNSIS).
-     2. **Propósito**: Guiding through the 5 stages of Digital Soil Mapping: (1) BYOD Audit, (2) Covariables, (3) Modeling QRF, (4) Prediction & OpenNSIS COG, (5) Parameterized Final Report. **Soil Spectroscopy (DRS) is explicitly out of scope**.
-     3. **Reglas Operativas**:
-        - Mantener abierto `DSM-Harness.Rproj` en **RStudio** (directorio de trabajo raíz relativo).
-        - **Arquitectura de Proyectos Aislados**: El trabajo del alumno ocurre en `projects/<nombre>/`. Las plantillas maestras en `02_scripts/` son genéricas y permanentes: la IA NUNCA las sobrescribe.
-        - Las opciones se guardan en `projects/<nombre>/config.json` (ver [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md)).
-        - Para configurar interactivamente en RStudio, el alumno puede ejecutar `02_scripts/00_setup_config.R`.
-        - `decisions_log.csv` es un log de auditoría escrito **exclusivamente por los scripts de R**, nunca a mano ni por la IA.
-        - Los gráficos diagnósticos (`mapview`, `ggplot2`) se visualizan en RStudio.
-        - Cada script genera simultáneamente un reporte de texto (`.txt`) en `projects/<nombre>/reports/` para que la IA lo lea de forma nativa (`view_file`).
-     4. **Rescate de Errores (Token Saver)**: Copiar solo las últimas 2-4 líneas de código y el error en rojo. La IA entregará el snippet mínimo de reemplazo en 1 línea de diagnóstico.
-     5. **Paso 0**: Instanciar proyecto ejecutando `source("02_scripts/00_new_project.R")`, colocar el dataset en `projects/<nombre>/data/` y correr `source("projects/<nombre>/run_step.R"); run_step("0")`.
-
-1. **Multilingual Policy & Scope Directive (#49)**:
-   - Internal contracts in English. Assistant interaction, code comments, and pedological explanations MUST always be in the **user's preferred language** (default: **Spanish**).
-   - **English User Protocol**: If the participant initiates interaction in English or explicitly requests English:
-     - All AI assistant responses, guidance, table headers, observation instructions, and questions MUST be in **English**.
-     - Set `"language": "en"` in `projects/<name>/config.json`.
-     - In Step 0 / Step 1.1, formulate the mandatory completeness inquiry in English:
-       > *"Are these all the columns/properties you expected, or are there more? Is anything missing, or would you like to adjust any mapping?"*
-     - All R scripts will dynamically detect `"language": "en"` and emit console logs, companion `.txt` reports, `decisions_log.csv` entries, and Step 5 HTML reports in **English**.
-   - **ABSOLUTE BAN on Spectroscopy (DRS) (#42)**: Soil spectroscopy is strictly OUT OF SCOPE for DSM-Harness. AI assistants must NEVER propose, suggest, or include spectroscopy as a stage, even if mentioned by the user or present in raw files. The workflow proceeds directly: Profiles (Etapa 1) -> Covariables (Etapa 2) -> Modeling (Etapa 3) -> Prediction & OpenNSIS COG (Etapa 4) -> Final Report (Etapa 5).
-
-2. **Visual-First & Evidence-Only Reporting**:
-   - Every script produces graphical diagnostics and a companion `.txt` report in `reports/` (o `01_data/profiles/`).
-   - **EVIDENCE-ONLY**: If a number or diagnostic was not computed or is absent from the `.txt` report, NEVER affirm it. State "NO EVALUADO".
-   - Never invent country/region origins, analytical causes, EPSG projections, or PTF authors.
-   - **ABSOLUTE BAN on Hallucinated File Names & Sources (#44)**: AI assistants must NEVER affirm or cite filenames not produced by the workflow (e.g. NEVER cite `modelling_dataset.csv`; the actual file is `step2_covariates.csv`). NEVER invent covariate sources or sensor origins (e.g. never claim "WorldClim/CHELSA, MODIS NDVI, EVI, FPAR, LST" if only layer names are listed in the report).
-   - **ABSOLUTE BAN on Unilateral Target Properties & Prescriptive Intervals (#44)**: NEVER configure `target_property` (e.g. `OM` or `SOC`) without first presenting the available candidate properties and asking the student. NEVER use the word "estándar" when referring to soil depth intervals (e.g. NEVER use "intervalo superficial estándar").
-   - **ABSOLUTE BAN on Speculative Claims**: Never assure "no habrá advertencias" or forecast counts ("verás los 4.256 puntos") without reading evidence in the `.txt` report.
-   - **OpenNSIS Naming, Metrics & Code Rigor (#41, #48)**: For map naming (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-<stat>.tif`), ALWAYS ask the user for `<CC>` and `<PROJ>`; NEVER invent them (e.g. never invent `SOILFER` or `NACIONAL`). AI assistants must NEVER use fixed or persistent country codes (`GTM`, `MKD`, etc.) or project codes in prompts, advisories, or chat. NEVER affirm "COG estándar" unless verified to be true Cloud-Optimized GeoTIFF (`LAYOUT=COG` or overviews + tiled DEFLATE). Present metrics ($R^2$, RMSE, CCC, MAE, Bias) neutrally without arbitrary qualitative praise or subjective evaluation (e.g. NEVER say "buen RMSE", "error bajo" or "ajuste óptimo").
-   - **ABSOLUTE BAN on Unbacked Analytical Scales & Presumptive Norms (#48)**: NEVER claim unbacked "typical" property scales or agricultural soil norms (e.g. NEVER claim "escala típica de 4.0 a 8.5 en suelos agrícolas" or "rango típico de MO"). Any comparison of RMSE, error or property ranges must be grounded strictly in observed dataset summary statistics (min, max, mean, SD) present in companion `.txt` reports, or left entirely to the student's agronomic judgment.
-
-3. **Token Efficiency & Response Budget**:
-   - Keep responses focused, concise, and structured in bullet points (target: **≤ 350-400 words** per turn).
-   - **NEVER paste entire scripts into the chat**. Only provide minimal, targeted snippets when debugging errors.
-
-4. **Writing Roles, Candidate Table & Completeness Protocol (`config.json` vs `decisions_log.csv`)**:
-   - **`decisions_log.csv`**: Written **strictly and exclusively by R scripts** (`record_decision()`) with `run_id`, `source` (`user_config` vs `script_default`), and template version. Never typed manually and never created/falsified by the assistant.
-   - **Candidate Table & Completeness Inquiry First**: Before delivering or writing `config.json`, the assistant MUST present a concise markdown table in the chat with candidate sheets, join keys, and target variables for the student to confirm. The assistant MUST explicitly formulate the completeness question:
-     > *"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*
-     Continuous user refinement must be supported before generating or updating `config.json`.
-   - **Extensibility & Cumulative Retention**:
-     - **NEVER invent schema restrictions**: Assistant must NEVER claim that `CONFIG_SCHEMA.md` or DSM-Harness forbids non-diagnostic variables, auxiliary properties, or creates "dimensional overload". Any additional analytical property requested by the student (e.g. `pH_nKCl`, `CaCO3`) MUST be retained declaratively using `keep_columns` in `config.json` or custom mapping.
-     - **Cumulative Persistence Across Turns**: When refining `config.json` over multiple turns, the assistant MUST cumulatively retain all previously agreed columns and properties. NEVER drop requested variables in subsequent revisions.
-     - **ABSOLUTE BAN on Analytical Method Mixing**: NEVER map different analytical methods to the same canonical variable (e.g., NEVER map `pH_nKCl` into `pH_H2O`). Preserve distinct methods under their own original names using `keep_columns`.
-     - **ABSOLUTE BAN on Proactive Duplicate Presets & Invalid Enums (#47)**: In the initial `config.json` delivered before Step 1.1 runs, NEVER preset `duplicate_key_strategy` or `duplicate_action` with speculative values. Present duplicate options ONLY after the script reports repeated keys. NEVER use enum values outside `CONFIG_SCHEMA.md` (e.g., `preserve_and_flag` is strictly for `duplicate_action` in Step 1.3, NEVER for `duplicate_key_strategy` in Step 1.1).
-     - **ABSOLUTE BAN on Fictitious Row Removals (#47)**: NEVER affirm that duplicate rows were "removidas" or "corregidas" without reading explicit evidence of row count changes in the companion `.txt` report.
-   - **`config.json`**: Conforms to [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md).
-     - *In IDE (Antigravity)*: Assistant creates/updates `projects/<nombre>/config.json` upon explicit user agreement.
-     - *In Web Chat (Cards)*: Assistant delivers the exact JSON code block for the student to save locally. Assistants must **never claim** "ya lo registré" if they lack file-writing tools.
-     - *Interactive R CLI*: Students can run `02_scripts/00_setup_config.R` in RStudio to configure sheets and keys without touching JSON.
-
-5. **Pedagogy of Uncertainty, Grounding & Neutrality (#36, #43, #48)**:
-   - When diagnosing projections, units or analytical methods:
-     1. **Metadata First & EPSG Candidate Protocol (#43)**: ALWAYS direct the student to inspect internal metadata sheets, code tables, or notes in their Excel workbook first. NEVER guess, assume, or mention countries, administrative regions or projection systems (e.g. NEVER mention "MGI / Balkans Zone 7", "Guatemala", etc.) before the student has explicitly declared their territorial location. NEVER assert an EPSG code as "exacto" from vague metadata text (e.g. "Gauss-Krueger", "UTM"). Propose a short list of 2–3 plausible candidate EPSG codes filtered by country (e.g. from epsg.io) presenting them equiprobably and neutrally strictly by their official technical designations (EPSG code, official name, projection/ellipsoid, coverage extent) WITHOUT qualitative labels ("estándar", "muy común", "recomendado", "habitual").
-     2. Explain technical and pedological concepts objectively in plain language without bias.
-     3. **No Concrete EPSG in Snippets**: When providing code snippets or placeholders, use `<código EPSG de tu zona>` or `<código EPSG>`, NEVER specific numbers (e.g. 32634).
-     4. **Post-Reprojection Bounding Box Verification (#43)**: After running Step 1.2, ALWAYS check the resulting geographic bounding box (Lon min–max, Lat min–max en grados decimales) in `step1_2_spatial_report.txt` and ask the student to verify if that range falls inside their national/regional territory before moving to Step 1.3 (warning that an erroneous EPSG can place points in the ocean without throwing errors).
-     5. **No Analytical Method Confusion**: NEVER confuse analytical laboratory methods with mathematical conversion factors (e.g., Walkley-Black is an analytical wet-digestion laboratory method, not a conversion factor). Present factors neutrally with citations to literature or defer to laboratory reports.
-     6. **No Persistent Numeric Examples or Fixed Codes (#48)**: Present choices and placeholders neutrally without embedding fixed numbers or specific codes (e.g. avoid 'ej. 2.0', avoid 'ej. GTM, MKD', avoid 'ej. NACIONAL, SOILMAP'). Use generic placeholders like `<código_país_ISO3>` and `<código_proyecto>`.
-     7. **ALWAYS provide a reversible deferral option** (e.g. keep original property without converting).
-     8. **PROHIBITION**: Never use coercive or prescriptive statements ("te conviene rotundamente", "opción recomendada", "opción estándar", "enfoque estándar", "muy común"). All options must be presented neutrally and equiprobably. All methodological decisions belong to the participant.
-     9. **Failed Column Diagnostics**: When mapped columns fail or variables are not found, inspect or direct the student to inspect `names(dat_raw)` printed directly by the script in the console/report.
-
-6. **Master Templates, Project Isolation & Insertion-Only ADAPT Contract**:
-   - **Master Templates**: Scripts in `02_scripts/` are pristine, versioned templates (`TEMPLATE_VERSION 2.0.0`). They are NEVER directly modified or overwritten.
-   - **Project Workspaces**: Student datasets and execution happen in isolated project folders (`projects/<nombre>/`) generated via `02_scripts/00_new_project.R`. Each project carries its own `config.json`, `decisions_log.csv`, and local script copies with provenance headers.
-   - **Insertion-Only ADAPT Protocol ([`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md))**:
-     - Always attempt declarative configuration first via `config.json` ([`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md)).
-     - ADAPT blocks are strictly **insertion-only extension slots** between `# >>> ADAPT:<slot_name>` and `# <<< ADAPT:<slot_name>`.
-     - **ABSOLUTE BAN**: Never instruct the student to replace existing template logic or delete surrounding code.
-     - Assistants MUST deliver **ONLY the minimal code block** (15-40 lines) to be inserted inside the slot, respecting the exact contract and objects documented in [`docs/ADAPT_CONTRACT.md`](docs/ADAPT_CONTRACT.md).
-     - Any adapted code must call `record_decision(step, criterion, decision, source, affected_rows, affected_profiles, details)` with its complete signature.
-   - **Audit Diff**: Use `02_scripts/00_audit_diff.R` to inspect differences between project scripts and master templates.
-   - **Strict Two-Turn Flow per Sub-Step**:
-     - **Turn 1 (Before execution)**: (1) Execution guide in RStudio (e.g. `run_step("1.1")`), (2) Neutral observation guide, (3) Numbered decision options without bias (no "recomendada" / "estándar"), (4) Completeness check (*"¿Son todas las columnas/propiedades que esperabas o hay más? ¿Falta alguna o deseas corregir alguna?"*).
-     - **Turn 2 (Post execution)**: (1) Evidence-based diagnosis reading `.txt`, (2) Open pedological questions, (3) Completeness re-check, confirmation and next step.
-   - **Sub-Steps**:
-     - **Step 0 (`00_inspect_data.R`)**: Autodetects dataset; produces ultra-compact report (≤ 6-8 KB); strict filtering of true ID candidates, depths, coordinates, and properties.
-     - **Step 1.1 (`01_1_byod_audit.R`)**: Validates config; supports 1 to N horizon sheets (`horizon_sheets`); checks non-unique keys on right sheets (`duplicate_key_strategy`); fails fast if essential variables (`profile_code`, `upper`, `lower`, coordinates) are missing; prints `names(dat_raw)` on failure; supports declarative sand summation (`sand_sum`).
-     - **Step 1.2 (`01_2_byod_audit.R`)**: Audits coordinates; detects metric coordinates and asks for EPSG without guessing; generates 2D scatter plot fallback in Plots tab if `source_crs` is null; spatial outlier audit using 1D IQR 3×; warns that univariate IQR cannot detect points inside the bounding box and requires visual map inspection.
-     - **Step 1.3 (`01_3_byod_audit.R`)**: Audits vertical continuity separating join duplicates from true overlaps; texture balance (Clay+Sand+Silt); row-by-row `BD_source` tagging (`measured`, `estimated`, `missing`); BD evaluation based on reference script catalog (Saini, Drew, Jeffrey, Grigal, Adams, Honeyset) contrasting against measured samples ($5 \le n < 30$) or local simple parametric calibration ($n \ge 30$, without ML); never imputes without explicit user confirmation in config; logs all decisions.
-     - **Step 2 (`02_extract_covariates.R`)**: Extracts raster covariates at soil profile coordinates, handles spatial masks, and outputs `step2_covariates.csv`.
-     - **Step 3 (`03_spatial_modelling.R`)**: Feature selection via Boruta, repeated CV tuning of QRF (`ranger`), metrics calculation ($R^2$, RMSE, CCC, MAE, Bias), 1:1 validation scatter plot, and saves model RDS plus `metrics_<var>.json`.
-     - **Step 4 (`04_predict_and_cog.R`)**: Spatial prediction with `terra`, generating Cloud-Optimized GeoTIFFs (`<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif` and `-sd.tif`) with DEFLATE compression and internal overviews.
-     - **Step 5 (`05_render_report.R` / `05_variable_report.Rmd`)**: Renders standalone parameterized HTML final mapping report (sites, distribution, model tuning & performance, 1:1 validation line strictly non-regression, OpenNSIS maps, and user decisions log).
+1. **Repository Files First**: Always read project files locally in the repository (e.g., `projects/<name>/reports/*.txt`). Never search the web or external paths for them.
+2. **Fixed Files, No Shared State**: Each step reads fixed input files and writes fixed output files, in order. Steps share nothing through the R session; state lives only in files (`data/*.csv`, `reports/*.txt`, `config.json`).
+3. **Evidence and Neutral Options**: State only what a report or the user has established; if something was not computed, say so. When the user must choose (CRS, duplicates, bulk density, targets), list the options with their consequences, without recommending or ranking them. Ask for facts the reports do not contain, such as the study area, instead of inferring them from the data. You may suggest values for facts only the user can confirm (for example a code), labelled as suggestions; write nothing to `config.json` until the user confirms.
+4. **Agent Writes Config, User Confirms**: The user never edits JSON directly. The agent interviews the user, writes `config.json`, and summarizes the actions in plain language for user confirmation.
+5. **No Invented Columns**: Every column in `config.json` must exist in the dataset inspected in Step 0.
+6. **Transparent Auditing & Decisions**: Scripts never prompt or guess for the user. Confirmed decisions are logged automatically to `projects/<name>/decisions_log.csv`.
+7. **Clean Runner Protocol**: `run_step(step, project)` executes in an isolated environment via `sys.source()`. Errors log call and traceback to `reports/<step>_error.txt` and return `invisible(FALSE)`.
+8. **User's Language**: Use the user's language (Spanish or English). Confirm it in the first turn and create the project with `new_project("<name>", language = "<es|en>")`. Scripts and code documentation are in English.
+9. **Pedological Transparency**: Never silently impute or alter data. For bulk density, contrast the published PTF catalogue against local observations; impute only when explicitly requested.
+10. **Code Fixes Over Prose**: Bugs and edge cases are solved in code and tests, never by bloating prompt rules.
 
 ---
 
-## 2. Context Loading Order
+## 2. Step Table
 
-1. [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md) — canonical user configuration specification.
-2. [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) — paths, schemas, and column conventions.
-3. [`02_scripts/reference_modelling_v2.R`](02_scripts/reference_modelling_v2.R) — single source of truth for R modeling code.
-4. [`docs/OPENNSIS_STANDARDS.md`](docs/OPENNSIS_STANDARDS.md) — COG standards and naming conventions.
+| Step | Reads | Writes | User Confirms |
+| :--- | :--- | :--- | :--- |
+| **0 Inspect** | `data/<raw files>` | `reports/00_inspection.txt` | Which raw file and tables/sheets to use |
+| **1.1 Map** | Raw data file | `data/01_mapped.csv`, `reports/11_mapping.txt` | Base table, joins, roles, categories, duplicate key strategy |
+| **1.2 Spatial** | `data/01_mapped.csv` | `data/02_spatial.csv`, `reports/12_spatial.txt` | Source CRS (from candidates); resulting lon/lat bounding box |
+| **1.3 Pedological** | `data/02_spatial.csv` | `data/03_clean.csv`, `reports/13_pedological.txt` | Bulk density estimation option; exclusions |
+| **2 Covariates** | `data/03_clean.csv`, `covariates/*.tif` | `data/04_cov_<prop>_<d1>_<d2>.csv`, `reports/20_covariates_<prop>_<d1>_<d2>.txt` | Target properties and depth intervals |
+| **3 Model** | `data/04_cov_*.csv` | `outputs/models/<prop>_<d1>_<d2>.rds`, `metrics_<prop>_<d1>_<d2>.json`, `reports/30_modelling_<prop>_<d1>_<d2>.txt` | None; reviews metrics. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
+| **3b Resources** | models, rasters, user machine (`cores`, `ram_gb`) | `reports/3b_resources.txt` | User supplies `cores` and `ram_gb` (the agent asks for them); number of vertical tiles (`cols`) |
+| **4 Predict** | models, `covariates/*.tif` | `outputs/maps/<CC>-<PROJ>-<PROP>-<d1>-<d2>-mean.tif`, `sd.tif`, `reports/40_prediction_<prop>_<d1>_<d2>.txt` | Tile scheme (`tiles: {cols, rows}` with `rows: 1`), `country_code`, `project_code`. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
+| **5 Report** | `data/04_cov_*.csv`, models, maps | `reports/report_<prop>_<d1>_<d2>.html`, `reports/50_report_<prop>_<d1>_<d2>.txt` | None; reviews HTML report. Runner options: `targets = c(...)`, `refit = TRUE\|FALSE` |
 
 ---
 
-## 3. Disciplinary Agent Roles
+## 3. Configuration Reference (`config.json`)
 
-| Agent File | Role Name | Domain & Responsibilities |
-| :--- | :--- | :--- |
-| [`agents/r-engineer.md`](agents/r-engineer.md) | **R Specialist** | Robust R code (`terra`, `ranger`, `sf`); never modifies `02_scripts/`; enforces [`docs/CONFIG_SCHEMA.md`](docs/CONFIG_SCHEMA.md). |
-| [`agents/geo-standards.md`](agents/geo-standards.md) | **Geospatial & OpenNSIS Architect** | CRS verification without guessing; bounding boxes, COG compression (`DEFLATE`, `predictor 2`), OpenNSIS naming. |
-| [`agents/geostat-modeler.md`](agents/geostat-modeler.md) | **Geostatistician & Pedometrician** | Boruta selection, CV, QRF tuning, metrics ($R^2$, RMSE, CCC), uncertainty mapping, avoiding circular predictors. |
-| [`agents/soil-scientist.md`](agents/soil-scientist.md) | **Pedologist & Soil Interpreter** | Pedological plausibility, bivariate coherence, texture balance, vertical continuity; unbiased pedagogical guidance. |
-| [`agents/dsm-panel.md`](agents/dsm-panel.md) | **Unified DSM Panel** | Two-turn interactive orchestration, concise token-efficient responses (≤ 350-400 words), human-in-the-loop decisions. |
+Stored at `projects/<name>/config.json`. Validated before each execution.
+
+- **`project`**: Project name matching folder `projects/<name>/`. (Required)
+- **`language`**: `"en"` or `"es"`. (Required)
+- **`input_file`**: Path relative to project folder (e.g. `"data/profiles.xlsx"`). Never absolute. (Required)
+- **`sheets`**: Array of sheet names to read (for Excel files).
+- **`base_table`**: Sheet or table name defining the base rows for relational joins.
+- **`joins`**: Array of declarative join objects applied sequentially to `base_table`:
+  ```json
+  [
+    {
+      "table": "profiles",
+      "by": { "profile_id": "site_code" }
+    },
+    {
+      "table": "horizons_phys",
+      "by": { "profile_id": "profile_id", "layer_id": "layer_id" }
+    }
+  ]
+  ```
+- **`roles`**: Column assignments (may reference `table.column` or bare column names):
+  - Required: `profile_id`, `x`, `y`, `top`, `bottom`.
+  - Optional: `bulk_density`, `organic_carbon`, `organic_matter`.
+- **`categories`**: Canonical column-to-category map (object mapping each column to a single category string):
+  ```json
+  {
+    "clay": "texture",
+    "sand": "texture",
+    "ph": "chemistry",
+    "soc": "organic matter and density"
+  }
+  ```
+  Allowed categories: `identification`, `location`, `depth`, `texture`, `organic matter and density`, `chemistry`, `salts and conductivity`, `nutrients`, `other`.
+- **`excluded_categories`**: Optional list of categories to drop.
+- **`excluded_columns`**: Optional list of column names to drop.
+- **`duplicate_key_strategy`**: `"fail"`, `"average"`, or `"keep_first"`.
+- **`source_crs`**: Target coordinate reference system (e.g. `"EPSG:32642"` or `"EPSG:4326"`).
+- **`impute_bulk_density`**: `true` or `false`. If true, estimates are written to separate column `bd_imputed`.
+- **`targets`**: Array of target objects defining property and depth intervals:
+  ```json
+  [
+    { "property": "clay", "d1": 0, "d2": 30, "enabled": true },
+    { "property": "clay", "d1": 30, "d2": 60, "enabled": true },
+    { "property": "soc", "d1": 0, "d2": 30, "enabled": false }
+  ]
+  ```
+  Each target specifies `property`, `d1` (top depth), `d2` (bottom depth, strictly $d1 < d2$), optional `enabled` (boolean, default `true`), and `code` (string of alphanumeric characters and underscores, required at the start of Steps 4 and 5 for OpenNSIS raster filenames, used as typed with no defaults). Disabled targets are skipped during Step 3 unless explicitly requested via `run_step("3", targets = c(...))`.
+- **`boruta_max_runs`**: Maximum iterations for Boruta feature selection (integer, default 100).
+- **`min_support`**: Minimum profile support thickness in cm for depth standardisation (numeric, default 5).
+- **`refit`**: Global default flag (`true` or `false`, default `false`) indicating whether existing models should be retrained and overwritten in Step 3. Can be overridden per run via `run_step("3", refit = TRUE)`.
+- **`cv_folds`**: Number of cross-validation folds for model tuning in Step 3 (integer, default 5).
+- **`cv_repeats`**: Number of cross-validation repeats for Repeated CV in Step 3 (integer, default 5).
+- **`cores`**: Number of CPU worker threads allocated for Steps 3 and 4 (integer >= 1). The user supplies `cores`, so the agent asks for it.
+- **`ram_gb`**: RAM in GB available for spatial tiling calculations in Step 3b (numeric > 0). The user supplies `ram_gb`, so the agent asks for it.
+- **`ram_share`**: Optional fraction of `ram_gb` allocated per tile in Step 3b (numeric with 0 < ram_share <= 1, default 0.25).
+- **`tiles`**: User-confirmed spatial tiling grid configuration for Step 4 prediction (object with positive integer `cols` and strictly `rows: 1`, matching scheme confirmed from `reports/3b_resources.txt`).
+- **`country_code`**: ISO 3166-1 alpha-3 code required for standard OpenNSIS raster product filenames in Step 4.
+- **`project_code`**: Project acronym required for standard OpenNSIS raster product filenames in Step 4.
+
+
