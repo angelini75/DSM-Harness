@@ -163,6 +163,9 @@ test_that("Config validator enforces schema, roles, categories shape, enums, and
   cfg_bad_tiles_rows$tiles <- list(cols = 4, rows = 2) # rows != 1
   v_bad_tiles_rows <- validate_config(cfg_bad_tiles_rows, stop_on_error = FALSE, repo_root = repo_root)
   expect_false(v_bad_tiles_rows$valid)
+  # check_tiles = FALSE skips tiles validation
+  v_bad_tiles_rows_skipped <- validate_config(cfg_bad_tiles_rows, stop_on_error = FALSE, repo_root = repo_root, check_tiles = FALSE)
+  expect_true(v_bad_tiles_rows_skipped$valid)
 
   # 18b. Hardware specs validation (cores, ram_gb, ram_share)
   cfg_bad_cores <- base_valid_cfg

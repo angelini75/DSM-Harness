@@ -208,6 +208,8 @@ res_no_models: "No trained models found in outputs/models/. Step 3b inspects ras
 res_tiling_proposal: "Proposed Tiling Scheme for Step 4 Prediction: %d vertical tiles (%d cols x 1 rows). Max pixels per tile: %s. Estimated footprint per tile: %.2f MB."
 res_tiling_lower_bound: "Covariates-only memory footprint: %.2f MB (lower bound: minimum, without prediction memory). Proposed Tiling Scheme: NOT EVALUATED (requires trained model with training observations)"
 res_tiling_not_evaluated: "Proposed Tiling Scheme for Step 4 Prediction: NOT EVALUATED ('ram_gb' must be configured in config.json)"
+res_tiles_legacy_invalid: "Configured 'tiles' (%s) is invalid because Step 4 requires rows = 1; update it with cols = %d (rows = 1)."
+res_tiles_legacy_invalid_no_prop: "Configured 'tiles' (%s) is invalid because Step 4 requires rows = 1."
 res_report_written: "Hardware & resource diagnosis report written to: %s"
 res_completed: "Step 3b resource diagnosis completed successfully."
 

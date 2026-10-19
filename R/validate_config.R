@@ -82,7 +82,7 @@ ALLOWED_LANGUAGES <- c(
   "es"
 )
 
-validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_root = NULL, target_cols_only = FALSE) {
+validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_root = NULL, target_cols_only = FALSE, check_tiles = TRUE) {
   if (is.null(repo_root)) {
     if (exists("find_repo_root", mode = "function")) {
       repo_root <- find_repo_root()
@@ -255,8 +255,8 @@ validate_config <- function(cfg, data_cols = NULL, stop_on_error = TRUE, repo_ro
     }
   }
 
-  # 6c. Check tiles if present
-  if (!is.null(cfg$tiles)) {
+  # 6c. Check tiles if present (can be skipped when check_tiles = FALSE, e.g. in Step 3b)
+  if (isTRUE(check_tiles) && !is.null(cfg$tiles)) {
     if (!is.list(cfg$tiles) || is.null(cfg$tiles$cols) || is.null(cfg$tiles$rows)) {
       errors <- c(errors, msg("val_invalid_tiles_shape", lang, repo_root = repo_root))
     } else {

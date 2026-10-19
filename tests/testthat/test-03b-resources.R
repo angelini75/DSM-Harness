@@ -235,3 +235,61 @@ test_that("Step 3b missing cores does not block tile proposal when ram_gb and mo
   # Fix 3: Assert proposal IS generated and NOT blocked
   expect_true(any(grepl("Proposed Tiling Scheme.*vertical tiles|Esquema de teselado propuesto.*teselas verticales", lines)))
 })
+
+test_that("Step 3b is not blocked by legacy tiles.rows != 1 and logs warning, while Step 4 stops", {
+  proj_name <- "test_res_legacy_tiles"
+  cleanup_test_project(proj_name)
+  on.exit(cleanup_test_project(proj_name), add = TRUE)
+
+  create_synthetic_dataset(proj_name, format = "csv", n_profiles = 25, coords_type = "geographic")
+  create_synthetic_covariates(proj_name, crs = "EPSG:4326", n_layers = 4, mismatch = FALSE)
+  
+  cfg_path <- file.path(repo_root, "projects", proj_name, "config.json")
+  cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = FALSE)
+  cfg$input_file <- "data/profiles_data.csv"
+  cfg$roles <- list(profile_id = "id", x = "x", y = "y", top = "upper", bottom = "lower")
+  cfg$source_crs <- "EPSG:4326"
+  cfg$targets <- list(list(property = "soc", d1 = 0, d2 = 30, code = "SOC"))
+  cfg$ram_gb <- 8
+  cfg$cores <- 2
+  cfg$country_code <- "ARG"
+  cfg$project_code <- "SOIL"
+  jsonlite::write_json(cfg, cfg_path, auto_unbox = TRUE, pretty = TRUE)
+  
+  expect_true(run_step("1.1", proj_name))
+  expect_true(run_step("1.2", proj_name))
+  expect_true(run_step("1.3", proj_name))
+  expect_true(run_step("2", proj_name))
+  
+  # Inject legacy tiles with rows != 1 into config.json
+  cfg <- jsonlite::fromJSON(cfg_path, simplifyVector = FALSE)
+  cfg$tiles <- list(cols = 3, rows = 3) # legacy rows = 3
+  jsonlite::write_json(cfg, cfg_path, auto_unbox = TRUE, pretty = TRUE)
+  
+  # Add model with training_rows
+  models_dir <- file.path(repo_root, "projects", proj_name, "outputs", "models")
+  dir.create(models_dir, recursive = TRUE, showWarnings = FALSE)
+  jsonlite::write_json(list(training_rows = 400), file.path(models_dir, "metrics_soc_0_30.json"), auto_unbox = TRUE)
+  
+  # Step 3b must NOT be blocked by legacy tiles
+  expect_true(run_step("3b", proj_name))
+  
+  rep_file <- file.path(repo_root, "projects", proj_name, "reports", "3b_resources.txt")
+  lines <- readLines(rep_file, warn = FALSE)
+  
+  # Addition 1: Assert 3b_resources.txt contains localized line warning about legacy tiles
+  expect_true(any(grepl("cols = 3, rows = 3", lines)))
+  expect_true(any(grepl("rows = 1", lines)))
+  expect_true(any(grepl("actualícela con cols|update it with cols", lines)))
+  
+  # Assert proposed vertical tiling scheme is present
+  expect_true(any(grepl("Proposed Tiling Scheme.*vertical tiles|Esquema de teselado propuesto.*teselas verticales", lines)))
+  
+  # Addition 2: Assert Step 4 still stops with tiles validation error on the same legacy tiles
+  expect_false(run_step("4", proj_name))
+  err_file <- file.path(repo_root, "projects", proj_name, "reports", "40_error.txt")
+  expect_true(file.exists(err_file))
+  err_lines <- readLines(err_file, warn = FALSE)
+  expect_true(any(grepl("tiles\\$rows.*rows = 1|las teselas espaciales deben ser franjas verticales con rows = 1", err_lines)))
+})
+

@@ -50,8 +50,8 @@ if (!exists("cfg", inherits = FALSE) || is.null(cfg)) {
 }
 lang <- cfg$language %||% "en"
 
-# Validate configuration
-validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root)
+# Validate configuration (Step 3b proposes the tile scheme, so legacy tiles.rows != 1 does not block it)
+validate_config(cfg, stop_on_error = TRUE, repo_root = repo_root, check_tiles = FALSE)
 
 # 1. User-Stated Hardware Configuration (Comment 6233883917)
 # The user states cores and ram_gb in config.json (no OS RAM detection, no silent 8 GB fallback).
@@ -176,6 +176,36 @@ if (has_training_rows) {
 log_out(msg("res_formula_explanation", lang, repo_root = repo_root))
 log_out("--------------------------------------------------------------------------------")
 log_out(msg("res_sec_tiling", lang, repo_root = repo_root))
+
+# Check if existing tiles configuration is invalid or legacy (requires rows = 1 for Step 4)
+has_invalid_tiles <- FALSE
+tiles_curr_str <- ""
+if (!is.null(cfg$tiles)) {
+  if (!is.list(cfg$tiles) || is.null(cfg$tiles$cols) || is.null(cfg$tiles$rows)) {
+    has_invalid_tiles <- TRUE
+    tiles_curr_str <- if (is.list(cfg$tiles)) {
+      sprintf("cols = %s, rows = %s", cfg$tiles$cols %||% "NULL", cfg$tiles$rows %||% "NULL")
+    } else {
+      as.character(cfg$tiles)
+    }
+  } else {
+    c_val <- suppressWarnings(as.numeric(cfg$tiles$cols))
+    r_val <- suppressWarnings(as.numeric(cfg$tiles$rows))
+    if (is.na(c_val) || c_val < 1 || is.na(r_val) || r_val < 1 || r_val != 1) {
+      has_invalid_tiles <- TRUE
+      tiles_curr_str <- sprintf("cols = %s, rows = %s", as.character(cfg$tiles$cols), as.character(cfg$tiles$rows))
+    }
+  }
+}
+
+if (has_invalid_tiles) {
+  if (ram_configured && has_training_rows) {
+    log_out(msg("res_tiles_legacy_invalid", lang, tiles_curr_str, tile_cols, repo_root = repo_root))
+  } else {
+    log_out(msg("res_tiles_legacy_invalid_no_prop", lang, tiles_curr_str, repo_root = repo_root))
+  }
+}
+
 if (!ram_configured) {
   log_out(msg("res_tiling_not_evaluated", lang, repo_root = repo_root))
 } else if (!has_training_rows) {
